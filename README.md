@@ -1,5 +1,7 @@
 # SudoMetalStudio Plugins
 
+[![Ubuntu CI](https://github.com/sirsipe/SMS-Plugins/actions/workflows/ubuntu-ci.yml/badge.svg)](https://github.com/sirsipe/SMS-Plugins/actions/workflows/ubuntu-ci.yml)
+
 Open-source audio plugins from SudoMetalStudio.
 
 ## Plugins
@@ -18,3 +20,6 @@ git clone --recurse-submodules https://github.com/sirsipe/SMS-Plugins.git
 ```
 
 Each plugin contains its own build and usage instructions.
+
+Release builds are produced by GitHub Actions. See
+[Docs/RELEASING.md](Docs/RELEASING.md) for the release procedure.

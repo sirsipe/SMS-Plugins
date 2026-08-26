@@ -69,7 +69,12 @@ protected:
         return "https://github.com/sirsipe/SMS-Plugins/tree/main/SMS-Midichopper";
     }
     const char* getLicense() const override { return "MIT"; }
-    uint32_t getVersion() const override { return d_version(0, 0, 1); }
+    uint32_t getVersion() const override
+    {
+        return d_version(MIDICHOPPER_VERSION_MAJOR,
+                         MIDICHOPPER_VERSION_MINOR,
+                         MIDICHOPPER_VERSION_PATCH);
+    }
 
     void initAudioPort(const bool input, const uint32_t index, AudioPort& port) override
     {

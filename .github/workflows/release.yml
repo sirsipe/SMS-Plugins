@@ -1,0 +1,81 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - SMS-Midichopper-v*
+
+permissions:
+  contents: write
+
+jobs:
+  build-test-release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository and submodules
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Verify tag matches project version
+        id: version
+        shell: bash
+        run: |
+          tag_version="${GITHUB_REF_NAME#SMS-Midichopper-v}"
+          project_version="$(sed -nE \
+            's/^project\(SMSMidichopper VERSION ([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' \
+            SMS-Midichopper/CMakeLists.txt)"
+          if [[ -z "$project_version" || "$tag_version" != "$project_version" ]]; then
+            echo "Tag version '$tag_version' does not match CMake version '$project_version'." >&2
+            exit 1
+          fi
+          echo "version=$tag_version" >> "$GITHUB_OUTPUT"
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            build-essential cmake ninja-build pkg-config git \
+            lv2-dev lilv-utils libgl1-mesa-dev libx11-dev libxext-dev \
+            libxrandr-dev libxcursor-dev libxinerama-dev
+
+      - name: Configure LV2 and VST3
+        run: |
+          cmake -S SMS-Midichopper -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_TESTING=ON \
+            -DMIDICHOPPER_BUILD_VST3=ON
+
+      - name: Build and test
+        run: |
+          cmake --build build --parallel
+          ctest --test-dir build --output-on-failure
+          LV2_PATH="$PWD/build/bin" \
+            lv2info https://github.com/sirsipe/SMS-Plugins/SMS-Midichopper
+
+      - name: Package release archives
+        shell: bash
+        run: |
+          mkdir -p dist
+          archive_prefix="SMS-Midichopper-v${{ steps.version.outputs.version }}-linux-x86_64"
+          source_date_epoch="$(git show -s --format=%ct HEAD)"
+          tar --sort=name --mtime="@$source_date_epoch" --owner=0 --group=0 \
+            --numeric-owner -C build/bin -czf "dist/${archive_prefix}-lv2.tar.gz" \
+            SMS-Midichopper.lv2
+          tar --sort=name --mtime="@$source_date_epoch" --owner=0 --group=0 \
+            --numeric-owner -C build/bin -czf "dist/${archive_prefix}-vst3.tar.gz" \
+            SMS-Midichopper.vst3
+          (cd dist && sha256sum ./*.tar.gz > SHA256SUMS.txt)
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --verify-tag \
+            --generate-notes \
+            --latest \
+            --title "SMS-Midichopper v${{ steps.version.outputs.version }}"

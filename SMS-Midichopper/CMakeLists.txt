@@ -71,6 +71,10 @@ target_include_directories(SMS-Midichopper PUBLIC
   "${CMAKE_CURRENT_SOURCE_DIR}/src/ui")
 
 target_link_libraries(SMS-Midichopper-dsp PRIVATE midichopper_core)
+target_compile_definitions(SMS-Midichopper-dsp PRIVATE
+  MIDICHOPPER_VERSION_MAJOR=${PROJECT_VERSION_MAJOR}
+  MIDICHOPPER_VERSION_MINOR=${PROJECT_VERSION_MINOR}
+  MIDICHOPPER_VERSION_PATCH=${PROJECT_VERSION_PATCH})
 
 if(BUILD_TESTING)
   add_executable(midichopper_core_tests tests/core_tests.cpp)

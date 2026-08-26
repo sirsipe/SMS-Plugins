@@ -1,0 +1,54 @@
+name: Ubuntu CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ubuntu-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository and submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            build-essential cmake ninja-build pkg-config git \
+            lv2-dev lilv-utils libgl1-mesa-dev libx11-dev libxext-dev \
+            libxrandr-dev libxcursor-dev libxinerama-dev
+
+      - name: Configure LV2 and VST3
+        run: |
+          cmake -S SMS-Midichopper -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_TESTING=ON \
+            -DMIDICHOPPER_BUILD_VST3=ON
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Run tests
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Validate bundles
+        run: |
+          test -f build/bin/SMS-Midichopper.lv2/SMS-Midichopper_dsp.so
+          test -f build/bin/SMS-Midichopper.lv2/SMS-Midichopper_ui.so
+          test -f build/bin/SMS-Midichopper.vst3/Contents/x86_64-linux/SMS-Midichopper.so
+          LV2_PATH="$PWD/build/bin" \
+            lv2info https://github.com/sirsipe/SMS-Plugins/SMS-Midichopper
