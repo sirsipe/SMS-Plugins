@@ -1,0 +1,3 @@
+[submodule "SMS-Midichopper/third_party/DPF"]
+	path = SMS-Midichopper/third_party/DPF
+	url = https://github.com/DISTRHO/DPF.git
