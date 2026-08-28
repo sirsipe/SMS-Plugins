@@ -45,6 +45,11 @@ cp -a build/bin/SMS-Midichopper.lv2 ~/.lv2/
 4. Click **FINALIZE** or return to **PLAY** to keep the last open slice.
 5. Play pads from MIDI note 36 upward; the base note is configurable.
 
+Open **Sample Editor** to move the pad bank into the right panel and edit the
+selected pad in the main view. Drag the waveform's start/end handles to choose
+the playback region, then adjust attack, decay, sustain, and release. These
+settings are stored independently for every pad and do not alter captured audio.
+
 Pre-roll moves boundaries slightly earlier to compensate for late taps. Fixed
 mode records one fixed-length slice per note-on. Samples are stored with the DAW
 project as compact 16-bit stereo state.

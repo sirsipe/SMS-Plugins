@@ -9,6 +9,9 @@ SMS-Midichopper separates the sampler from the plug-in format and UI:
 - `src/ui` is the resizable DGL/NanoVG interface.
 - `tests` exercises slice timing, capture lifecycle, playback resampling, and
   state corruption handling without loading a plug-in host.
+- `../Common-Src` contains plug-in-independent sample-region, ADSR, waveform
+  summary, state-codec, and UI geometry components intended for reuse by future
+  SMS plug-ins.
 
 ## Capture model
 
@@ -29,7 +32,10 @@ Audio processing uses preallocated pad and pre-roll storage. `process()` takes
 sample-offset MIDI events and performs no allocation, locking, file access, or
 exception handling. Each pad is one voice; all 16 may play simultaneously.
 Playback uses linear interpolation when a restored sample's source rate differs
-from the current host rate.
+from the current host rate. Each pad has normalized, non-destructive start/end
+points and an allocation-free ADSR voice envelope. Editor changes are published
+atomically and become active on the next note trigger, so a control-thread edit
+cannot tear the settings of an already-running voice.
 
 Pad import/export and sample-rate reconfiguration are control-thread work.
 DPF's state worker keeps large project-state operations away from the audio
@@ -41,6 +47,12 @@ Each pad is stored independently with a magic value, version, channel count,
 source sample rate, frame count, payload length, and CRC-32. Audio is
 interleaved signed PCM16 and Base64 encoded for portable DPF state. Decoding has
 strict size and structural checks. Empty pads use empty state values.
+
+Cut points and ADSR values are stored as compact versioned state per pad. The UI
+never receives the full PCM state: it requests the selected pad and the DSP-side
+worker returns a fixed 128-bin min/max waveform summary. This keeps waveform
+drawing and editor interaction away from the audio callback and avoids sending
+large sample blobs through the UI channel.
 
 Long recordings make DAW project files correspondingly larger. The current
 limit is 30 seconds per pad.

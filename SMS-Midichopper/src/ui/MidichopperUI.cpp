@@ -19,13 +19,10 @@
  *  10 undo last chop (momentary)
  *  11 clear all pads (momentary)
  *
- * Optional state keys sent by the DSP/plugin side:
- *   pad_mask       16 chars (0/1, or . / x / R / P); hex (0x...) is also accepted
- *   pad_status     16 chars, where R means recording and P means playing
- *   current_pad    decimal pad index, or -1 when no chop is active
- *   selected_pad   decimal pad index (mirrors parameter 5)
- *   status         short human-readable status line
- *   pad_waveform   whitespace/comma separated amplitudes in [-1, 1]
+ * State contract used by the sample editor:
+ *   pad_edit_01..16  compact non-destructive cut-point and ADSR settings
+ *   waveform_request selected pad index sent from UI to DSP
+ *   waveform_data    compact 128-bin min/max summary returned by DSP
  *
  * The UI sends C1 + pad as MIDI note-on/off in PLAY mode only. In ARM mode a
  * clicked pad selects the first destination and the next incoming MIDI note is
@@ -40,12 +37,18 @@
 #endif
 #include "DistrhoUI.hpp"
 
+#include "Audio/WaveformSummary.hpp"
+#include "DSP/SamplePlaybackSettings.hpp"
+#include "State/SamplePlaybackSettingsCodec.hpp"
+#include "UI/Geometry.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <string>
 
 START_NAMESPACE_DISTRHO
 
@@ -55,6 +58,13 @@ constexpr uint kInitialWidth = 960;
 constexpr uint kInitialHeight = 680;
 constexpr uint kPadCount = 16;
 constexpr uint kBaseNoteDefault = 36;
+
+constexpr std::array<const char*, kPadCount> kPadEditStateKeys{{
+    "pad_edit_01", "pad_edit_02", "pad_edit_03", "pad_edit_04",
+    "pad_edit_05", "pad_edit_06", "pad_edit_07", "pad_edit_08",
+    "pad_edit_09", "pad_edit_10", "pad_edit_11", "pad_edit_12",
+    "pad_edit_13", "pad_edit_14", "pad_edit_15", "pad_edit_16",
+}};
 
 enum Parameter : uint32_t {
     kArm = 0,
@@ -103,12 +113,15 @@ public:
           fPressedActionParameter(-1),
           fClearArmed(false),
           fClearTicks(0),
+          fEditorMode(false),
+          fDragTarget(-1),
+          fDragStartX(0.0f),
+          fDragStartY(0.0f),
           fHasWaveform(false)
     {
         fPadState.fill('0');
         fPadStatus.fill('0');
         fStatus[0] = '\0';
-        fWaveform.fill(0.0f);
 
 #ifndef DGL_NO_SHARED_RESOURCES
         loadSharedResources();
@@ -126,7 +139,13 @@ protected:
     {
         if (index >= 12 && index < 28)
         {
-            fPadState[static_cast<size_t>(index - 12)] = value >= 0.5f ? '1' : '0';
+            const auto pad = static_cast<std::size_t>(index - 12);
+            const bool wasOccupied = fPadState[pad] != '0';
+            const bool isOccupied = value >= 0.5f;
+            fPadState[pad] = isOccupied ? '1' : '0';
+            if (fEditorMode && pad == static_cast<std::size_t>(fSelectedPad) &&
+                wasOccupied != isOccupied)
+                requestWaveform();
             repaint();
             return;
         }
@@ -150,7 +169,8 @@ protected:
         case kMonitor:     fMonitor = value; break;
         case kStartPad:
             fStartPad = clampPad(value - 1.0f);
-            fSelectedPad = fStartPad;
+            if (!fEditorMode)
+                fSelectedPad = fStartPad;
             break;
         case kPreRoll:     fPreRoll = value; break;
         case kBaseNote:    fBaseNote = clampNote(value); break;
@@ -176,8 +196,19 @@ protected:
             fSelectedPad = clampPad(std::strtof(value, nullptr));
         else if (std::strcmp(key, "status") == 0)
             copyString(fStatus, value);
-        else if (std::strcmp(key, "pad_waveform") == 0)
-            parseWaveform(value);
+        else if (std::strcmp(key, "waveform_data") == 0)
+        {
+            sms::audio::WaveformSummary summary;
+            if (sms::audio::decodeWaveformSummary(value, summary) &&
+                summary.pad == static_cast<std::uint32_t>(fSelectedPad))
+            {
+                fWaveform = summary;
+                fHasWaveform = summary.frames != 0U;
+            }
+        }
+        else if (parseEditorState(key, value))
+        {
+        }
         else
             return;
         repaint();
@@ -214,8 +245,16 @@ protected:
         translate(layout.offsetX, layout.offsetY);
         scale(layout.scale, layout.scale);
         drawHeader();
-        drawPadPanel();
-        drawControlPanel();
+        if (fEditorMode)
+        {
+            drawSampleEditor();
+            drawEditorPadPanel();
+        }
+        else
+        {
+            drawPadPanel();
+            drawControlPanel();
+        }
         drawFooter();
         restore();
 
@@ -236,6 +275,65 @@ protected:
 
         if (ev.press)
         {
+            if (fEditorMode)
+            {
+                if (hit(x, y, 690, 112, 222, 32))
+                {
+                    fEditorMode = false;
+                    fDragTarget = -1;
+                    repaint();
+                    return true;
+                }
+                const int editorPad = editorPadGrid().hit({x, y});
+                if (editorPad >= 0)
+                {
+                    fSelectedPad = editorPad;
+                    fEditorSettings = {};
+                    fHasWaveform = false;
+                    requestWaveform();
+                    repaint();
+                    return true;
+                }
+                const float startX = 46.0f + 586.0f * fEditorSettings.start;
+                const float endX = 46.0f + 586.0f * fEditorSettings.end;
+                if (hit(x, y, 46, 158, 586, 222))
+                {
+                    fDragTarget = std::abs(x - startX) <= std::abs(x - endX) ? 0 : 1;
+                    updateEditorDrag(x, y);
+                    return true;
+                }
+                if (hit(x, y, 46, 448, 250, 120))
+                {
+                    fDragTarget = hitEnvelopeHandle(x, y);
+                    if (fDragTarget >= 0)
+                    {
+                        fDragStartX = x;
+                        fDragStartY = y;
+                        fDragStartSettings = fEditorSettings;
+                        return true;
+                    }
+                }
+                for (int target = 2; target <= 5; ++target)
+                {
+                    const float rowY = 448.0f + static_cast<float>(target - 2) * 32.0f;
+                    if (hit(x, y, 330, rowY, 280, 24))
+                    {
+                        fDragTarget = target;
+                        updateEditorDrag(x, y);
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            if (hit(x, y, 690, 108, 222, 28))
+            {
+                fEditorMode = true;
+                fHasWaveform = false;
+                requestWaveform();
+                repaint();
+                return true;
+            }
             const int pad = hitPad(x, y);
             if (pad >= 0)
             {
@@ -337,6 +435,13 @@ protected:
                 return true;
             }
         }
+        else if (fEditorMode && fDragTarget >= 0)
+        {
+            commitEditorSettings();
+            fDragTarget = -1;
+            repaint();
+            return true;
+        }
         else if (fPressedPad >= 0)
         {
 #if DISTRHO_PLUGIN_WANT_MIDI_INPUT
@@ -353,6 +458,18 @@ protected:
             return true;
         }
         return false;
+    }
+
+    bool onMotion(const MotionEvent& ev) override
+    {
+        if (!fEditorMode || fDragTarget < 0)
+            return false;
+        const LayoutTransform layout = layoutTransform(static_cast<float>(getWidth()),
+                                                       static_cast<float>(getHeight()));
+        const float x = (static_cast<float>(ev.pos.getX()) - layout.offsetX) / layout.scale;
+        const float y = (static_cast<float>(ev.pos.getY()) - layout.offsetY) / layout.scale;
+        updateEditorDrag(x, y);
+        return true;
     }
 
 private:
@@ -389,11 +506,32 @@ private:
     int fPressedActionParameter;
     bool fClearArmed;
     int fClearTicks;
+    bool fEditorMode;
+    int fDragTarget;
+    float fDragStartX;
+    float fDragStartY;
     bool fHasWaveform;
     std::array<char, kPadCount> fPadState;
     std::array<char, kPadCount> fPadStatus;
-    std::array<float, 48> fWaveform;
+    sms::dsp::SamplePlaybackSettings fEditorSettings{};
+    sms::dsp::SamplePlaybackSettings fDragStartSettings{};
+    sms::audio::WaveformSummary fWaveform{};
     char fStatus[160];
+
+    struct EnvelopeGraphGeometry {
+        float left;
+        float right;
+        float top;
+        float bottom;
+        float attackX;
+        float decayX;
+        float releaseX;
+        float attackHandleX;
+        float decayHandleX;
+        float releaseHandleX;
+        float sustainY;
+        float durationSeconds;
+    };
 
     static bool hit(float x, float y, float rx, float ry, float rw, float rh)
     {
@@ -412,20 +550,83 @@ private:
 
     int hitPad(float x, float y) const
     {
-        constexpr float gx = 46.0f;
-        constexpr float gy = 164.0f;
-        constexpr float gap = 10.0f;
-        constexpr float pw = 132.0f;
-        constexpr float ph = 78.0f;
-        if (x < gx || y < gy)
-            return -1;
-        const int col = static_cast<int>((x - gx) / (pw + gap));
-        const int row = static_cast<int>((y - gy) / (ph + gap));
-        if (col < 0 || col >= 4 || row < 0 || row >= 4)
-            return -1;
-        const float px = gx + col * (pw + gap);
-        const float py = gy + row * (ph + gap);
-        return hit(x, y, px, py, pw, ph) ? row * 4 + col : -1;
+        return mainPadGrid().hit({x, y});
+    }
+
+    static sms::ui::PadGridLayout mainPadGrid()
+    {
+        return {{46.0f, 164.0f, 558.0f, 342.0f}, 4, 4, 10.0f};
+    }
+
+    static sms::ui::PadGridLayout editorPadGrid()
+    {
+        return {{690.0f, 170.0f, 222.0f, 360.0f}, 2, 8, 6.0f};
+    }
+
+    float editorRegionSeconds() const
+    {
+        if (fWaveform.frames != 0U && fWaveform.sampleRate > 1.0)
+            return std::max(1.0e-4f,
+                (fEditorSettings.end - fEditorSettings.start) *
+                static_cast<float>(fWaveform.frames) / static_cast<float>(fWaveform.sampleRate));
+        return 5.0f;
+    }
+
+    EnvelopeGraphGeometry envelopeGraphGeometry(const float x = 46.0f,
+                                                 const float y = 448.0f,
+                                                 const float w = 250.0f,
+                                                 const float h = 120.0f) const
+    {
+        const float duration = editorRegionSeconds();
+        const float left = x + 10.0f;
+        const float right = x + w - 10.0f;
+        const float top = y + 10.0f;
+        const float bottom = y + h - 16.0f;
+        const float release = std::min(fEditorSettings.releaseSeconds, duration * 0.5f);
+        const float releaseStart = duration - release;
+        const float attackEnd = std::min(fEditorSettings.attackSeconds, releaseStart);
+        const float decayEnd = std::min(fEditorSettings.attackSeconds +
+                                        fEditorSettings.decaySeconds, releaseStart);
+        const auto toX = [left, right, duration](const float seconds) noexcept {
+            return left + (right - left) * std::clamp(seconds / duration, 0.0f, 1.0f);
+        };
+        const float attackX = toX(attackEnd);
+        const float decayX = toX(decayEnd);
+        const float releaseX = toX(releaseStart);
+        constexpr float handleGap = 12.0f;
+        const float attackHandleX = std::clamp(attackX, left, right - handleGap * 2.0f);
+        const float decayHandleX = std::clamp(decayX,
+                                              attackHandleX + handleGap,
+                                              right - handleGap);
+        const float releaseHandleX = std::clamp(releaseX,
+                                                decayHandleX + handleGap, right);
+        return {left, right, top, bottom, attackX, decayX, releaseX,
+                attackHandleX, decayHandleX, releaseHandleX,
+                bottom - (bottom - top) * fEditorSettings.sustainLevel, duration};
+    }
+
+    int hitEnvelopeHandle(const float x, const float y) const
+    {
+        const auto graph = envelopeGraphGeometry();
+        const std::array<sms::ui::Point, 3> points{{
+            {graph.attackHandleX, graph.top},
+            {graph.decayHandleX, graph.sustainY},
+            {graph.releaseHandleX, graph.sustainY},
+        }};
+        int nearest = -1;
+        float nearestDistance = 15.0f * 15.0f;
+        for (std::size_t index = 0; index < points.size(); ++index)
+        {
+            const float dx = x - points[index].x;
+            const float dy = y - points[index].y;
+            const float distance = dx * dx + dy * dy;
+            if (distance <= nearestDistance)
+            {
+                nearest = static_cast<int>(index) + 6;
+                nearestDistance = distance;
+            }
+        }
+        return nearest;
     }
 
     void drawHeader()
@@ -475,17 +676,14 @@ private:
         text(632, 120, fArm ? "CLICK A PAD TO SET START" : "CLICK TO PLAY", nullptr);
         drawWaveform(46, 137, 586, 18);
 
-        constexpr float gx = 46;
-        constexpr float gy = 164;
-        constexpr float gap = 10;
-        constexpr float pw = 132;
-        constexpr float ph = 78;
+        const auto grid = mainPadGrid();
         for (int i = 0; i < 16; ++i)
         {
-            const int col = i % 4;
-            const int row = i / 4;
-            const float x = gx + col * (pw + gap);
-            const float y = gy + row * (ph + gap);
+            const auto cell = grid.cell(i);
+            const float x = cell.x;
+            const float y = cell.y;
+            const float pw = cell.width;
+            const float ph = cell.height;
             const bool occupied = fPadState[static_cast<size_t>(i)] != '0' && fPadState[static_cast<size_t>(i)] != '.';
             const bool active = fPadStatus[static_cast<size_t>(i)] != '0';
             const bool recording = (fArm && active) || fCurrentPad == i;
@@ -545,31 +743,390 @@ private:
 
         if (fHasWaveform)
         {
-            beginPath();
-            for (size_t i = 0; i < fWaveform.size(); ++i)
+            const float displayScale = waveformDisplayScale();
+            for (size_t i = 0; i < sms::audio::kWaveformBins; ++i)
             {
-                const float px = x + w * static_cast<float>(i) /
-                    static_cast<float>(fWaveform.size() - 1);
-                const float py = y + h * (0.5f - fWaveform[i] * 0.43f);
-                if (i == 0)
-                    moveTo(px, py);
-                else
-                    lineTo(px, py);
+                const float px = x + w * (static_cast<float>(i) + 0.5f) /
+                    static_cast<float>(sms::audio::kWaveformBins);
+                beginPath();
+                moveTo(px, y + h * (0.5f - fWaveform.maximum[i] * displayScale * 0.43f));
+                lineTo(px, y + h * (0.5f - fWaveform.minimum[i] * displayScale * 0.43f));
+                strokeColor(fCurrentPad >= 0 ? kAmber : kCyan);
+                strokeWidth(1.2f);
+                stroke();
             }
-            strokeColor(fCurrentPad >= 0 ? kAmber : kCyan);
+        }
+    }
+
+    float waveformDisplayScale() const
+    {
+        float peak = 0.0f;
+        for (std::size_t bin = 0; bin < sms::audio::kWaveformBins; ++bin)
+            peak = std::max({peak, std::abs(fWaveform.minimum[bin]),
+                             std::abs(fWaveform.maximum[bin])});
+        return peak > 1.0e-6f ? 1.0f / peak : 1.0f;
+    }
+
+    void drawSampleEditor()
+    {
+        drawPanel(24, 96, 630, 516);
+        fontFace(NANOVG_DEJAVU_SANS_TTF);
+        fontSize(13);
+        textAlign(ALIGN_LEFT | ALIGN_TOP);
+        fillColor(kMuted);
+        char heading[48];
+        std::snprintf(heading, sizeof(heading), "SAMPLE EDITOR  /  PAD %02d", fSelectedPad + 1);
+        text(46, 120, heading, nullptr);
+
+        const float x = 46.0f;
+        const float y = 158.0f;
+        const float w = 586.0f;
+        const float h = 222.0f;
+        beginPath();
+        roundedRect(x, y, w, h, 8);
+        fillColor(kBackground);
+        fill();
+        strokeColor(kBorder);
+        stroke();
+
+        beginPath();
+        moveTo(x, y + h * 0.5f);
+        lineTo(x + w, y + h * 0.5f);
+        strokeColor(kBorder.withAlpha(0.7f));
+        strokeWidth(1.0f);
+        stroke();
+
+        if (fHasWaveform)
+        {
+            const float displayScale = waveformDisplayScale();
+            // Keep the source visible as context behind the processed preview.
+            for (std::size_t bin = 0; bin < sms::audio::kWaveformBins; ++bin)
+            {
+                const float normalized = (static_cast<float>(bin) + 0.5f) /
+                                         static_cast<float>(sms::audio::kWaveformBins);
+                const float px = x + normalized * w;
+                beginPath();
+                moveTo(px, y + h * (0.5f - fWaveform.maximum[bin] * displayScale * 0.44f));
+                lineTo(px, y + h * (0.5f - fWaveform.minimum[bin] * displayScale * 0.44f));
+                strokeColor(kMuted.withAlpha(0.24f));
+                strokeWidth(1.4f);
+                stroke();
+            }
+
+            // Redraw the active region through the ADSR so edits are reflected
+            // immediately without hiding the original sample shape.
+            for (std::size_t bin = 0; bin < sms::audio::kWaveformBins; ++bin)
+            {
+                const float normalized = (static_cast<float>(bin) + 0.5f) /
+                                         static_cast<float>(sms::audio::kWaveformBins);
+                if (normalized < fEditorSettings.start || normalized > fEditorSettings.end)
+                    continue;
+                const float gain = waveformEnvelopeGain(normalized);
+                const float px = x + normalized * w;
+                beginPath();
+                moveTo(px, y + h * (0.5f - fWaveform.maximum[bin] * displayScale * gain * 0.44f));
+                lineTo(px, y + h * (0.5f - fWaveform.minimum[bin] * displayScale * gain * 0.44f));
+                strokeColor(kCyan);
+                strokeWidth(2.3f);
+                stroke();
+            }
+            char scaleLabel[32];
+            if (displayScale > 1.05f)
+                std::snprintf(scaleLabel, sizeof(scaleLabel), "DISPLAY  x%.1f", displayScale);
+            else
+                std::snprintf(scaleLabel, sizeof(scaleLabel), "DISPLAY  1:1");
+            fontSize(9);
+            textAlign(ALIGN_RIGHT | ALIGN_TOP);
+            fillColor(kMuted.withAlpha(0.8f));
+            text(x + w - 10.0f, y + 30.0f, scaleLabel, nullptr);
+        }
+        else
+        {
+            fontSize(14);
+            textAlign(ALIGN_CENTER | ALIGN_MIDDLE);
+            fillColor(kMuted);
+            text(x + w * 0.5f, y + h * 0.5f, "EMPTY PAD", nullptr);
+        }
+
+        const float startX = x + w * fEditorSettings.start;
+        const float endX = x + w * fEditorSettings.end;
+        beginPath();
+        rect(x, y, std::max(0.0f, startX - x), h);
+        rect(endX, y, std::max(0.0f, x + w - endX), h);
+        fillColor(kBackground.withAlpha(0.64f));
+        fill();
+        drawCutHandle(startX, y, h, "START");
+        drawCutHandle(endX, y, h, "END");
+
+        char region[112];
+        const auto startFrame = static_cast<std::uint32_t>(fEditorSettings.start * fWaveform.frames);
+        const auto endFrame = static_cast<std::uint32_t>(fEditorSettings.end * fWaveform.frames);
+        std::snprintf(region, sizeof(region), "REGION  %u — %u frames     %.1f%% of source",
+                      startFrame, endFrame,
+                      (fEditorSettings.end - fEditorSettings.start) * 100.0f);
+        fontSize(11);
+        textAlign(ALIGN_LEFT | ALIGN_TOP);
+        fillColor(kMuted);
+        text(46, 392, region, nullptr);
+
+        fontSize(11);
+        fillColor(kMuted);
+        text(46, 426, "AMPLITUDE ENVELOPE", nullptr);
+        fontSize(9);
+        textAlign(ALIGN_RIGHT | ALIGN_TOP);
+        fillColor(kMuted.withAlpha(0.8f));
+        text(296, 428, "DRAG NODES", nullptr);
+        drawEnvelopeGraph(46, 448, 250, 120);
+        drawEditorSlider(2, 448, "ATTACK", fEditorSettings.attackSeconds);
+        drawEditorSlider(3, 480, "DECAY", fEditorSettings.decaySeconds);
+        drawEditorSlider(4, 512, "SUSTAIN", fEditorSettings.sustainLevel);
+        drawEditorSlider(5, 544, "RELEASE", fEditorSettings.releaseSeconds);
+    }
+
+    void drawCutHandle(const float x, const float y, const float height, const char* const label)
+    {
+        beginPath();
+        moveTo(x, y);
+        lineTo(x, y + height);
+        strokeColor(kAmber);
+        strokeWidth(2.0f);
+        stroke();
+        beginPath();
+        roundedRect(x - 16.0f, y + 7.0f, 32.0f, 16.0f, 4.0f);
+        fillColor(kAmber);
+        fill();
+        fontFace(NANOVG_DEJAVU_SANS_TTF);
+        fontSize(7.0f);
+        textAlign(ALIGN_CENTER | ALIGN_MIDDLE);
+        fillColor(kBackground);
+        text(x, y + 15.0f, label, nullptr);
+    }
+
+    float waveformEnvelopeGain(const float sourcePosition) const
+    {
+        const float regionWidth = fEditorSettings.end - fEditorSettings.start;
+        if (regionWidth <= 0.0f || fWaveform.frames == 0U || fWaveform.sampleRate <= 1.0)
+            return 0.0f;
+        const float regionPosition = std::clamp(
+            (sourcePosition - fEditorSettings.start) / regionWidth, 0.0f, 1.0f);
+        const float regionSeconds = regionWidth * static_cast<float>(fWaveform.frames) /
+                                    static_cast<float>(fWaveform.sampleRate);
+        const float time = regionPosition * regionSeconds;
+
+        const auto adsLevelAt = [this](const float stageTime) noexcept {
+            const float attack = fEditorSettings.attackSeconds;
+            const float decay = fEditorSettings.decaySeconds;
+            if (attack > 0.0f && stageTime < attack)
+                return std::clamp(stageTime / attack, 0.0f, 1.0f);
+            if (decay > 0.0f && stageTime < attack + decay)
+            {
+                const float progress = std::clamp((stageTime - attack) / decay, 0.0f, 1.0f);
+                return 1.0f + (fEditorSettings.sustainLevel - 1.0f) * progress;
+            }
+            return fEditorSettings.sustainLevel;
+        };
+
+        // One-shot playback schedules release before the cut end. The engine
+        // caps release to half of a short region so an attack cannot be erased.
+        const float release = std::min(fEditorSettings.releaseSeconds, regionSeconds * 0.5f);
+        const float releaseStart = regionSeconds - release;
+        if (release > 0.0f && time >= releaseStart)
+        {
+            const float releaseLevel = adsLevelAt(releaseStart);
+            const float progress = std::clamp((time - releaseStart) / release, 0.0f, 1.0f);
+            return releaseLevel * (1.0f - progress);
+        }
+        return adsLevelAt(time);
+    }
+
+    void drawEnvelopeGraph(const float x, const float y, const float w, const float h)
+    {
+        beginPath();
+        roundedRect(x, y, w, h, 7);
+        fillColor(kBackground);
+        fill();
+        strokeColor(kBorder);
+        stroke();
+
+        const auto graph = envelopeGraphGeometry(x, y, w, h);
+        const float attackWidth = graph.attackX - graph.left;
+        const float decayWidth = graph.decayX - graph.attackX;
+        const float sustainWidth = graph.releaseX - graph.decayX;
+        const float releaseWidth = graph.right - graph.releaseX;
+
+        // Subtle guides make the stage proportions and sustain level easier to read.
+        beginPath();
+        moveTo(graph.left, graph.sustainY);
+        lineTo(graph.right, graph.sustainY);
+        strokeColor(kBorder.withAlpha(0.45f));
+        strokeWidth(1.0f);
+        stroke();
+
+        // A translucent area gives the envelope shape visual weight.
+        beginPath();
+        moveTo(graph.left, graph.bottom);
+        bezierTo(graph.left + attackWidth * 0.55f, graph.bottom,
+                 graph.attackX - attackWidth * 0.12f,
+                 graph.top + (graph.bottom - graph.top) * 0.18f,
+                 graph.attackX, graph.top);
+        bezierTo(graph.attackX + decayWidth * 0.18f,
+                 graph.top + (graph.sustainY - graph.top) * 0.62f,
+                 graph.decayX - decayWidth * 0.25f, graph.sustainY,
+                 graph.decayX, graph.sustainY);
+        lineTo(graph.releaseX, graph.sustainY);
+        bezierTo(graph.releaseX + releaseWidth * 0.18f,
+                 graph.sustainY + (graph.bottom - graph.sustainY) * 0.62f,
+                 graph.right - releaseWidth * 0.25f, graph.bottom,
+                 graph.right, graph.bottom);
+        closePath();
+        fillColor(kCyan.withAlpha(0.10f));
+        fill();
+
+        beginPath();
+        moveTo(graph.left, graph.bottom);
+        bezierTo(graph.left + attackWidth * 0.55f, graph.bottom,
+                 graph.attackX - attackWidth * 0.12f,
+                 graph.top + (graph.bottom - graph.top) * 0.18f,
+                 graph.attackX, graph.top);
+        bezierTo(graph.attackX + decayWidth * 0.18f,
+                 graph.top + (graph.sustainY - graph.top) * 0.62f,
+                 graph.decayX - decayWidth * 0.25f, graph.sustainY,
+                 graph.decayX, graph.sustainY);
+        lineTo(graph.releaseX, graph.sustainY);
+        bezierTo(graph.releaseX + releaseWidth * 0.18f,
+                 graph.sustainY + (graph.bottom - graph.sustainY) * 0.62f,
+                 graph.right - releaseWidth * 0.25f, graph.bottom,
+                 graph.right, graph.bottom);
+        strokeColor(kCyan);
+        strokeWidth(2.0f);
+        stroke();
+
+        const std::array<sms::ui::Point, 3> anchors{{
+            {graph.attackX, graph.top},
+            {graph.decayX, graph.sustainY},
+            {graph.releaseX, graph.sustainY},
+        }};
+        const std::array<sms::ui::Point, 3> points{{
+            {graph.attackHandleX, graph.top},
+            {graph.decayHandleX, graph.sustainY},
+            {graph.releaseHandleX, graph.sustainY},
+        }};
+        for (std::size_t index = 0; index < points.size(); ++index)
+        {
+            if (std::abs(points[index].x - anchors[index].x) < 0.5f)
+                continue;
+            beginPath();
+            moveTo(anchors[index].x, anchors[index].y);
+            lineTo(points[index].x, points[index].y);
+            strokeColor(kMuted.withAlpha(0.45f));
+            strokeWidth(1.0f);
+            stroke();
+        }
+        for (std::size_t index = 0; index < points.size(); ++index)
+        {
+            beginPath();
+            circle(points[index].x, points[index].y, 5.0f);
+            fillColor(index == 0U ? kAmber : kCyan);
+            fill();
+            strokeColor(kBackground);
             strokeWidth(1.5f);
             stroke();
         }
+
+        fontFace(NANOVG_DEJAVU_SANS_TTF);
+        fontSize(7.0f);
+        textAlign(ALIGN_CENTER | ALIGN_BOTTOM);
+        fillColor(kMuted.withAlpha(0.8f));
+        text(graph.left + attackWidth * 0.5f, y + h - 2.0f, "A", nullptr);
+        text(graph.attackX + decayWidth * 0.5f, y + h - 2.0f, "D", nullptr);
+        text(graph.decayX + sustainWidth * 0.5f, y + h - 2.0f, "S", nullptr);
+        text(graph.releaseX + releaseWidth * 0.5f, y + h - 2.0f, "R", nullptr);
+
+        char duration[24];
+        std::snprintf(duration, sizeof(duration), "%.2f s", graph.durationSeconds);
+        textAlign(ALIGN_RIGHT | ALIGN_TOP);
+        fillColor(kMuted.withAlpha(0.65f));
+        text(graph.right, graph.top + 2.0f, duration, nullptr);
+    }
+
+    void drawEditorSlider(const int target, const float y, const char* const label, const float value)
+    {
+        const bool sustain = target == 4;
+        const float normalized = sustain ? value : std::sqrt(std::clamp(value / 5.0f, 0.0f, 1.0f));
+        fontFace(NANOVG_DEJAVU_SANS_TTF);
+        fontSize(9);
+        textAlign(ALIGN_LEFT | ALIGN_TOP);
+        fillColor(kMuted);
+        text(330, y, label, nullptr);
+        char display[24];
+        if (sustain)
+            std::snprintf(display, sizeof(display), "%d%%", static_cast<int>(std::lround(value * 100.0f)));
+        else if (value < 1.0f)
+            std::snprintf(display, sizeof(display), "%d ms", static_cast<int>(std::lround(value * 1000.0f)));
+        else
+            std::snprintf(display, sizeof(display), "%.2f s", value);
+        textAlign(ALIGN_RIGHT | ALIGN_TOP);
+        fillColor(kText);
+        text(610, y, display, nullptr);
+        drawSlider(420, y + 14.0f, 190, normalized, sustain ? kCyan : kAmber);
+    }
+
+    void drawEditorPadPanel()
+    {
+        drawPanel(670, 96, 266, 516);
+        drawSegment(690, 112, 222, 32, "MAIN VIEW", true, kCyan);
+        fontFace(NANOVG_DEJAVU_SANS_TTF);
+        fontSize(11);
+        textAlign(ALIGN_LEFT | ALIGN_TOP);
+        fillColor(kMuted);
+        text(690, 153, "SELECT PAD", nullptr);
+
+        const auto grid = editorPadGrid();
+        for (int pad = 0; pad < 16; ++pad)
+        {
+            const auto cell = grid.cell(pad);
+            const bool occupied = fPadState[static_cast<std::size_t>(pad)] != '0' &&
+                                  fPadState[static_cast<std::size_t>(pad)] != '.';
+            const bool active = fPadStatus[static_cast<std::size_t>(pad)] != '0';
+            const bool selected = pad == fSelectedPad;
+            beginPath();
+            roundedRect(cell.x, cell.y, cell.width, cell.height, 6);
+            fillColor((active ? kAmber : (occupied ? kCyan : kPanelRaised)).withAlpha(
+                occupied || active ? 0.20f : 0.9f));
+            fill();
+            strokeColor(selected ? kAmber : (occupied ? kCyan.withAlpha(0.55f) : kBorder));
+            strokeWidth(selected ? 2.0f : 1.0f);
+            stroke();
+
+            char padLabel[12];
+            std::snprintf(padLabel, sizeof(padLabel), "%02d", pad + 1);
+            fontSize(11);
+            textAlign(ALIGN_LEFT | ALIGN_MIDDLE);
+            fillColor(selected ? kAmber : kText);
+            text(cell.x + 9, cell.y + cell.height * 0.5f, padLabel, nullptr);
+            char note[16];
+            midiName(fBaseNote + pad, note, sizeof(note));
+            fontSize(10);
+            textAlign(ALIGN_RIGHT | ALIGN_MIDDLE);
+            fillColor(occupied ? kCyan : kMuted);
+            text(cell.x + cell.width - 9, cell.y + cell.height * 0.5f, note, nullptr);
+        }
+
+        fontSize(10);
+        textAlign(ALIGN_LEFT | ALIGN_TOP);
+        fillColor(kMuted);
+        text(690, 548, "Cut points and ADSR are stored per pad.", nullptr);
+        text(690, 564, "Edits are non-destructive.", nullptr);
     }
 
     void drawControlPanel()
     {
         drawPanel(670, 96, 266, 516);
+        drawSegment(690, 108, 222, 28, "SAMPLE EDITOR", false, kAmber);
         fontFace(NANOVG_DEJAVU_SANS_TTF);
         fontSize(13);
         textAlign(ALIGN_LEFT | ALIGN_TOP);
         fillColor(kMuted);
-        text(690, 120, "WORKFLOW", nullptr);
 
         drawSegment(690, 145, 108, 42, "PLAY", !fArm, kCyan);
         drawSegment(804, 145, 108, 42, "ARM", fArm, kAmber);
@@ -675,7 +1232,14 @@ private:
     {
         char liveStatus[80];
         const char* textValue = nullptr;
-        if (fCurrentPad >= 0)
+        if (fEditorMode)
+        {
+            std::snprintf(liveStatus, sizeof(liveStatus),
+                          "Editing Pad %02d — drag cut handles or envelope controls",
+                          fSelectedPad + 1);
+            textValue = liveStatus;
+        }
+        else if (fCurrentPad >= 0)
         {
             std::snprintf(liveStatus, sizeof(liveStatus), "Chopping to Pad %02d — press any pad for next slice",
                           fCurrentPad + 1);
@@ -695,13 +1259,18 @@ private:
         fontFace(NANOVG_DEJAVU_SANS_TTF);
         fontSize(12);
         textAlign(ALIGN_LEFT | ALIGN_MIDDLE);
-        fillColor(fCurrentPad >= 0 ? kAmber : kMuted);
+        fillColor(fEditorMode ? kCyan : (fCurrentPad >= 0 ? kAmber : kMuted));
         text(38, 642, textValue, nullptr);
 
         char details[96];
-        std::snprintf(details, sizeof(details), "START %02d   PRE %d ms   GAIN %+.1f dB",
-                      fStartPad + 1, static_cast<int>(std::lround(fPreRoll)),
-                      std::clamp(fGain, -24.0f, 12.0f));
+        if (fEditorMode)
+            std::snprintf(details, sizeof(details), "REGION %.1f%% — %.1f%%   SUSTAIN %d%%",
+                          fEditorSettings.start * 100.0f, fEditorSettings.end * 100.0f,
+                          static_cast<int>(std::lround(fEditorSettings.sustainLevel * 100.0f)));
+        else
+            std::snprintf(details, sizeof(details), "START %02d   PRE %d ms   GAIN %+.1f dB",
+                          fStartPad + 1, static_cast<int>(std::lround(fPreRoll)),
+                          std::clamp(fGain, -24.0f, 12.0f));
         textAlign(ALIGN_RIGHT | ALIGN_MIDDLE);
         fillColor(kMuted);
         text(922, 642, details, nullptr);
@@ -720,6 +1289,102 @@ private:
         // the exact same value to the plugin.
         parameterChanged(parameter, value);
         setParameterValue(parameter, value);
+    }
+
+    void requestWaveform()
+    {
+#if DISTRHO_PLUGIN_WANT_STATE
+        char pad[8];
+        std::snprintf(pad, sizeof(pad), "%d", fSelectedPad);
+        setState("waveform_request", pad);
+#endif
+    }
+
+    void commitEditorSettings()
+    {
+#if DISTRHO_PLUGIN_WANT_STATE
+        const std::string encoded = sms::state::encodeSamplePlaybackSettings(fEditorSettings);
+        setState(kPadEditStateKeys[static_cast<std::size_t>(fSelectedPad)], encoded.c_str());
+#endif
+    }
+
+    bool parseEditorState(const char* const key, const char* const value)
+    {
+        for (std::size_t pad = 0; pad < kPadEditStateKeys.size(); ++pad)
+        {
+            if (std::strcmp(key, kPadEditStateKeys[pad]) != 0)
+                continue;
+            sms::dsp::SamplePlaybackSettings decoded;
+            if (sms::state::decodeSamplePlaybackSettings(value, decoded) &&
+                pad == static_cast<std::size_t>(fSelectedPad))
+                fEditorSettings = decoded;
+            return true;
+        }
+        return false;
+    }
+
+    void updateEditorDrag(const float x, const float y)
+    {
+        if (fDragTarget == 0 || fDragTarget == 1)
+        {
+            constexpr float minimumWidth = 0.002f;
+            const float normalized = std::clamp((x - 46.0f) / 586.0f, 0.0f, 1.0f);
+            if (fDragTarget == 0)
+                fEditorSettings.start = std::min(normalized, fEditorSettings.end - minimumWidth);
+            else
+                fEditorSettings.end = std::max(normalized, fEditorSettings.start + minimumWidth);
+        }
+        else if (fDragTarget >= 2 && fDragTarget <= 5)
+        {
+            const float normalized = std::clamp((x - 420.0f) / 190.0f, 0.0f, 1.0f);
+            const float seconds = normalized * normalized * 5.0f;
+            switch (fDragTarget)
+            {
+            case 2: fEditorSettings.attackSeconds = seconds; break;
+            case 3: fEditorSettings.decaySeconds = seconds; break;
+            case 4: fEditorSettings.sustainLevel = normalized; break;
+            case 5: fEditorSettings.releaseSeconds = seconds; break;
+            default: break;
+            }
+        }
+        else if (fDragTarget >= 6 && fDragTarget <= 8)
+        {
+            const auto graph = envelopeGraphGeometry();
+            const float secondsDelta = (x - fDragStartX) /
+                                       (graph.right - graph.left) * graph.durationSeconds;
+            const float sustainDelta = (fDragStartY - y) /
+                                       (graph.bottom - graph.top);
+            const float effectiveRelease = std::min(fEditorSettings.releaseSeconds,
+                                                    graph.durationSeconds * 0.5f);
+            const float releaseStart = graph.durationSeconds - effectiveRelease;
+            switch (fDragTarget)
+            {
+            case 6:
+                fEditorSettings.attackSeconds = std::clamp(
+                    fDragStartSettings.attackSeconds + secondsDelta,
+                    0.0f, std::min(30.0f, releaseStart));
+                break;
+            case 7:
+                fEditorSettings.decaySeconds = std::clamp(
+                    fDragStartSettings.decaySeconds + secondsDelta, 0.0f,
+                    std::min(30.0f, std::max(0.0f,
+                        releaseStart - fEditorSettings.attackSeconds)));
+                fEditorSettings.sustainLevel = std::clamp(
+                    fDragStartSettings.sustainLevel + sustainDelta, 0.0f, 1.0f);
+                break;
+            case 8:
+                fEditorSettings.releaseSeconds = std::clamp(
+                    fDragStartSettings.releaseSeconds - secondsDelta, 0.0f,
+                    std::min(30.0f, graph.durationSeconds * 0.5f));
+                fEditorSettings.sustainLevel = std::clamp(
+                    fDragStartSettings.sustainLevel + sustainDelta, 0.0f, 1.0f);
+                break;
+            default:
+                break;
+            }
+        }
+        fEditorSettings = sms::dsp::sanitize(fEditorSettings);
+        repaint();
     }
 
     static void copyString(char (&destination)[160], const char* source)
@@ -756,29 +1421,6 @@ private:
             return;
         }
         copyChars(destination, value);
-    }
-
-    void parseWaveform(const char* value)
-    {
-        fWaveform.fill(0.0f);
-        fHasWaveform = false;
-        if (value == nullptr)
-            return;
-        const char* cursor = value;
-        for (size_t i = 0; i < fWaveform.size(); ++i)
-        {
-            while (*cursor == ',' || *cursor == ' ' || *cursor == '\t' || *cursor == '\n')
-                ++cursor;
-            if (*cursor == '\0')
-                break;
-            char* end = nullptr;
-            const float sample = std::strtof(cursor, &end);
-            if (end == cursor)
-                break;
-            fWaveform[i] = std::clamp(sample, -1.0f, 1.0f);
-            fHasWaveform = true;
-            cursor = end;
-        }
     }
 
     void midiName(int note, char* destination, size_t destinationSize) const
