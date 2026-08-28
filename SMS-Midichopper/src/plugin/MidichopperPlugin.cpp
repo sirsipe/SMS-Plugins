@@ -1,5 +1,6 @@
 #include "DistrhoPlugin.hpp"
 
+#include "Audio/WaveformSummary.hpp"
 #include "Parameters.hpp"
 #include "StateCodec.hpp"
 #include "SamplerEngine.hpp"
@@ -9,6 +10,7 @@
 #include <atomic>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 
 START_NAMESPACE_DISTRHO
@@ -19,6 +21,21 @@ constexpr std::array<const char*, midichopper::kPadCount> kPadStateKeys{{
     "pad_01", "pad_02", "pad_03", "pad_04", "pad_05", "pad_06", "pad_07", "pad_08",
     "pad_09", "pad_10", "pad_11", "pad_12", "pad_13", "pad_14", "pad_15", "pad_16",
 }};
+
+constexpr std::array<const char*, midichopper::kPadCount> kPadEditStateKeys{{
+    "pad_edit_01", "pad_edit_02", "pad_edit_03", "pad_edit_04",
+    "pad_edit_05", "pad_edit_06", "pad_edit_07", "pad_edit_08",
+    "pad_edit_09", "pad_edit_10", "pad_edit_11", "pad_edit_12",
+    "pad_edit_13", "pad_edit_14", "pad_edit_15", "pad_edit_16",
+}};
+
+constexpr std::uint32_t kAudioStateCount = midichopper::kPadCount;
+constexpr std::uint32_t kEditStateOffset = kAudioStateCount;
+constexpr std::uint32_t kWaveformRequestState = kEditStateOffset + midichopper::kPadCount;
+constexpr std::uint32_t kWaveformDataState = kWaveformRequestState + 1U;
+constexpr std::uint32_t kStateCount = kWaveformDataState + 1U;
+constexpr const char* kWaveformRequestKey = "waveform_request";
+constexpr const char* kWaveformDataKey = "waveform_data";
 
 constexpr std::array<const char*, midichopper::kPadCount> kPadOccupiedNames{{
     "Pad 1 Occupied", "Pad 2 Occupied", "Pad 3 Occupied", "Pad 4 Occupied", "Pad 5 Occupied", "Pad 6 Occupied", "Pad 7 Occupied", "Pad 8 Occupied",
@@ -50,7 +67,7 @@ constexpr std::array<const char*, midichopper::kPadCount> kPadActivitySymbols{{
 class MidichopperPlugin final : public Plugin {
 public:
     MidichopperPlugin()
-        : Plugin(midichopper::plugin::kParameterCount, 0, midichopper::kPadCount),
+        : Plugin(midichopper::plugin::kParameterCount, 0, kStateCount),
           sampler_(getSampleRate())
     {
         for (std::uint32_t index = 0; index < midichopper::plugin::kParameterCount; ++index)
@@ -158,12 +175,30 @@ protected:
 
     void initState(const uint32_t index, State& state) override
     {
-        state.key = kPadStateKeys[index];
-        state.label = kPadOccupiedNames[index];
-        state.defaultValue = "";
-        // Keep potentially large audio blobs on DSP only. DPF/LV2 know this is
-        // already Base64; it must not be sent over the DSP<->UI state channel.
-        state.hints = kStateIsBase64Blob | kStateIsOnlyForDSP;
+        if (index < kAudioStateCount) {
+            state.key = kPadStateKeys[index];
+            state.label = kPadOccupiedNames[index];
+            state.defaultValue = "";
+            // Keep potentially large audio blobs on DSP only. DPF/LV2 know this is
+            // already Base64; it must not be sent over the DSP<->UI state channel.
+            state.hints = kStateIsBase64Blob | kStateIsOnlyForDSP;
+        } else if (index < kWaveformRequestState) {
+            const auto pad = index - kEditStateOffset;
+            state.key = kPadEditStateKeys[pad];
+            state.label = "Pad Sample Editor Settings";
+            state.defaultValue = "SP1;0;1;0;0;1;0";
+            state.hints = kStateIsHostReadable;
+        } else if (index == kWaveformRequestState) {
+            state.key = kWaveformRequestKey;
+            state.label = "Waveform Request";
+            state.defaultValue = "0";
+            state.hints = kStateIsOnlyForDSP;
+        } else {
+            state.key = kWaveformDataKey;
+            state.label = "Waveform Display Data";
+            state.defaultValue = "";
+            state.hints = kStateIsHostReadable;
+        }
     }
 
     float getParameterValue(const uint32_t index) const override
@@ -202,6 +237,15 @@ protected:
             const auto sourceRate = static_cast<std::uint32_t>(std::clamp(snapshot.sampleRate, 1.0, 384000.0));
             return String(midichopper::plugin::encodePadState(snapshot, sourceRate).c_str());
         }
+        for (std::uint32_t pad = 0; pad < midichopper::kPadCount; ++pad) {
+            if (std::strcmp(key, kPadEditStateKeys[pad]) == 0)
+                return String(midichopper::plugin::encodePlaybackSettings(
+                    sampler_.padPlaybackSettings(pad)).c_str());
+        }
+        if (std::strcmp(key, kWaveformRequestKey) == 0)
+            return String("0");
+        if (std::strcmp(key, kWaveformDataKey) == 0)
+            return String();
         return String();
     }
 
@@ -219,6 +263,30 @@ protected:
                 static_cast<void>(sampler_.importPad(pad, decoded.pad));
             return;
         }
+        for (std::uint32_t pad = 0; pad < midichopper::kPadCount; ++pad) {
+            if (std::strcmp(key, kPadEditStateKeys[pad]) != 0)
+                continue;
+            sms::dsp::SamplePlaybackSettings settings;
+            if (midichopper::plugin::decodePlaybackSettings(value, settings))
+                sampler_.setPadPlaybackSettings(pad, settings);
+            return;
+        }
+        if (std::strcmp(key, kWaveformRequestKey) == 0) {
+            const char* const input = value != nullptr ? value : "";
+            char* end = nullptr;
+            const auto requested = std::strtoul(input, &end, 10);
+            if (end != input && *end == '\0' && requested < midichopper::kPadCount) {
+                const auto pad = static_cast<std::uint32_t>(requested);
+                const std::string waveform = makeWaveformState(pad);
+                static_cast<void>(updateStateValue(kWaveformDataKey, waveform.c_str()));
+                const std::string editor = midichopper::plugin::encodePlaybackSettings(
+                    sampler_.padPlaybackSettings(pad));
+                static_cast<void>(updateStateValue(kPadEditStateKeys[pad], editor.c_str()));
+            }
+            return;
+        }
+        if (std::strcmp(key, kWaveformDataKey) == 0)
+            return;
     }
 
     void run(const float** const inputs, float** const outputs, const uint32_t frames,
@@ -253,6 +321,15 @@ protected:
     }
 
 private:
+    [[nodiscard]] std::string makeWaveformState(const std::uint32_t pad) const
+    {
+        midichopper::PadData snapshot;
+        if (!sampler_.exportPad(pad, snapshot) || snapshot.frames == 0U)
+            return sms::audio::encodeWaveformSummary({pad, 0U, sampler_.sampleRate(), {}, {}});
+        return sms::audio::encodeWaveformSummary(sms::audio::summarizeStereo(
+            pad, snapshot.stereo.data(), snapshot.frames, snapshot.sampleRate));
+    }
+
     static void setupParameter(DISTRHO::Parameter& parameter, const char* const name, const char* const symbol,
                                const char* const unit, const float def, const float min, const float max,
                                const uint32_t extraHints, const char* const description)

@@ -1,5 +1,8 @@
 #pragma once
 
+#include "DSP/AdsrEnvelope.hpp"
+#include "DSP/SamplePlaybackSettings.hpp"
+
 #include <array>
 #include <atomic>
 #include <cstdint>
@@ -105,6 +108,9 @@ public:
     [[nodiscard]] bool exportPad(std::uint32_t pad, PadData& destination) const;
     /** Import/replaces a pad on the control thread; stereo must be interleaved. */
     [[nodiscard]] bool importPad(std::uint32_t pad, const PadData& source);
+    [[nodiscard]] sms::dsp::SamplePlaybackSettings padPlaybackSettings(std::uint32_t pad) const noexcept;
+    void setPadPlaybackSettings(std::uint32_t pad,
+                                const sms::dsp::SamplePlaybackSettings& settings) noexcept;
     void clearPad(std::uint32_t pad) noexcept;
     void clearAllPads() noexcept;
     void finalizeRecording() noexcept;
@@ -118,7 +124,9 @@ private:
         bool held = false;
         bool playing = false;
         double playPosition = 0.0;
+        std::uint32_t voiceEndFrame = 0;
         float velocityGain = 1.0f;
+        sms::dsp::AdsrEnvelope envelope;
         float recordPeak = 0.0f;
         double recordSumSquares = 0.0;
         std::atomic<double> sourceSampleRate{48000.0};
@@ -129,6 +137,12 @@ private:
         std::atomic<bool> occupied{false};
         std::atomic<bool> publishedRecording{false};
         std::atomic<bool> publishedPlaying{false};
+        std::atomic<float> regionStart{0.0f};
+        std::atomic<float> regionEnd{1.0f};
+        std::atomic<float> attackSeconds{0.0f};
+        std::atomic<float> decaySeconds{0.0f};
+        std::atomic<float> sustainLevel{1.0f};
+        std::atomic<float> releaseSeconds{0.0f};
         Pad() = default;
         Pad(const Pad&) = delete;
         Pad& operator=(const Pad&) = delete;

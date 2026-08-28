@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
+#include <limits>
 #include <vector>
 
 namespace {
@@ -65,6 +66,75 @@ void playback_and_rate_conversion() {
     check(e.padMetadata(0).sampleRate == 500.0, "source rate retained");
 }
 
+void sample_region_and_adsr() {
+    midichopper::SamplerEngine e(1000.0, 1.0);
+    midichopper::PadData source;
+    source.sampleRate = 1000.0;
+    source.frames = 8;
+    source.stereo = {1,1, 2,2, 3,3, 4,4, 5,5, 6,6, 7,7, 8,8};
+    source.peak = 8.0f;
+    check(e.importPad(0, source), "import sample-editor source");
+
+    sms::dsp::SamplePlaybackSettings region;
+    region.start = 0.25f;
+    region.end = 0.75f;
+    e.setPadPlaybackSettings(0, region);
+    const auto stored = e.padPlaybackSettings(0);
+    close(stored.start, 0.25f, "sample start setting round-trips");
+    close(stored.end, 0.75f, "sample end setting round-trips");
+
+    float output[8]{};
+    midichopper::MidiEvent on{0, 36, 127, midichopper::MidiEventType::NoteOn};
+    e.process(nullptr, nullptr, output, output, 8, &on, 1);
+    close(output[0], 3.0f, "cut region starts at selected frame");
+    close(output[3], 6.0f, "cut region includes selected final source frame");
+    close(output[4], 0.0f, "cut region stops at exclusive end");
+
+    midichopper::SamplerEngine envelopeEngine(1000.0, 1.0);
+    source.frames = 6;
+    source.stereo.assign(12U, 1.0f);
+    source.peak = source.rms = 1.0f;
+    check(envelopeEngine.importPad(0, source), "import ADSR source");
+    sms::dsp::SamplePlaybackSettings envelope;
+    envelope.attackSeconds = 0.002f;
+    envelope.decaySeconds = 0.0f;
+    envelope.sustainLevel = 1.0f;
+    envelope.releaseSeconds = 0.002f;
+    envelopeEngine.setPadPlaybackSettings(0, envelope);
+    float shaped[7]{};
+    envelopeEngine.process(nullptr, nullptr, shaped, shaped, 7, &on, 1);
+    close(shaped[0], 0.0f, "ADSR attack begins at zero");
+    close(shaped[1], 0.5f, "ADSR attack advances sample accurately");
+    close(shaped[2], 1.0f, "ADSR reaches sustain");
+    close(shaped[5], 0.5f, "one-shot release fades before the cut end");
+    close(shaped[6], 0.0f, "ADSR voice becomes idle after release");
+}
+
+void pad_replacement_hardening() {
+    midichopper::SamplerEngine e(1000.0, 1.0);
+    auto settings = e.settings();
+    settings.armed = true;
+    settings.monitorInput = false;
+    e.setSettings(settings);
+    float input[2] = {1.0f, 1.0f};
+    float output[2]{};
+    midichopper::MidiEvent on{0, 60, 127, midichopper::MidiEventType::NoteOn};
+    e.process(input, input, output, output, 2, &on, 1);
+    check(e.padMetadata(0).recording, "pad begins recording before replacement");
+    e.clearPad(0);
+    check(!e.padMetadata(0).recording && !e.padMetadata(0).occupied,
+          "clearing active pad cancels capture cleanly");
+
+    midichopper::PadData invalid;
+    invalid.sampleRate = std::numeric_limits<double>::quiet_NaN();
+    invalid.frames = 1;
+    invalid.stereo = {0.0f, 0.0f};
+    check(!e.importPad(0, invalid), "non-finite source rate is rejected");
+    invalid.sampleRate = 1000.0;
+    invalid.stereo[0] = std::numeric_limits<float>::infinity();
+    check(!e.importPad(0, invalid), "non-finite source sample is rejected");
+}
+
 void fixed_duration() {
     midichopper::SamplerEngine e(1000.0, 1.0);
     auto s = e.settings(); s.armed = true; s.captureMode = midichopper::CaptureMode::FixedDuration;
@@ -105,6 +175,8 @@ int main() {
     sequential_boundaries_and_preroll();
     full_bank_and_undo();
     playback_and_rate_conversion();
+    sample_region_and_adsr();
+    pad_replacement_hardening();
     fixed_duration();
     disarm_note_off_gain_and_rate_change();
     std::cout << "core tests passed\n";

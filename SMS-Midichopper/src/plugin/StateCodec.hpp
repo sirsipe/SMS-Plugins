@@ -1,5 +1,6 @@
 #pragma once
 
+#include "DSP/SamplePlaybackSettings.hpp"
 #include "SamplerEngine.hpp"
 
 #include <cstdint>
@@ -22,5 +23,10 @@ struct DecodedPadState {
                                          std::uint32_t sourceSampleRate);
 [[nodiscard]] bool decodePadState(const char* encoded,
                                   DecodedPadState& destination) noexcept;
+
+[[nodiscard]] std::string encodePlaybackSettings(
+    const sms::dsp::SamplePlaybackSettings& settings);
+[[nodiscard]] bool decodePlaybackSettings(
+    const char* encoded, sms::dsp::SamplePlaybackSettings& destination) noexcept;
 
 } // namespace midichopper::plugin

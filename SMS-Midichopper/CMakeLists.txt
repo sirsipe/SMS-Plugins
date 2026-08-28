@@ -26,7 +26,9 @@ add_library(midichopper_core STATIC
   src/core/SamplerEngine.cpp)
 
 target_include_directories(midichopper_core
-  PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src/core")
+  PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../Common-Src")
 
 set_target_properties(midichopper_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
@@ -66,6 +68,7 @@ foreach(property COMPILE_DEFINITIONS INTERFACE_COMPILE_DEFINITIONS)
 endforeach()
 
 target_include_directories(SMS-Midichopper PUBLIC
+  "${CMAKE_CURRENT_SOURCE_DIR}/../Common-Src"
   "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
   "${CMAKE_CURRENT_SOURCE_DIR}/src/plugin"
   "${CMAKE_CURRENT_SOURCE_DIR}/src/ui")
@@ -85,6 +88,7 @@ if(BUILD_TESTING)
     tests/state_codec_tests.cpp
     src/plugin/StateCodec.cpp)
   target_include_directories(midichopper_state_codec_tests PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/../Common-Src"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/plugin")
   add_test(NAME state-codec COMMAND midichopper_state_codec_tests)

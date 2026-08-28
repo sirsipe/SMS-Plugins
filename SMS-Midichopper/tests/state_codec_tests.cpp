@@ -1,4 +1,5 @@
 #include "StateCodec.hpp"
+#include "Audio/WaveformSummary.hpp"
 
 #include <cmath>
 #include <cstdlib>
@@ -51,11 +52,50 @@ void rejectsDamage()
     check(!midichopper::plugin::decodePadState(nullptr, decoded), "null state is rejected");
 }
 
+void editorStateRoundTrip()
+{
+    sms::dsp::SamplePlaybackSettings original;
+    original.start = 0.125f;
+    original.end = 0.875f;
+    original.attackSeconds = 0.012f;
+    original.decaySeconds = 0.25f;
+    original.sustainLevel = 0.625f;
+    original.releaseSeconds = 1.5f;
+    const std::string encoded = midichopper::plugin::encodePlaybackSettings(original);
+    sms::dsp::SamplePlaybackSettings decoded;
+    check(midichopper::plugin::decodePlaybackSettings(encoded.c_str(), decoded),
+          "sample editor settings decode");
+    check(std::abs(decoded.start - original.start) < 1.0e-6f, "cut start round-trips");
+    check(std::abs(decoded.end - original.end) < 1.0e-6f, "cut end round-trips");
+    check(std::abs(decoded.releaseSeconds - original.releaseSeconds) < 1.0e-6f,
+          "ADSR release round-trips");
+    check(!midichopper::plugin::decodePlaybackSettings("SP1;broken", decoded),
+          "malformed editor state is rejected");
+
+    const float stereo[] = {-1.0f, 0.5f, -0.25f, 1.0f};
+    const auto summary = sms::audio::summarizeStereo(3U, stereo, 2U);
+    const std::string waveform = sms::audio::encodeWaveformSummary(summary);
+    sms::audio::WaveformSummary restored;
+    check(sms::audio::decodeWaveformSummary(waveform, restored),
+          "waveform summary transport decodes");
+    check(restored.pad == 3U && restored.frames == 2U,
+          "waveform summary identity round-trips");
+    check(std::abs(restored.sampleRate - 48000.0) < 0.5,
+          "waveform summary sample rate round-trips");
+    check(restored.minimum[0] < -0.99f && restored.maximum[0] > 0.49f,
+          "waveform summary retains min/max peaks");
+    std::string malformedWaveform = waveform;
+    malformedWaveform.insert(malformedWaveform.find(';', 4U), "junk");
+    check(!sms::audio::decodeWaveformSummary(malformedWaveform, restored),
+          "waveform summary rejects partially parsed pad field");
+}
+
 } // namespace
 
 int main()
 {
     roundTrip();
     rejectsDamage();
+    editorStateRoundTrip();
     std::cout << "state codec tests passed\n";
 }
