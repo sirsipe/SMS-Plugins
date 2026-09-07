@@ -6,12 +6,17 @@ SMS-Midichopper separates the sampler from the plug-in format and UI:
   LV2, window-system, or DAW dependencies.
 - `src/plugin` adapts DPF parameters, audio, MIDI, and project state to the
   engine.
-- `src/ui` is the resizable DGL/NanoVG interface.
+- `src/ui/MidichopperUI.cpp` owns host communication and interaction state,
+  while `MidichopperView.cpp` composes the product-specific drawing.
 - `tests` exercises slice timing, capture lifecycle, playback resampling, and
   state corruption handling without loading a plug-in host.
 - `../Common-Src` contains plug-in-independent sample-region, ADSR, waveform
   summary, state-codec, and UI geometry components intended for reuse by future
   SMS plug-ins.
+- `../Common-UI` contains the shared semantic theme, host-safe DPF/NanoVG base,
+  control primitives, banked-pad layouts, and waveform/envelope editor pieces.
+- `../third_party/DPF` is the single repository-level DPF submodule used by all
+  plug-ins.
 
 ## Capture model
 
@@ -66,7 +71,7 @@ limit is 30 seconds per pad.
 
 ## Other formats
 
-DPF is pinned as a submodule. LV2 is built by default; the same adapter and UI
+DPF is pinned once at repository level. LV2 is built by default; the same adapter and UI
 can also be compiled as VST3 or CLAP:
 
 ```bash

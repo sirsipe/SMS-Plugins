@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Configuration.hpp"
 #include "DSP/AdsrEnvelope.hpp"
 #include "DSP/SamplePlaybackSettings.hpp"
 
@@ -10,10 +11,6 @@
 #include <vector>
 
 namespace midichopper {
-
-inline constexpr std::uint32_t kPadsPerBank = 16;
-inline constexpr std::uint32_t kBankCount = 4;
-inline constexpr std::uint32_t kPadCount = kPadsPerBank * kBankCount;
 
 enum class CaptureMode : std::uint8_t { Sequential, FixedDuration };
 // Kept as a source-compatible alias for early clients of the core.
@@ -41,7 +38,7 @@ struct EngineSettings {
     PlaybackMode playbackMode = PlaybackMode::OneShot;
     double fixedLengthSeconds = 1.0;
     bool monitorInput = true;
-    std::uint8_t baseNote = 36;
+    std::uint8_t baseNote = kDefaultBaseMidiNote;
     std::uint8_t startPad = 0;
     std::uint8_t activeBank = 0;
     std::uint8_t padsPerBank = static_cast<std::uint8_t>(kPadsPerBank);

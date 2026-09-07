@@ -112,85 +112,84 @@ protected:
         parameter.hints = kParameterIsAutomatable;
         switch (index) {
         case kParameterMode:
-            setupParameter(parameter, "Mode", "mode", "", 0.0f, 0.0f, 1.0f,
+            setupParameter(index, parameter, "Mode", "mode", "",
                            kParameterIsInteger, "0 = Play, 1 = Arm capture.");
             break;
         case kParameterStartPad:
-            setupParameter(parameter, "Start Pad", "start_pad", "", 1.0f, 1.0f, 16.0f,
+            setupParameter(index, parameter, "Start Pad", "start_pad", "",
                            kParameterIsInteger, "First destination pad when arming sequential capture.");
             break;
         case kParameterPreRollMs:
-            setupParameter(parameter, "Pre-roll", "pre_roll", "ms", 0.0f, 0.0f, 100.0f,
+            setupParameter(index, parameter, "Pre-roll", "pre_roll", "ms",
                            kParameterIsInteger, "Audio retained immediately before a slice boundary.");
             break;
         case kParameterCaptureMode:
-            setupParameter(parameter, "Capture Mode", "capture_mode", "", 0.0f, 0.0f, 1.0f,
+            setupParameter(index, parameter, "Capture Mode", "capture_mode", "",
                            kParameterIsInteger, "0 = Sequential boundaries, 1 = fixed-length capture.");
             break;
         case kParameterFixedLengthSeconds:
-            setupParameter(parameter, "Fixed Length", "fixed_length", "s", 1.0f, 0.01f, 30.0f,
+            setupParameter(index, parameter, "Fixed Length", "fixed_length", "s",
                            0, "Length of each pad when Capture Mode is Fixed.");
             break;
         case kParameterPlaybackMode:
-            setupParameter(parameter, "Playback", "playback", "", 0.0f, 0.0f, 1.0f,
+            setupParameter(index, parameter, "Playback", "playback", "",
                            kParameterIsInteger, "0 = one-shot, 1 = gated.");
             break;
         case kParameterInputMonitor:
-            setupParameter(parameter, "Input Monitor", "input_monitor", "", 1.0f, 0.0f, 1.0f,
+            setupParameter(index, parameter, "Input Monitor", "input_monitor", "",
                            kParameterIsBoolean | kParameterIsInteger, "Pass the input to the output.");
             break;
         case kParameterBaseMidiNote:
-            setupParameter(parameter, "Base MIDI Note", "base_midi_note", "", 36.0f, 0.0f, 112.0f,
+            setupParameter(index, parameter, "Base MIDI Note", "base_midi_note", "",
                            kParameterIsInteger, "Pad 1 note; pads occupy this note through +15.");
             break;
         case kParameterOutputGainDb:
-            setupParameter(parameter, "Output Gain", "output_gain", "dB", 0.0f, -24.0f, 12.0f,
+            setupParameter(index, parameter, "Output Gain", "output_gain", "dB",
                            0, "Gain applied to monitored input and pads.");
             break;
         case kParameterFinalize:
-            setupParameter(parameter, "Finalize", "finalize", "", 0.0f, 0.0f, 1.0f,
+            setupParameter(index, parameter, "Finalize", "finalize", "",
                            kParameterIsBoolean | kParameterIsInteger | kParameterIsTrigger,
                            "Commit the currently open sequential slice.");
             break;
         case kParameterUndo:
-            setupParameter(parameter, "Undo Last Slice", "undo", "", 0.0f, 0.0f, 1.0f,
+            setupParameter(index, parameter, "Undo Last Slice", "undo", "",
                            kParameterIsBoolean | kParameterIsInteger | kParameterIsTrigger,
                            "Discard the most recently committed slice.");
             break;
         case kParameterClearAll:
-            setupParameter(parameter, "Clear All Pads", "clear_all", "", 0.0f, 0.0f, 1.0f,
+            setupParameter(index, parameter, "Clear All Pads", "clear_all", "",
                            kParameterIsBoolean | kParameterIsInteger | kParameterIsTrigger,
                            "Remove every captured sample.");
             break;
         case kParameterMaxVoices:
-            setupParameter(parameter, "Max Voices", "max_voices", "", 16.0f, 1.0f, 16.0f,
+            setupParameter(index, parameter, "Max Voices", "max_voices", "",
                            kParameterIsInteger,
                            "Maximum number of pads that may play simultaneously.");
             break;
         case kParameterActiveBank:
-            setupParameter(parameter, "Active Bank", "active_bank", "", 1.0f, 1.0f, 4.0f,
+            setupParameter(index, parameter, "Active Bank", "active_bank", "",
                            kParameterIsInteger, "Bank selected for MIDI playback and capture.");
             break;
         case kParameterPadLayout:
-            setupParameter(parameter, "Pad Layout", "pad_layout", "", 0.0f, 0.0f, 2.0f,
+            setupParameter(index, parameter, "Pad Layout", "pad_layout", "",
                            kParameterIsInteger,
                            "0 = 16 pads, 1 = 12 pads, 2 = 8 pads per bank.");
             break;
         case kParameterCurrentCapturePad:
-            setupParameter(parameter, "Current Capture Pad", "current_capture_pad", "",
-                           0.0f, 0.0f, 64.0f,
+            setupParameter(index, parameter, "Current Capture Pad", "current_capture_pad", "",
                            kParameterIsOutput | kParameterIsInteger,
                            "Global pad number currently receiving captured audio; zero when idle.");
             break;
         default:
             if (index >= kFirstPadStatusParameter && index < kFirstPadActivityParameter) {
                 const std::uint32_t pad = index - kFirstPadStatusParameter;
-                setupParameter(parameter, kPadOccupiedNames[pad], kPadOccupiedSymbols[pad], "", 0.0f, 0.0f, 1.0f,
+                setupParameter(index, parameter, kPadOccupiedNames[pad], kPadOccupiedSymbols[pad], "",
                                kParameterIsOutput | kParameterIsBoolean | kParameterIsInteger,
                                "Whether this pad contains captured audio.");
             } else {
                 const std::uint32_t pad = index - kFirstPadActivityParameter;
-                setupParameter(parameter, kPadActivityNames[pad], kPadActivitySymbols[pad], "", 0.0f, 0.0f, 1.0f,
+                setupParameter(index, parameter, kPadActivityNames[pad], kPadActivitySymbols[pad], "",
                                kParameterIsOutput, "1 while the pad is recording or playing.");
             }
             break;
@@ -354,8 +353,8 @@ private:
             pad, snapshot.stereo.data(), snapshot.frames, snapshot.sampleRate));
     }
 
-    static void setupParameter(DISTRHO::Parameter& parameter, const char* const name, const char* const symbol,
-                               const char* const unit, const float def, const float min, const float max,
+    static void setupParameter(const std::uint32_t index, DISTRHO::Parameter& parameter,
+                               const char* const name, const char* const symbol, const char* const unit,
                                const uint32_t extraHints, const char* const description)
     {
         parameter.hints |= extraHints;
@@ -363,21 +362,13 @@ private:
         parameter.symbol = symbol;
         parameter.unit = unit;
         parameter.description = description;
-        parameter.ranges = ParameterRanges(def, min, max);
+        const auto range = midichopper::plugin::parameterRange(index);
+        parameter.ranges = ParameterRanges(range.defaultValue, range.minimum, range.maximum);
     }
 
     [[nodiscard]] static float defaultParameterValue(const std::uint32_t index) noexcept
     {
-        using namespace midichopper::plugin;
-        switch (index) {
-        case kParameterStartPad: return 1.0f;
-        case kParameterFixedLengthSeconds: return 1.0f;
-        case kParameterInputMonitor: return 1.0f;
-        case kParameterBaseMidiNote: return 36.0f;
-        case kParameterMaxVoices: return 16.0f;
-        case kParameterActiveBank: return 1.0f;
-        default: return 0.0f;
-        }
+        return midichopper::plugin::parameterRange(index).defaultValue;
     }
 
     [[nodiscard]] float parameter(const std::uint32_t index) const noexcept
@@ -385,29 +376,34 @@ private:
         return parameters_[index].load(std::memory_order_relaxed);
     }
 
+    [[nodiscard]] float clampedParameter(const std::uint32_t index) const noexcept
+    {
+        const auto range = midichopper::plugin::parameterRange(index);
+        return std::clamp(parameter(index), range.minimum, range.maximum);
+    }
+
     void applySettings() noexcept
     {
         using namespace midichopper::plugin;
         midichopper::EngineSettings settings;
         settings.armed = parameter(kParameterMode) >= 0.5f;
-        settings.startPad = static_cast<std::uint8_t>(std::clamp(parameter(kParameterStartPad), 1.0f, 16.0f) - 1.0f);
-        settings.preRollMilliseconds = std::clamp(parameter(kParameterPreRollMs), 0.0f, 100.0f);
+        settings.startPad = static_cast<std::uint8_t>(
+            clampedParameter(kParameterStartPad) - parameterRanges::startPad.minimum);
+        settings.preRollMilliseconds = clampedParameter(kParameterPreRollMs);
         settings.captureMode = parameter(kParameterCaptureMode) >= 0.5f
             ? midichopper::CaptureMode::FixedDuration : midichopper::CaptureMode::Sequential;
-        settings.fixedLengthSeconds = std::clamp(static_cast<double>(parameter(kParameterFixedLengthSeconds)), 0.01, 30.0);
+        settings.fixedLengthSeconds = clampedParameter(kParameterFixedLengthSeconds);
         settings.playbackMode = parameter(kParameterPlaybackMode) >= 0.5f
             ? midichopper::PlaybackMode::Gated : midichopper::PlaybackMode::OneShot;
         settings.monitorInput = parameter(kParameterInputMonitor) >= 0.5f;
-        settings.baseNote = static_cast<std::uint8_t>(std::clamp(parameter(kParameterBaseMidiNote), 0.0f, 112.0f));
-        settings.gain = decibelsToGain(std::clamp(parameter(kParameterOutputGainDb), -24.0f, 12.0f));
-        settings.maxVoices = static_cast<std::uint8_t>(
-            std::clamp(parameter(kParameterMaxVoices), 1.0f, 16.0f));
+        settings.baseNote = static_cast<std::uint8_t>(clampedParameter(kParameterBaseMidiNote));
+        settings.gain = decibelsToGain(clampedParameter(kParameterOutputGainDb));
+        settings.maxVoices = static_cast<std::uint8_t>(clampedParameter(kParameterMaxVoices));
         settings.activeBank = static_cast<std::uint8_t>(
-            std::clamp(parameter(kParameterActiveBank), 1.0f, 4.0f) - 1.0f);
+            clampedParameter(kParameterActiveBank) - parameterRanges::activeBank.minimum);
         const auto layout = static_cast<std::uint32_t>(
-            std::clamp(parameter(kParameterPadLayout), 0.0f, 2.0f));
-        settings.padsPerBank = static_cast<std::uint8_t>(layout == 0U ? 16U :
-                                                        (layout == 1U ? 12U : 8U));
+            clampedParameter(kParameterPadLayout));
+        settings.padsPerBank = midichopper::padsPerBankForLayout(layout);
         sampler_.setSettings(settings);
     }
 

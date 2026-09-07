@@ -13,14 +13,19 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 option(MIDICHOPPER_BUILD_VST3 "Also build a VST3 bundle" OFF)
 option(MIDICHOPPER_BUILD_CLAP "Also build a CLAP bundle" OFF)
 
-if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/DPF/CMakeLists.txt")
+set(SMS_DPF_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/DPF")
+
+if(NOT EXISTS "${SMS_DPF_ROOT}/CMakeLists.txt")
   message(FATAL_ERROR
     "DPF is missing. Run: git submodule update --init --recursive")
 endif()
 
 set(DPF_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(DPF_LIBRARIES OFF CACHE BOOL "" FORCE)
-add_subdirectory(third_party/DPF EXCLUDE_FROM_ALL)
+add_subdirectory("${SMS_DPF_ROOT}" "${CMAKE_CURRENT_BINARY_DIR}/third_party/DPF"
+  EXCLUDE_FROM_ALL)
+add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../Common-UI"
+  "${CMAKE_CURRENT_BINARY_DIR}/Common-UI" EXCLUDE_FROM_ALL)
 
 add_library(midichopper_core STATIC
   src/core/SamplerEngine.cpp)
@@ -54,7 +59,8 @@ dpf_add_plugin(SMS-Midichopper
     src/plugin/MidichopperPlugin.cpp
     src/plugin/StateCodec.cpp
   FILES_UI
-    src/ui/MidichopperUI.cpp)
+    src/ui/MidichopperUI.cpp
+    src/ui/MidichopperView.cpp)
 
 # DPF currently passes disabled optional DGL features through generator
 # expressions.  CMake 4 evaluates those expressions as true while configuring
@@ -72,6 +78,7 @@ target_include_directories(SMS-Midichopper PUBLIC
   "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
   "${CMAKE_CURRENT_SOURCE_DIR}/src/plugin"
   "${CMAKE_CURRENT_SOURCE_DIR}/src/ui")
+target_link_libraries(SMS-Midichopper PUBLIC sms_common_ui)
 
 target_link_libraries(SMS-Midichopper-dsp PRIVATE midichopper_core)
 target_compile_definitions(SMS-Midichopper-dsp PRIVATE
@@ -92,6 +99,10 @@ if(BUILD_TESTING)
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/plugin")
   add_test(NAME state-codec COMMAND midichopper_state_codec_tests)
+
+  add_executable(midichopper_ui_geometry_tests tests/ui_geometry_tests.cpp)
+  target_link_libraries(midichopper_ui_geometry_tests PRIVATE sms_common_ui)
+  add_test(NAME ui-geometry COMMAND midichopper_ui_geometry_tests)
 endif()
 
 install(

@@ -19,7 +19,9 @@ Clone with submodules before building:
 git clone --recurse-submodules https://github.com/sirsipe/SMS-Plugins.git
 ```
 
-Each plugin contains its own build and usage instructions.
+The repository-level `third_party/DPF` submodule and `Common-UI` sources are
+shared by all plug-ins. Each plug-in contains its own build and usage
+instructions.
 
 Release builds are produced by GitHub Actions. See
 [Docs/RELEASING.md](Docs/RELEASING.md) for the release procedure.
