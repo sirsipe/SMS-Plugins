@@ -141,7 +141,8 @@ public:
           fDragTarget(-1),
           fDragStartX(0.0f),
           fDragStartY(0.0f),
-          fHasWaveform(false)
+          fHasWaveform(false),
+          fRepaintPending(false)
     {
         fPadState.fill('0');
         fPadStatus.fill('0');
@@ -167,10 +168,12 @@ protected:
             const int pad = globalPad(static_cast<int>(localPad));
             const bool wasOccupied = fPadState[localPad] != '0';
             const bool isOccupied = value >= 0.5f;
+            if (wasOccupied == isOccupied)
+                return;
             fPadState[localPad] = isOccupied ? '1' : '0';
-            if (pad == fSelectedPad && wasOccupied != isOccupied)
+            if (pad == fSelectedPad)
                 refreshSelectedWaveform();
-            repaint();
+            requestRepaint();
             return;
         }
         if (index >= kPadActivity1 && index < kMaxVoices)
@@ -179,6 +182,8 @@ protected:
             const int pad = globalPad(localPad);
             const bool wasActive = fPadStatus[static_cast<std::size_t>(localPad)] != '0';
             const bool isActive = value >= 0.5f;
+            if (wasActive == isActive)
+                return;
             fPadStatus[static_cast<std::size_t>(localPad)] = isActive ? '1' : '0';
             if (fEditorMode && isActive && !wasActive && pad != fSelectedPad)
                 selectEditorPad(pad);
@@ -186,43 +191,93 @@ protected:
                 fCurrentPad = pad;
             else if (fCurrentPad == pad && !isActive)
                 fCurrentPad = -1;
-            repaint();
+            requestRepaint();
             return;
         }
+        bool changed = true;
         switch (index)
         {
-        case kArm:         fArm = value >= 0.5f; break;
-        case kRecordMode:  fRecordMode = value; break;
-        case kFixedLength: fFixedLength = value; break;
-        case kPlaybackMode: fPlaybackMode = value; break;
-        case kMonitor:     fMonitor = value; break;
-        case kStartPad:
+        case kArm: {
+            const bool armed = value >= 0.5f;
+            changed = fArm != armed;
+            fArm = armed;
+            break;
+        }
+        case kRecordMode:
+            changed = fRecordMode != value;
+            fRecordMode = value;
+            break;
+        case kFixedLength:
+            changed = fFixedLength != value;
+            fFixedLength = value;
+            break;
+        case kPlaybackMode:
+            changed = fPlaybackMode != value;
+            fPlaybackMode = value;
+            break;
+        case kMonitor:
+            changed = fMonitor != value;
+            fMonitor = value;
+            break;
+        case kStartPad: {
+            const int previousStartPad = fStartPad;
+            const int previousSelectedPad = fSelectedPad;
             fStartPad = clampLocalPad(value - 1.0f);
             if (!fEditorMode)
                 fSelectedPad = globalPad(fStartPad);
+            changed = previousStartPad != fStartPad || previousSelectedPad != fSelectedPad;
             break;
-        case kPreRoll:     fPreRoll = value; break;
-        case kBaseNote:    fBaseNote = clampNote(value); break;
-        case kGain:        fGain = value; break;
-        case kMaxVoices:
-            fMaxVoices = std::clamp(static_cast<int>(std::lround(value)), 1,
-                                    static_cast<int>(kPadsPerBank));
+        }
+        case kPreRoll:
+            changed = fPreRoll != value;
+            fPreRoll = value;
             break;
-        case kActiveBank:
-            fBank = std::clamp(static_cast<int>(std::lround(value)) - 1, 0,
-                               static_cast<int>(kBankCount - 1));
+        case kBaseNote: {
+            const int baseNote = clampNote(value);
+            changed = fBaseNote != baseNote;
+            fBaseNote = baseNote;
+            break;
+        }
+        case kGain:
+            changed = fGain != value;
+            fGain = value;
+            break;
+        case kMaxVoices: {
+            const int maxVoices = std::clamp(static_cast<int>(std::lround(value)), 1,
+                                             static_cast<int>(kPadsPerBank));
+            changed = fMaxVoices != maxVoices;
+            fMaxVoices = maxVoices;
+            break;
+        }
+        case kActiveBank: {
+            const int bank = std::clamp(static_cast<int>(std::lround(value)) - 1, 0,
+                                        static_cast<int>(kBankCount - 1));
+            changed = fBank != bank;
+            if (!changed)
+                break;
+            fBank = bank;
             normalizeSelectionForBank();
             break;
-        case kPadLayout:
-            fLayout = std::clamp(static_cast<int>(std::lround(value)), 0, 2);
+        }
+        case kPadLayout: {
+            const int layout = std::clamp(static_cast<int>(std::lround(value)), 0, 2);
+            changed = fLayout != layout;
+            if (!changed)
+                break;
+            fLayout = layout;
             if (fStartPad >= visiblePadCount())
                 fStartPad = 0;
             normalizeSelectionForBank();
             refreshSelectedWaveform();
             break;
+        }
         case kCurrentCapturePad: {
             const int pad = static_cast<int>(std::lround(value)) - 1;
-            fCurrentPad = pad >= 0 && pad < static_cast<int>(kPadCount) ? pad : -1;
+            const int currentPad = pad >= 0 && pad < static_cast<int>(kPadCount) ? pad : -1;
+            changed = fCurrentPad != currentPad;
+            if (!changed)
+                break;
+            fCurrentPad = currentPad;
             if (fCurrentPad >= 0) {
                 const int captureBank = fCurrentPad / static_cast<int>(kPadsPerBank);
                 const bool bankChanged = captureBank != fBank;
@@ -236,7 +291,8 @@ protected:
         }
         default: return;
         }
-        repaint();
+        if (changed)
+            requestRepaint();
     }
 
 #if DISTRHO_PLUGIN_WANT_STATE
@@ -277,7 +333,7 @@ protected:
         }
         else
             return;
-        repaint();
+        requestRepaint();
     }
 #endif
 
@@ -291,13 +347,23 @@ protected:
             if (fClearTicks == 0)
             {
                 fClearArmed = false;
-                repaint();
+                requestRepaint();
             }
+        }
+
+        // LV2 hosts may continue delivering output-port events after merely
+        // hiding an editor. Coalesce all visual changes into one invalidation
+        // per idle cycle and never obscure a hidden OpenGL window.
+        if (fRepaintPending && getWindow().isVisible())
+        {
+            fRepaintPending = false;
+            repaint();
         }
     }
 
     void onNanoDisplay() override
     {
+        fRepaintPending = false;
         const float w = static_cast<float>(getWidth());
         const float h = static_cast<float>(getHeight());
         const LayoutTransform layout = layoutTransform(w, h);
@@ -346,7 +412,7 @@ protected:
             if (hit(x, y, 904, 25, 32, 32))
             {
                 fMenuOpen = !fMenuOpen;
-                repaint();
+                requestRepaint();
                 return true;
             }
             if (fMenuOpen)
@@ -361,7 +427,7 @@ protected:
                     }
                 }
                 fMenuOpen = false;
-                repaint();
+                requestRepaint();
                 return true;
             }
             if (fEditorMode)
@@ -370,7 +436,7 @@ protected:
                 {
                     fEditorMode = false;
                     fDragTarget = -1;
-                    repaint();
+                    requestRepaint();
                     return true;
                 }
                 for (int bank = 0; bank < static_cast<int>(kBankCount); ++bank)
@@ -423,7 +489,7 @@ protected:
             {
                 fEditorMode = true;
                 refreshSelectedWaveform();
-                repaint();
+                requestRepaint();
                 return true;
             }
             for (int bank = 0; bank < static_cast<int>(kBankCount); ++bank)
@@ -452,7 +518,7 @@ protected:
                     sendNote(0, static_cast<uint8_t>(fBaseNote + pad), 127);
 #endif
                 }
-                repaint();
+                requestRepaint();
                 return true;
             }
 
@@ -540,7 +606,7 @@ protected:
                     fClearTicks = 0;
                     setLocalStatus("Pads cleared");
                 }
-                repaint();
+                requestRepaint();
                 return true;
             }
         }
@@ -548,7 +614,7 @@ protected:
         {
             commitEditorSettings();
             fDragTarget = -1;
-            repaint();
+            requestRepaint();
             return true;
         }
         else if (fPressedPad >= 0)
@@ -557,7 +623,7 @@ protected:
             sendNote(0, static_cast<uint8_t>(fBaseNote + fPressedPad), 0);
 #endif
             fPressedPad = -1;
-            repaint();
+            requestRepaint();
             return true;
         }
         else if (fPressedActionParameter >= 0)
@@ -624,6 +690,7 @@ private:
     float fDragStartX;
     float fDragStartY;
     bool fHasWaveform;
+    bool fRepaintPending;
     std::array<char, kPadsPerBank> fPadState;
     std::array<char, kPadsPerBank> fPadStatus;
     sms::dsp::SamplePlaybackSettings fEditorSettings{};
@@ -645,6 +712,11 @@ private:
         float sustainY;
         float durationSeconds;
     };
+
+    void requestRepaint() noexcept
+    {
+        fRepaintPending = true;
+    }
 
     static bool hit(float x, float y, float rx, float ry, float rw, float rh)
     {
@@ -1521,7 +1593,7 @@ private:
     void setLocalStatus(const char* status)
     {
         copyString(fStatus, status);
-        repaint();
+        requestRepaint();
     }
 
     void setControlValue(const uint32_t parameter, const float value)
@@ -1554,7 +1626,7 @@ private:
         fEditorSettings = {};
         fHasWaveform = false;
         requestWaveform();
-        repaint();
+        requestRepaint();
     }
 
     void selectBank(const int bank)
@@ -1565,7 +1637,7 @@ private:
         fBank = selectedBank;
         normalizeSelectionForBank();
         setControlValue(kActiveBank, static_cast<float>(fBank + 1));
-        repaint();
+        requestRepaint();
     }
 
     void selectLayout(const int layout)
@@ -1580,7 +1652,7 @@ private:
         }
         normalizeSelectionForBank();
         setControlValue(kPadLayout, static_cast<float>(fLayout));
-        repaint();
+        requestRepaint();
     }
 
     void commitEditorSettings()
@@ -1667,7 +1739,7 @@ private:
             }
         }
         fEditorSettings = sms::dsp::sanitize(fEditorSettings);
-        repaint();
+        requestRepaint();
     }
 
     static void copyString(char (&destination)[160], const char* source)
