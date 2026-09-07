@@ -158,6 +158,11 @@ protected:
                            kParameterIsBoolean | kParameterIsInteger | kParameterIsTrigger,
                            "Remove every captured sample.");
             break;
+        case kParameterMaxVoices:
+            setupParameter(parameter, "Max Voices", "max_voices", "", 16.0f, 1.0f, 16.0f,
+                           kParameterIsInteger,
+                           "Maximum number of pads that may play simultaneously.");
+            break;
         default:
             if (index >= kFirstPadStatusParameter && index < kFirstPadActivityParameter) {
                 const std::uint32_t pad = index - kFirstPadStatusParameter;
@@ -350,6 +355,7 @@ private:
         case kParameterFixedLengthSeconds: return 1.0f;
         case kParameterInputMonitor: return 1.0f;
         case kParameterBaseMidiNote: return 36.0f;
+        case kParameterMaxVoices: return 16.0f;
         default: return 0.0f;
         }
     }
@@ -374,6 +380,8 @@ private:
         settings.monitorInput = parameter(kParameterInputMonitor) >= 0.5f;
         settings.baseNote = static_cast<std::uint8_t>(std::clamp(parameter(kParameterBaseMidiNote), 0.0f, 112.0f));
         settings.gain = decibelsToGain(std::clamp(parameter(kParameterOutputGainDb), -24.0f, 12.0f));
+        settings.maxVoices = static_cast<std::uint8_t>(
+            std::clamp(parameter(kParameterMaxVoices), 1.0f, 16.0f));
         sampler_.setSettings(settings);
     }
 

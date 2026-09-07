@@ -43,6 +43,7 @@ struct EngineSettings {
     std::uint8_t startPad = 0;
     float preRollMilliseconds = 0.0f;
     float gain = 1.0f;
+    std::uint8_t maxVoices = static_cast<std::uint8_t>(kPadCount);
 };
 
 /** A non-real-time copy of one pad, suitable for project state and UI work. */
@@ -123,6 +124,7 @@ private:
         bool recording = false;
         bool held = false;
         bool playing = false;
+        std::uint64_t voiceOrder = 0;
         double playPosition = 0.0;
         std::uint32_t voiceEndFrame = 0;
         float velocityGain = 1.0f;
@@ -154,6 +156,8 @@ private:
     void writeRecordFrame(std::uint32_t frame, float left, float right) noexcept;
     void startVoice(std::uint32_t pad, std::uint8_t velocity) noexcept;
     void stopVoice(std::uint32_t pad) noexcept;
+    void hardStopVoice(std::uint32_t pad) noexcept;
+    void enforceVoiceLimit(std::uint32_t excludedPad = kPadCount) noexcept;
 
     double sample_rate_;
     double max_record_seconds_;
@@ -169,6 +173,7 @@ private:
     std::int32_t activePad_ = -1;
     std::int32_t lastCommittedPad_ = -1;
     std::uint32_t nextPad_ = 0;
+    std::uint64_t nextVoiceOrder_ = 1;
     bool previousArmed_ = false;
     bool sessionComplete_ = false;
     std::atomic<bool> finalizeRequested_{false};

@@ -66,6 +66,49 @@ void playback_and_rate_conversion() {
     check(e.padMetadata(0).sampleRate == 500.0, "source rate retained");
 }
 
+void maximum_voice_limit() {
+    midichopper::SamplerEngine e(1000.0, 1.0);
+    midichopper::PadData source;
+    source.sampleRate = 1000.0;
+    source.frames = 32;
+    source.stereo.assign(64U, 1.0f);
+    source.peak = source.rms = 1.0f;
+    check(e.importPad(0, source) && e.importPad(1, source) && e.importPad(2, source),
+          "import polyphony test pads");
+
+    auto settings = e.settings();
+    settings.monitorInput = false;
+    settings.maxVoices = 2;
+    e.setSettings(settings);
+
+    const midichopper::MidiEvent events[] = {
+        {0, 36, 127, midichopper::MidiEventType::NoteOn},
+        {1, 37, 127, midichopper::MidiEventType::NoteOn},
+        {2, 38, 127, midichopper::MidiEventType::NoteOn},
+    };
+    float left[4]{};
+    float right[4]{};
+    e.process(nullptr, nullptr, left, right, 4, events, 3);
+    check(!e.padMetadata(0).active && e.padMetadata(1).active && e.padMetadata(2).active,
+          "new voice steals the oldest active pad");
+    close(left[0], 1.0f, "first voice starts alone");
+    close(left[1], 2.0f, "two voices may overlap at the configured limit");
+    close(left[2], 2.0f, "stolen voice is silent when the third starts");
+
+    settings.maxVoices = 1;
+    e.setSettings(settings);
+    check(!e.padMetadata(1).active && e.padMetadata(2).active,
+          "lowering the limit immediately keeps only the newest voice");
+
+    settings.maxVoices = 0;
+    e.setSettings(settings);
+    check(e.settings().maxVoices == 1, "voice limit clamps to one");
+    settings.maxVoices = 127;
+    e.setSettings(settings);
+    check(e.settings().maxVoices == midichopper::kPadCount,
+          "voice limit clamps to the pad count");
+}
+
 void sample_region_and_adsr() {
     midichopper::SamplerEngine e(1000.0, 1.0);
     midichopper::PadData source;
@@ -175,6 +218,7 @@ int main() {
     sequential_boundaries_and_preroll();
     full_bank_and_undo();
     playback_and_rate_conversion();
+    maximum_voice_limit();
     sample_region_and_adsr();
     pad_replacement_hardening();
     fixed_duration();

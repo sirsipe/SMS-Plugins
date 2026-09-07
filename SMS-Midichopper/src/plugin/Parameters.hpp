@@ -20,7 +20,9 @@ enum Parameter : std::uint32_t {
     kParameterClearAll,
     kParameterPadOccupied1,
     kParameterPadActivity1 = kParameterPadOccupied1 + 16,
-    kParameterCount = kParameterPadActivity1 + 16,
+    // New parameters must remain after the released pad output parameters.
+    kParameterMaxVoices = kParameterPadActivity1 + 16,
+    kParameterCount,
 };
 
 inline constexpr std::uint32_t kFirstPadStatusParameter = kParameterPadOccupied1;

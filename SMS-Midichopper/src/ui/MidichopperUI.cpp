@@ -18,6 +18,9 @@
  *   9 finalize current chop (momentary)
  *  10 undo last chop (momentary)
  *  11 clear all pads (momentary)
+ *  12..27 pad occupied outputs
+ *  28..43 pad activity outputs
+ *  44 maximum simultaneous playback voices (1 .. 16)
  *
  * State contract used by the sample editor:
  *   pad_edit_01..16  compact non-destructive cut-point and ADSR settings
@@ -79,6 +82,9 @@ enum Parameter : uint32_t {
     kFinalize,
     kUndo,
     kClearAll,
+    kPadOccupied1,
+    kPadActivity1 = kPadOccupied1 + kPadCount,
+    kMaxVoices = kPadActivity1 + kPadCount,
 };
 
 const DGL_NAMESPACE::Color kBackground(14, 17, 24);
@@ -107,6 +113,7 @@ public:
           fPreRoll(0.0f),
           fBaseNote(kBaseNoteDefault),
           fGain(0.0f),
+          fMaxVoices(16),
           fSelectedPad(0),
           fCurrentPad(-1),
           fPressedPad(-1),
@@ -137,9 +144,9 @@ public:
 protected:
     void parameterChanged(uint32_t index, float value) override
     {
-        if (index >= 12 && index < 28)
+        if (index >= kPadOccupied1 && index < kPadActivity1)
         {
-            const auto pad = static_cast<std::size_t>(index - 12);
+            const auto pad = static_cast<std::size_t>(index - kPadOccupied1);
             const bool wasOccupied = fPadState[pad] != '0';
             const bool isOccupied = value >= 0.5f;
             fPadState[pad] = isOccupied ? '1' : '0';
@@ -149,9 +156,9 @@ protected:
             repaint();
             return;
         }
-        if (index >= 28 && index < 44)
+        if (index >= kPadActivity1 && index < kMaxVoices)
         {
-            const int pad = static_cast<int>(index - 28);
+            const int pad = static_cast<int>(index - kPadActivity1);
             const bool wasActive = fPadStatus[static_cast<std::size_t>(pad)] != '0';
             const bool isActive = value >= 0.5f;
             fPadStatus[static_cast<std::size_t>(pad)] = isActive ? '1' : '0';
@@ -179,6 +186,10 @@ protected:
         case kPreRoll:     fPreRoll = value; break;
         case kBaseNote:    fBaseNote = clampNote(value); break;
         case kGain:        fGain = value; break;
+        case kMaxVoices:
+            fMaxVoices = std::clamp(static_cast<int>(std::lround(value)), 1,
+                                    static_cast<int>(kPadCount));
+            break;
         default: return;
         }
         repaint();
@@ -380,42 +391,49 @@ protected:
                 setControlValue(kFixedLength, 0.01f + t * 29.99f);
                 return true;
             }
-            if (hit(x, y, 690, 370, 106, 38))
+            if (hit(x, y, 690, 352, 106, 36))
             {
                 setControlValue(kPlaybackMode, 0.0f);
                 return true;
             }
-            if (hit(x, y, 804, 370, 108, 38))
+            if (hit(x, y, 804, 352, 108, 36))
             {
                 setControlValue(kPlaybackMode, 1.0f);
                 return true;
             }
-            if (hit(x, y, 690, 426, 222, 25))
+            if (hit(x, y, 690, 410, 222, 28))
+            {
+                const float t = std::clamp((x - 690.0f) / 222.0f, 0.0f, 1.0f);
+                setControlValue(kMaxVoices,
+                                1.0f + static_cast<float>(std::lround(t * 15.0f)));
+                return true;
+            }
+            if (hit(x, y, 690, 448, 222, 28))
             {
                 const float t = std::clamp((x - 690.0f) / 222.0f, 0.0f, 1.0f);
                 setControlValue(kPreRoll, t * 100.0f);
                 return true;
             }
-            if (hit(x, y, 690, 454, 222, 36))
+            if (hit(x, y, 690, 480, 222, 34))
             {
                 setControlValue(kMonitor, fMonitor >= 0.5f ? 0.0f : 1.0f);
                 return true;
             }
-            if (hit(x, y, 690, 515, 70, 34))
+            if (hit(x, y, 690, 540, 70, 34))
             {
                 setParameterValue(kFinalize, 1.0f);
                 fPressedActionParameter = kFinalize;
                 setLocalStatus("Chop finalized");
                 return true;
             }
-            if (hit(x, y, 766, 515, 70, 34))
+            if (hit(x, y, 766, 540, 70, 34))
             {
                 setParameterValue(kUndo, 1.0f);
                 fPressedActionParameter = kUndo;
                 setLocalStatus("Last chop undone");
                 return true;
             }
-            if (hit(x, y, 842, 515, 70, 34))
+            if (hit(x, y, 842, 540, 70, 34))
             {
                 if (!fClearArmed)
                 {
@@ -500,6 +518,7 @@ private:
     float fPreRoll;
     int fBaseNote;
     float fGain;
+    int fMaxVoices;
     int fSelectedPad;
     int fCurrentPad;
     int fPressedPad;
@@ -1152,31 +1171,42 @@ private:
         fontSize(11);
         textAlign(ALIGN_LEFT | ALIGN_TOP);
         fillColor(kMuted);
-        text(690, 352, "PLAYBACK", nullptr);
-        drawSegment(690, 370, 106, 38, "ONE SHOT", fPlaybackMode < 0.5f, kCyan);
-        drawSegment(804, 370, 108, 38, "GATE", fPlaybackMode >= 0.5f, kCyan);
+        text(690, 334, "PLAYBACK", nullptr);
+        drawSegment(690, 352, 106, 36, "ONE SHOT", fPlaybackMode < 0.5f, kCyan);
+        drawSegment(804, 352, 108, 36, "GATE", fPlaybackMode >= 0.5f, kCyan);
 
         fontSize(11);
         fillColor(kMuted);
-        text(690, 412, "PRE-ROLL", nullptr);
+        text(690, 400, "MAX VOICES", nullptr);
+        char voicesText[8];
+        std::snprintf(voicesText, sizeof(voicesText), "%d", fMaxVoices);
+        textAlign(ALIGN_RIGHT | ALIGN_TOP);
+        fillColor(kText);
+        text(912, 400, voicesText, nullptr);
+        drawSlider(690, 419, 222, static_cast<float>(fMaxVoices - 1) / 15.0f, kCyan);
+
+        fontSize(11);
+        textAlign(ALIGN_LEFT | ALIGN_TOP);
+        fillColor(kMuted);
+        text(690, 438, "PRE-ROLL", nullptr);
         char preRollText[24];
         std::snprintf(preRollText, sizeof(preRollText), "%d ms", static_cast<int>(std::lround(std::clamp(fPreRoll, 0.0f, 100.0f))));
         fontSize(11);
         textAlign(ALIGN_RIGHT | ALIGN_TOP);
         fillColor(kText);
-        text(912, 412, preRollText, nullptr);
-        drawSlider(690, 429, 222, std::clamp(fPreRoll / 100.0f, 0.0f, 1.0f), kAmber);
+        text(912, 438, preRollText, nullptr);
+        drawSlider(690, 457, 222, std::clamp(fPreRoll / 100.0f, 0.0f, 1.0f), kAmber);
 
         const char* monitor = fMonitor >= 0.5f ? "MONITOR  ON" : "MONITOR  OFF";
-        drawSegment(690, 454, 222, 36, monitor, fMonitor >= 0.5f, kCyan);
+        drawSegment(690, 480, 222, 34, monitor, fMonitor >= 0.5f, kCyan);
 
         fontSize(11);
         textAlign(ALIGN_LEFT | ALIGN_TOP);
         fillColor(kMuted);
-        text(690, 497, "CHOP", nullptr);
-        drawAction(690, 515, 70, 34, "FINALIZE", kCyan, false);
-        drawAction(766, 515, 70, 34, "UNDO", kAmber, false);
-        drawAction(842, 515, 70, 34, fClearArmed ? "CONFIRM" : "CLEAR", kRed, fClearArmed);
+        text(690, 522, "CHOP", nullptr);
+        drawAction(690, 540, 70, 34, "FINALIZE", kCyan, false);
+        drawAction(766, 540, 70, 34, "UNDO", kAmber, false);
+        drawAction(842, 540, 70, 34, fClearArmed ? "CONFIRM" : "CLEAR", kRed, fClearArmed);
     }
 
     void drawSegment(float x, float y, float w, float h, const char* label, bool active,

@@ -30,7 +30,8 @@ duration, and waits for the next note before advancing again.
 
 Audio processing uses preallocated pad and pre-roll storage. `process()` takes
 sample-offset MIDI events and performs no allocation, locking, file access, or
-exception handling. Each pad is one voice; all 16 may play simultaneously.
+exception handling. Each pad is one voice, with a configurable global limit of
+1–16 simultaneous voices and deterministic oldest-voice stealing.
 Playback uses linear interpolation when a restored sample's source rate differs
 from the current host rate. Each pad has normalized, non-destructive start/end
 points and an allocation-free ADSR voice envelope. Editor changes are published

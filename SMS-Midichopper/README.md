@@ -56,6 +56,10 @@ selected pad in the main view. Drag the waveform's start/end handles to choose
 the playback region, then adjust attack, decay, sustain, and release. These
 settings are stored independently for every pad and do not alter captured audio.
 
+Max Voices limits how many pads may play simultaneously. When the limit is
+reached, triggering another pad stops the oldest playing voice; setting it to
+one provides monophonic playback.
+
 Pre-roll moves boundaries slightly earlier to compensate for late taps. Fixed
 mode records one fixed-length slice per note-on. Samples are stored with the DAW
 project as compact 16-bit stereo state.

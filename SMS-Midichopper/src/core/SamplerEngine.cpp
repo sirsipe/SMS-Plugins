@@ -68,8 +68,11 @@ void SamplerEngine::reset() noexcept {
     sessionComplete_ = false;
     previousArmed_ = settings_.armed;
     ringWritePosition_ = ringCount_ = 0;
+    nextVoiceOrder_ = 1;
     for (auto& p : pads_) {
         p.recording = p.held = p.playing = false;
+        p.voiceOrder = 0;
+        p.envelope.reset();
         p.publishedPlaying.store(false, std::memory_order_release);
         p.recordedFrames = p.recordPosition = 0;
         p.publishedFrames.store(0, std::memory_order_release);
@@ -83,6 +86,9 @@ void SamplerEngine::setSettings(const EngineSettings& s) noexcept {
     if (settings_.startPad >= kPadCount) settings_.startPad = 0;
     if (settings_.preRollMilliseconds < 0.0f) settings_.preRollMilliseconds = 0.0f;
     if (settings_.preRollMilliseconds > 100.0f) settings_.preRollMilliseconds = 100.0f;
+    settings_.maxVoices = static_cast<std::uint8_t>(
+        std::clamp<std::uint32_t>(settings_.maxVoices, 1U, kPadCount));
+    enforceVoiceLimit();
     preRollFrames_ = static_cast<std::uint32_t>(std::clamp(
         std::llround(static_cast<double>(settings_.preRollMilliseconds) * sample_rate_ / 1000.0),
         0LL, static_cast<long long>(ringCapacityFrames_)));
@@ -179,6 +185,8 @@ void SamplerEngine::writeRecordFrame(std::uint32_t, float left, float right) noe
 void SamplerEngine::startVoice(std::uint32_t pad, std::uint8_t velocity) noexcept {
     if (pad >= kPadCount || !pads_[pad].occupied.load(std::memory_order_acquire)) return;
     auto& p = pads_[pad];
+    if (!p.playing)
+        enforceVoiceLimit(pad);
     const auto frameCount = p.publishedFrames.load(std::memory_order_acquire);
     auto playback = padPlaybackSettings(pad);
     const auto startFrame = std::min(frameCount - 1U, static_cast<std::uint32_t>(
@@ -195,6 +203,7 @@ void SamplerEngine::startVoice(std::uint32_t pad, std::uint8_t velocity) noexcep
     p.envelope.configure(sample_rate_, playback);
     p.envelope.noteOn();
     p.playing = true;
+    p.voiceOrder = nextVoiceOrder_++;
     p.publishedPlaying.store(true, std::memory_order_release);
 }
 
@@ -206,6 +215,41 @@ void SamplerEngine::stopVoice(std::uint32_t pad) noexcept {
             voice.playing = false;
             voice.publishedPlaying.store(false, std::memory_order_release);
         }
+    }
+}
+
+void SamplerEngine::hardStopVoice(const std::uint32_t pad) noexcept {
+    if (pad >= kPadCount) return;
+    auto& voice = pads_[pad];
+    voice.playing = false;
+    voice.held = false;
+    voice.voiceOrder = 0;
+    voice.envelope.reset();
+    voice.publishedPlaying.store(false, std::memory_order_release);
+}
+
+void SamplerEngine::enforceVoiceLimit(const std::uint32_t excludedPad) noexcept {
+    std::uint32_t activeVoices = 0;
+    for (const auto& pad : pads_)
+        activeVoices += pad.playing ? 1U : 0U;
+
+    const std::uint32_t allowedVoices = settings_.maxVoices -
+        ((excludedPad < kPadCount && !pads_[excludedPad].playing) ? 1U : 0U);
+    while (activeVoices > allowedVoices) {
+        std::uint32_t oldestPad = kPadCount;
+        std::uint64_t oldestOrder = ~std::uint64_t{0};
+        for (std::uint32_t pad = 0; pad < kPadCount; ++pad) {
+            if (pad == excludedPad || !pads_[pad].playing)
+                continue;
+            if (pads_[pad].voiceOrder < oldestOrder) {
+                oldestOrder = pads_[pad].voiceOrder;
+                oldestPad = pad;
+            }
+        }
+        if (oldestPad >= kPadCount)
+            break;
+        hardStopVoice(oldestPad);
+        --activeVoices;
     }
 }
 
@@ -367,6 +411,7 @@ bool SamplerEngine::importPad(std::uint32_t pad, const PadData& source) {
         sessionComplete_ = false;
     }
     p.playing = p.recording = p.held = false;
+    p.voiceOrder = 0;
     p.envelope.reset();
     p.publishedPlaying.store(false, std::memory_order_release);
     p.publishedRecording.store(false, std::memory_order_release);
@@ -440,6 +485,7 @@ void SamplerEngine::clearPad(std::uint32_t pad) noexcept {
         sessionComplete_ = false;
     }
     p.recording = p.held = p.playing = false;
+    p.voiceOrder = 0;
     p.envelope.reset();
     p.publishedPlaying.store(false, std::memory_order_release);
     p.publishedRecording.store(false, std::memory_order_release);
