@@ -11,6 +11,12 @@ the current slice and continues recording onto the next pad.
 
 _Screenshot from version v0.0.1._
 
+## Vision
+
+See [Docs/VISION.md](Docs/VISION.md) for the product vision and the principles
+that guide development. All feature requests must fit that vision or they will
+be rejected.
+
 ## Build
 
 Ubuntu/Debian prerequisites:
