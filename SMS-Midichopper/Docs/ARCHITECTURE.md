@@ -16,10 +16,12 @@ SMS-Midichopper separates the sampler from the plug-in format and UI:
 ## Capture model
 
 While armed in Sequential mode, the first note-on begins capture at the chosen
-start pad. Each later note-on is a sample-accurate boundary: the active slice is
-published and capture continues at the next pad. Note-off does not affect
-capture. Disarming or Finalize publishes the last slice. The bank stops after
-pad 16 rather than silently wrapping or overwriting pad 1.
+start pad in the selected bank. Each later note-on is a sample-accurate
+boundary: the active slice is published and capture continues at the next
+visible pad. Capture advances from Bank A through Bank D and stops rather than
+silently wrapping or overwriting earlier material. The 12- and 8-pad layouts
+skip hidden storage slots at the end of each bank. Note-off does not affect
+capture. Disarming or Finalize publishes the last slice.
 
 The pre-roll ring holds up to 100 ms. At a boundary, that history becomes the
 start of the new slice and is trimmed from the previous slice, avoiding a gap
@@ -28,7 +30,11 @@ duration, and waits for the next note before advancing again.
 
 ## Real-time behavior
 
-Audio processing uses preallocated pad and pre-roll storage. `process()` takes
+Audio processing uses a shared pool of preallocated sample blocks plus pre-roll
+storage. The pool supports 64 logical pad slots while keeping its nominal audio
+allocation close to the earlier 16-pad design; cleared blocks can be reused by
+any bank. An individual pad remains limited to 30 seconds, and the pool can hold
+approximately eight minutes of 48 kHz stereo audio in total. `process()` takes
 sample-offset MIDI events and performs no allocation, locking, file access, or
 exception handling. Each pad is one voice, with a configurable global limit of
 1–16 simultaneous voices and deterministic oldest-voice stealing.
@@ -44,7 +50,7 @@ callback.
 
 ## Project state
 
-Each pad is stored independently with a magic value, version, channel count,
+Each of the 64 pad slots is stored independently with a magic value, version, channel count,
 source sample rate, frame count, payload length, and CRC-32. Audio is
 interleaved signed PCM16 and Base64 encoded for portable DPF state. Decoding has
 strict size and structural checks. Empty pads use empty state values.

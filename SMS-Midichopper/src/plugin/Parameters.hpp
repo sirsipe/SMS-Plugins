@@ -22,6 +22,9 @@ enum Parameter : std::uint32_t {
     kParameterPadActivity1 = kParameterPadOccupied1 + 16,
     // New parameters must remain after the released pad output parameters.
     kParameterMaxVoices = kParameterPadActivity1 + 16,
+    kParameterActiveBank,
+    kParameterPadLayout,
+    kParameterCurrentCapturePad,
     kParameterCount,
 };
 

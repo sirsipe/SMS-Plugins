@@ -39,17 +39,73 @@ void sequential_boundaries_and_preroll() {
 void full_bank_and_undo() {
     midichopper::SamplerEngine e(1000.0, 1.0);
     auto s = e.settings(); s.armed = true; s.monitorInput = false; e.setSettings(s);
-    float in[20]{}; float out[20]{};
+    float in[65]{}; float out[65]{};
     std::vector<midichopper::MidiEvent> events;
-    for (unsigned i = 0; i < 17; ++i) events.emplace_back(i, 60, 100, midichopper::MidiEventType::NoteOn);
-    e.process(in, in, out, out, 17, events.data(), static_cast<std::uint32_t>(events.size()));
+    for (unsigned i = 0; i < 65; ++i) events.emplace_back(i, 60, 100, midichopper::MidiEventType::NoteOn);
+    e.process(in, in, out, out, 65, events.data(), static_cast<std::uint32_t>(events.size()));
     e.finalizeRecording(); e.process(nullptr, nullptr, out, out, 0);
-    check(e.padMetadata(0).occupied && e.padMetadata(15).occupied, "all 16 pads committed");
-    check(!e.padMetadata(0).recording && !e.padMetadata(15).recording, "bank stops safely");
+    check(e.padMetadata(0).occupied && e.padMetadata(63).occupied, "all four banks committed");
+    check(!e.padMetadata(0).recording && !e.padMetadata(63).recording, "final bank stops safely");
     e.undoLastSlice(); e.process(nullptr, nullptr, out, out, 0);
-    check(!e.padMetadata(15).occupied && e.padMetadata(14).occupied, "undo removes only last slice");
+    check(!e.padMetadata(63).occupied && e.padMetadata(62).occupied, "undo removes only last slice");
     e.clearAllPads();
     for (unsigned i = 0; i < midichopper::kPadCount; ++i) check(!e.padMetadata(i).occupied, "clear all pads");
+}
+
+void bank_and_layout_mapping() {
+    midichopper::SamplerEngine e(1000.0, 1.0);
+    auto settings = e.settings();
+    settings.armed = true;
+    settings.monitorInput = false;
+    settings.padsPerBank = 12;
+    e.setSettings(settings);
+
+    float input[13]{};
+    float output[13]{};
+    std::vector<midichopper::MidiEvent> boundaries;
+    for (unsigned frame = 0; frame < 13; ++frame)
+        boundaries.emplace_back(frame, 60, 127, midichopper::MidiEventType::NoteOn);
+    e.process(input, input, output, output, 13, boundaries.data(),
+              static_cast<std::uint32_t>(boundaries.size()));
+    e.finalizeRecording();
+    e.process(nullptr, nullptr, output, output, 0);
+    check(e.padMetadata(11).occupied && !e.padMetadata(12).occupied &&
+          e.padMetadata(16).occupied,
+          "12-pad capture skips hidden slots when advancing banks");
+
+    settings.armed = false;
+    settings.activeBank = 1;
+    e.setSettings(settings);
+    midichopper::PadData pad;
+    pad.sampleRate = 1000.0;
+    pad.frames = 4;
+    pad.stereo.assign(8U, 1.0f);
+    pad.peak = pad.rms = 1.0f;
+    check(e.importPad(16, pad), "import pad in second bank");
+    const midichopper::MidiEvent play{0, 36, 127, midichopper::MidiEventType::NoteOn};
+    e.process(nullptr, nullptr, output, output, 1, &play, 1);
+    check(e.padMetadata(16).active, "MIDI playback targets the selected bank");
+
+    settings.padsPerBank = 8;
+    settings.activeBank = 2;
+    e.setSettings(settings);
+    check(e.importPad(32, pad), "import pad in eight-pad bank");
+    e.process(nullptr, nullptr, output, output, 1, &play, 1);
+    check(e.padMetadata(32).active, "eight-pad layout maps from the bank base");
+
+    settings.padsPerBank = 16;
+    settings.activeBank = 0;
+    e.setSettings(settings);
+    check(e.importPad(12, pad), "import pad hidden by smaller layouts");
+    settings.padsPerBank = 12;
+    e.setSettings(settings);
+    const midichopper::MidiEvent hiddenPlay{0, 48, 127, midichopper::MidiEventType::NoteOn};
+    e.process(nullptr, nullptr, output, output, 1, &hiddenPlay, 1);
+    check(!e.padMetadata(12).active, "hidden pad is not MIDI-addressable");
+    settings.padsPerBank = 16;
+    e.setSettings(settings);
+    e.process(nullptr, nullptr, output, output, 1, &hiddenPlay, 1);
+    check(e.padMetadata(12).active, "restoring the layout reveals preserved pad audio");
 }
 
 void playback_and_rate_conversion() {
@@ -64,6 +120,32 @@ void playback_and_rate_conversion() {
     close(outL[1], 0, "linear source-rate interpolation");
     close(outL[2], -1, "resampled second source frame");
     check(e.padMetadata(0).sampleRate == 500.0, "source rate retained");
+}
+
+void shared_storage_blocks() {
+    midichopper::SamplerEngine e(2000.0, 1.0);
+    midichopper::PadData source;
+    source.sampleRate = 2000.0;
+    source.frames = 1500;
+    source.stereo.resize(3000U);
+    for (std::uint32_t frame = 0; frame < source.frames; ++frame) {
+        const float sample = static_cast<float>(frame) / 2000.0f;
+        source.stereo[static_cast<std::size_t>(frame) * 2U] = sample;
+        source.stereo[static_cast<std::size_t>(frame) * 2U + 1U] = -sample;
+    }
+    source.peak = 0.75f;
+    source.rms = 0.4f;
+    check(e.importPad(0, source), "import sample spanning storage blocks");
+    midichopper::PadData restored;
+    check(e.exportPad(0, restored), "export sample spanning storage blocks");
+    close(restored.stereo[2046], source.stereo[2046], "sample before block boundary survives");
+    close(restored.stereo[2048], source.stereo[2048], "sample after block boundary survives");
+    close(restored.stereo.back(), source.stereo.back(), "sample tail survives pooled storage");
+
+    e.clearPad(0);
+    check(e.importPad(63, source), "cleared blocks are reusable by another bank");
+    check(e.exportPad(63, restored), "export reused storage blocks");
+    close(restored.stereo[2048], source.stereo[2048], "reused block retains imported audio");
 }
 
 void maximum_voice_limit() {
@@ -105,8 +187,8 @@ void maximum_voice_limit() {
     check(e.settings().maxVoices == 1, "voice limit clamps to one");
     settings.maxVoices = 127;
     e.setSettings(settings);
-    check(e.settings().maxVoices == midichopper::kPadCount,
-          "voice limit clamps to the pad count");
+    check(e.settings().maxVoices == midichopper::kPadsPerBank,
+          "voice limit clamps to the per-bank pad count");
 }
 
 void sample_region_and_adsr() {
@@ -217,7 +299,9 @@ void disarm_note_off_gain_and_rate_change() {
 int main() {
     sequential_boundaries_and_preroll();
     full_bank_and_undo();
+    bank_and_layout_mapping();
     playback_and_rate_conversion();
+    shared_storage_blocks();
     maximum_voice_limit();
     sample_region_and_adsr();
     pad_replacement_hardening();

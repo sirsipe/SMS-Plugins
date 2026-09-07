@@ -11,7 +11,9 @@
 
 namespace midichopper {
 
-inline constexpr std::uint32_t kPadCount = 16;
+inline constexpr std::uint32_t kPadsPerBank = 16;
+inline constexpr std::uint32_t kBankCount = 4;
+inline constexpr std::uint32_t kPadCount = kPadsPerBank * kBankCount;
 
 enum class CaptureMode : std::uint8_t { Sequential, FixedDuration };
 // Kept as a source-compatible alias for early clients of the core.
@@ -41,9 +43,11 @@ struct EngineSettings {
     bool monitorInput = true;
     std::uint8_t baseNote = 36;
     std::uint8_t startPad = 0;
+    std::uint8_t activeBank = 0;
+    std::uint8_t padsPerBank = static_cast<std::uint8_t>(kPadsPerBank);
     float preRollMilliseconds = 0.0f;
     float gain = 1.0f;
-    std::uint8_t maxVoices = static_cast<std::uint8_t>(kPadCount);
+    std::uint8_t maxVoices = static_cast<std::uint8_t>(kPadsPerBank);
 };
 
 /** A non-real-time copy of one pad, suitable for project state and UI work. */
@@ -71,13 +75,16 @@ struct PadMetadata {
  * are control-thread operations and must not be called concurrently with
  * process(). Events passed to process() must be sorted by frameOffset.
  *
- * Audio is stereo, non-interleaved. A pad is note baseNote + [0, 15].
+ * Audio is stereo, non-interleaved. MIDI notes address the visible pads in the
+ * active bank, starting at baseNote. Banks always retain 16 storage slots;
+ * 12- and 8-pad layouts leave the remaining slots hidden without deleting them.
  * When armed in Sequential mode, the first note-on starts a slice at startPad,
- * and each later note-on commits the current slice and advances one pad.
+ * and each later note-on commits the current slice and advances one visible
+ * pad, continuing into the next bank when needed.
  * finalizeRecording() commits the final slice. In FixedDuration mode each
  * note-on starts the next slice and it ends at the configured length. In either
- * mode a full buffer also ends recording. Samples are preallocated by the
- * constructor and never allocated from process().
+ * mode a full buffer or exhausted shared storage also ends recording. Sample
+ * blocks are preallocated by the constructor and never allocated from process().
  */
 class SamplerEngine {
 public:
@@ -121,6 +128,7 @@ private:
     struct Pad {
         std::uint32_t recordedFrames = 0;
         std::uint32_t recordPosition = 0;
+        std::uint32_t allocatedBlocks = 0;
         bool recording = false;
         bool held = false;
         bool playing = false;
@@ -150,6 +158,15 @@ private:
         Pad& operator=(const Pad&) = delete;
     };
     std::uint32_t noteToPad(std::uint8_t note) const noexcept;
+    [[nodiscard]] std::uint32_t firstCapturePad() const noexcept;
+    [[nodiscard]] std::uint32_t followingCapturePad(std::uint32_t pad) const noexcept;
+    [[nodiscard]] bool ensurePadBlock(std::uint32_t pad, std::uint32_t block) noexcept;
+    void releasePadBlocks(std::uint32_t pad) noexcept;
+    void trimPadBlocks(std::uint32_t pad, std::uint32_t frames) noexcept;
+    [[nodiscard]] float sampleAt(std::uint32_t pad, std::uint32_t frame,
+                                 std::uint32_t channel) const noexcept;
+    [[nodiscard]] bool storeSample(std::uint32_t pad, std::uint32_t frame,
+                                   float left, float right) noexcept;
     void beginRecord(std::uint32_t pad) noexcept;
     void finishRecord(std::uint32_t pad, std::uint32_t trimFrames = 0) noexcept;
     void handleEvent(const MidiEvent& event) noexcept;
@@ -162,8 +179,13 @@ private:
     double sample_rate_;
     double max_record_seconds_;
     std::uint32_t max_frames_;
+    std::uint32_t blocks_per_pad_;
+    std::uint32_t total_blocks_;
     EngineSettings settings_{};
     std::vector<float> samples_;
+    std::vector<std::uint32_t> pad_blocks_;
+    std::vector<std::uint32_t> free_blocks_;
+    std::uint32_t free_block_count_ = 0;
     std::array<Pad, kPadCount> pads_{};
     std::uint32_t ringCapacityFrames_ = 0;
     std::vector<float> ring_;

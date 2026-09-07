@@ -7,6 +7,8 @@
 namespace midichopper {
 namespace {
 constexpr float kSilence = 0.0f;
+constexpr std::uint32_t kSampleBlockFrames = 1024;
+constexpr std::uint32_t kNoBlock = ~std::uint32_t{0};
 constexpr std::uint32_t clampPad(std::uint32_t p) noexcept { return p < kPadCount ? p : kPadCount; }
 }
 
@@ -14,9 +16,16 @@ SamplerEngine::SamplerEngine(double sampleRate, double maxRecordSeconds)
     : sample_rate_(sampleRate > 1.0 ? sampleRate : 48000.0),
       max_record_seconds_(maxRecordSeconds > 0.0 ? maxRecordSeconds : 1.0),
       max_frames_(static_cast<std::uint32_t>(std::max(1.0, std::ceil(sample_rate_ * max_record_seconds_)))),
-      samples_(static_cast<std::size_t>(kPadCount) * max_frames_ * 2U, 0.0f),
+      blocks_per_pad_((max_frames_ + kSampleBlockFrames - 1U) / kSampleBlockFrames),
+      total_blocks_(std::max(kPadCount, kPadsPerBank * blocks_per_pad_)),
+      samples_(static_cast<std::size_t>(total_blocks_) * kSampleBlockFrames * 2U, 0.0f),
+      pad_blocks_(static_cast<std::size_t>(kPadCount) * blocks_per_pad_, kNoBlock),
+      free_blocks_(total_blocks_),
+      free_block_count_(total_blocks_),
       ringCapacityFrames_(static_cast<std::uint32_t>(std::max(1.0, std::ceil(sample_rate_ * 0.1)))),
       ring_(static_cast<std::size_t>(ringCapacityFrames_) * 2U, 0.0f) {
+    for (std::uint32_t block = 0; block < total_blocks_; ++block)
+        free_blocks_[block] = total_blocks_ - block - 1U;
     for (auto& p : pads_) p.sourceSampleRate = sample_rate_;
     setSettings(settings_);
 }
@@ -34,23 +43,40 @@ void SamplerEngine::setSampleRate(double sampleRate) {
     const auto requiredFrames = static_cast<std::uint32_t>(
         std::max(1.0, std::ceil(sampleRate * max_record_seconds_)));
     if (requiredFrames > max_frames_) {
-        std::vector<float> expanded(static_cast<std::size_t>(kPadCount) * requiredFrames * 2U, 0.0f);
+        std::array<PadData, kPadCount> snapshots;
+        std::array<bool, kPadCount> occupied{};
         for (std::uint32_t pad = 0; pad < kPadCount; ++pad) {
-            const auto frames = pads_[pad].publishedFrames.load(std::memory_order_acquire);
-            const auto oldBase = static_cast<std::size_t>(pad) * max_frames_ * 2U;
-            const auto newBase = static_cast<std::size_t>(pad) * requiredFrames * 2U;
-            std::copy_n(samples_.data() + oldBase, static_cast<std::size_t>(frames) * 2U,
-                        expanded.data() + newBase);
+            occupied[pad] = pads_[pad].occupied.load(std::memory_order_acquire);
+            if (occupied[pad])
+                static_cast<void>(exportPad(pad, snapshots[pad]));
         }
-        samples_.swap(expanded);
+
         max_frames_ = requiredFrames;
+        blocks_per_pad_ = (max_frames_ + kSampleBlockFrames - 1U) / kSampleBlockFrames;
+        total_blocks_ = std::max(kPadCount, kPadsPerBank * blocks_per_pad_);
+        samples_.assign(static_cast<std::size_t>(total_blocks_) * kSampleBlockFrames * 2U, 0.0f);
+        pad_blocks_.assign(static_cast<std::size_t>(kPadCount) * blocks_per_pad_, kNoBlock);
+        free_blocks_.resize(total_blocks_);
+        free_block_count_ = total_blocks_;
+        for (std::uint32_t block = 0; block < total_blocks_; ++block)
+            free_blocks_[block] = total_blocks_ - block - 1U;
+        for (auto& pad : pads_) {
+            pad.allocatedBlocks = 0;
+            pad.recordedFrames = pad.recordPosition = 0;
+            pad.publishedFrames.store(0, std::memory_order_release);
+            pad.occupied.store(false, std::memory_order_release);
+        }
+        for (std::uint32_t pad = 0; pad < kPadCount; ++pad) {
+            if (occupied[pad])
+                static_cast<void>(importPad(pad, snapshots[pad]));
+        }
     }
 
     sample_rate_ = sampleRate;
     ringCapacityFrames_ = static_cast<std::uint32_t>(std::max(1.0, std::ceil(sample_rate_ * 0.1)));
     ring_.assign(static_cast<std::size_t>(ringCapacityFrames_) * 2U, 0.0f);
     ringWritePosition_ = ringCount_ = 0;
-    nextPad_ = settings_.startPad;
+    nextPad_ = firstCapturePad();
     sessionComplete_ = false;
     previousArmed_ = false;
     for (auto& p : pads_) {
@@ -64,12 +90,14 @@ void SamplerEngine::setSampleRate(double sampleRate) {
 void SamplerEngine::reset() noexcept {
     activePad_ = -1;
     lastCommittedPad_ = -1;
-    nextPad_ = settings_.startPad < kPadCount ? settings_.startPad : 0;
+    nextPad_ = firstCapturePad();
     sessionComplete_ = false;
     previousArmed_ = settings_.armed;
     ringWritePosition_ = ringCount_ = 0;
     nextVoiceOrder_ = 1;
-    for (auto& p : pads_) {
+    for (std::uint32_t pad = 0; pad < kPadCount; ++pad) {
+        releasePadBlocks(pad);
+        auto& p = pads_[pad];
         p.recording = p.held = p.playing = false;
         p.voiceOrder = 0;
         p.envelope.reset();
@@ -83,11 +111,14 @@ void SamplerEngine::reset() noexcept {
 
 void SamplerEngine::setSettings(const EngineSettings& s) noexcept {
     settings_ = s;
-    if (settings_.startPad >= kPadCount) settings_.startPad = 0;
+    if (settings_.activeBank >= kBankCount) settings_.activeBank = 0;
+    settings_.padsPerBank = settings_.padsPerBank <= 8U ? 8U :
+                            (settings_.padsPerBank <= 12U ? 12U : 16U);
+    if (settings_.startPad >= settings_.padsPerBank) settings_.startPad = 0;
     if (settings_.preRollMilliseconds < 0.0f) settings_.preRollMilliseconds = 0.0f;
     if (settings_.preRollMilliseconds > 100.0f) settings_.preRollMilliseconds = 100.0f;
     settings_.maxVoices = static_cast<std::uint8_t>(
-        std::clamp<std::uint32_t>(settings_.maxVoices, 1U, kPadCount));
+        std::clamp<std::uint32_t>(settings_.maxVoices, 1U, kPadsPerBank));
     enforceVoiceLimit();
     preRollFrames_ = static_cast<std::uint32_t>(std::clamp(
         std::llround(static_cast<double>(settings_.preRollMilliseconds) * sample_rate_ / 1000.0),
@@ -95,14 +126,109 @@ void SamplerEngine::setSettings(const EngineSettings& s) noexcept {
 }
 
 std::uint32_t SamplerEngine::noteToPad(std::uint8_t note) const noexcept {
-    if (note < settings_.baseNote || note >= static_cast<std::uint16_t>(settings_.baseNote) + kPadCount) return kPadCount;
-    return static_cast<std::uint32_t>(note - settings_.baseNote);
+    if (note < settings_.baseNote ||
+        note >= static_cast<std::uint16_t>(settings_.baseNote) + settings_.padsPerBank)
+        return kPadCount;
+    return static_cast<std::uint32_t>(settings_.activeBank) * kPadsPerBank +
+           static_cast<std::uint32_t>(note - settings_.baseNote);
+}
+
+std::uint32_t SamplerEngine::firstCapturePad() const noexcept {
+    return static_cast<std::uint32_t>(settings_.activeBank) * kPadsPerBank +
+           settings_.startPad;
+}
+
+std::uint32_t SamplerEngine::followingCapturePad(const std::uint32_t pad) const noexcept {
+    if (pad >= kPadCount) return kPadCount;
+    const std::uint32_t bank = pad / kPadsPerBank;
+    const std::uint32_t localPad = pad % kPadsPerBank;
+    if (localPad + 1U < settings_.padsPerBank)
+        return pad + 1U;
+    return bank + 1U < kBankCount ? (bank + 1U) * kPadsPerBank : kPadCount;
+}
+
+bool SamplerEngine::ensurePadBlock(const std::uint32_t pad,
+                                   const std::uint32_t block) noexcept {
+    if (pad >= kPadCount || block >= blocks_per_pad_)
+        return false;
+    auto& mapped = pad_blocks_[static_cast<std::size_t>(pad) * blocks_per_pad_ + block];
+    if (mapped != kNoBlock)
+        return true;
+    if (free_block_count_ == 0U)
+        return false;
+    mapped = free_blocks_[--free_block_count_];
+    pads_[pad].allocatedBlocks = std::max(pads_[pad].allocatedBlocks, block + 1U);
+    return true;
+}
+
+void SamplerEngine::releasePadBlocks(const std::uint32_t pad) noexcept {
+    if (pad >= kPadCount) return;
+    auto& metadata = pads_[pad];
+    for (std::uint32_t block = 0; block < metadata.allocatedBlocks; ++block) {
+        auto& mapped = pad_blocks_[static_cast<std::size_t>(pad) * blocks_per_pad_ + block];
+        if (mapped != kNoBlock) {
+            free_blocks_[free_block_count_++] = mapped;
+            mapped = kNoBlock;
+        }
+    }
+    metadata.allocatedBlocks = 0;
+}
+
+void SamplerEngine::trimPadBlocks(const std::uint32_t pad,
+                                  const std::uint32_t frames) noexcept {
+    if (pad >= kPadCount) return;
+    auto& metadata = pads_[pad];
+    const std::uint32_t blocksToKeep = frames == 0U ? 0U :
+        (frames + kSampleBlockFrames - 1U) / kSampleBlockFrames;
+    for (std::uint32_t block = blocksToKeep; block < metadata.allocatedBlocks; ++block) {
+        auto& mapped = pad_blocks_[static_cast<std::size_t>(pad) * blocks_per_pad_ + block];
+        if (mapped != kNoBlock) {
+            free_blocks_[free_block_count_++] = mapped;
+            mapped = kNoBlock;
+        }
+    }
+    metadata.allocatedBlocks = blocksToKeep;
+}
+
+float SamplerEngine::sampleAt(const std::uint32_t pad, const std::uint32_t frame,
+                              const std::uint32_t channel) const noexcept {
+    if (pad >= kPadCount || frame >= max_frames_ || channel >= 2U)
+        return 0.0f;
+    const std::uint32_t logicalBlock = frame / kSampleBlockFrames;
+    const std::uint32_t mapped =
+        pad_blocks_[static_cast<std::size_t>(pad) * blocks_per_pad_ + logicalBlock];
+    if (mapped == kNoBlock)
+        return 0.0f;
+    const std::size_t offset =
+        (static_cast<std::size_t>(mapped) * kSampleBlockFrames +
+         frame % kSampleBlockFrames) * 2U + channel;
+    return samples_[offset];
+}
+
+bool SamplerEngine::storeSample(const std::uint32_t pad, const std::uint32_t frame,
+                                const float left, const float right) noexcept {
+    if (pad >= kPadCount || frame >= max_frames_)
+        return false;
+    const std::uint32_t logicalBlock = frame / kSampleBlockFrames;
+    if (!ensurePadBlock(pad, logicalBlock))
+        return false;
+    const std::uint32_t mapped =
+        pad_blocks_[static_cast<std::size_t>(pad) * blocks_per_pad_ + logicalBlock];
+    const std::size_t offset =
+        (static_cast<std::size_t>(mapped) * kSampleBlockFrames +
+         frame % kSampleBlockFrames) * 2U;
+    samples_[offset] = left;
+    samples_[offset + 1U] = right;
+    return true;
 }
 
 void SamplerEngine::beginRecord(std::uint32_t pad) noexcept {
     if (pad >= kPadCount) return;
     auto& p = pads_[pad];
+    releasePadBlocks(pad);
     p.playing = false;
+    p.voiceOrder = 0;
+    p.envelope.reset();
     p.publishedPlaying.store(false, std::memory_order_release);
     p.recording = true;
     p.recordPosition = 0;
@@ -117,19 +243,17 @@ void SamplerEngine::beginRecord(std::uint32_t pad) noexcept {
     // The ring contains exactly the audio immediately preceding the trigger.
     const auto copyCount = std::min({preRollFrames_, ringCount_, max_frames_});
     const auto start = (ringWritePosition_ + ringCapacityFrames_ - copyCount) % ringCapacityFrames_;
-    const auto capacity = max_frames_;
-    for (std::uint32_t i = 0; i < copyCount && i < capacity; ++i) {
+    for (std::uint32_t i = 0; i < copyCount && i < max_frames_; ++i) {
         const auto ri = (start + i) % ringCapacityFrames_;
-        const auto di = static_cast<std::size_t>(i) * 2U;
-        const auto si = static_cast<std::size_t>(pad) * max_frames_ * 2U + di;
-        samples_[si] = ring_[static_cast<std::size_t>(ri) * 2U];
-        samples_[si + 1] = ring_[static_cast<std::size_t>(ri) * 2U + 1U];
-        const auto l = samples_[si]; const auto r = samples_[si + 1];
+        const auto l = ring_[static_cast<std::size_t>(ri) * 2U];
+        const auto r = ring_[static_cast<std::size_t>(ri) * 2U + 1U];
+        if (!storeSample(pad, i, l, r))
+            break;
         p.recordPeak = std::max(p.recordPeak, std::max(std::abs(l), std::abs(r)));
         p.recordSumSquares += static_cast<double>(l) * l + static_cast<double>(r) * r;
+        p.recordPosition = i + 1U;
+        p.recordedFrames = i + 1U;
     }
-    p.recordPosition = copyCount;
-    p.recordedFrames = copyCount;
     activePad_ = static_cast<std::int32_t>(pad);
 }
 
@@ -138,15 +262,14 @@ void SamplerEngine::finishRecord(std::uint32_t pad, std::uint32_t trimFrames) no
     auto& p = pads_[pad];
     if (!p.recording) return;
     if (trimFrames > p.recordedFrames) trimFrames = p.recordedFrames;
-    const auto base = static_cast<std::size_t>(pad) * max_frames_ * 2U;
     for (std::uint32_t frame = p.recordedFrames - trimFrames; frame < p.recordedFrames; ++frame) {
-        const auto offset = base + static_cast<std::size_t>(frame) * 2U;
-        const auto left = samples_[offset];
-        const auto right = samples_[offset + 1U];
+        const auto left = sampleAt(pad, frame, 0U);
+        const auto right = sampleAt(pad, frame, 1U);
         p.recordSumSquares -= static_cast<double>(left) * left + static_cast<double>(right) * right;
     }
     p.recordedFrames -= trimFrames;
     p.recordPosition = p.recordedFrames;
+    trimPadBlocks(pad, p.recordedFrames);
     p.recordSumSquares = std::max(0.0, p.recordSumSquares);
     p.recording = false;
     p.publishedRecording.store(false, std::memory_order_release);
@@ -158,17 +281,20 @@ void SamplerEngine::finishRecord(std::uint32_t pad, std::uint32_t trimFrames) no
     p.publishedFrames.store(n, std::memory_order_release);
     p.occupied.store(n != 0, std::memory_order_release);
     p.generation.fetch_add(1, std::memory_order_release);
-    lastCommittedPad_ = static_cast<std::int32_t>(pad);
+    if (n != 0U)
+        lastCommittedPad_ = static_cast<std::int32_t>(pad);
 }
 
 void SamplerEngine::writeRecordFrame(std::uint32_t, float left, float right) noexcept {
     if (activePad_ < 0 || activePad_ >= static_cast<std::int32_t>(kPadCount)) return;
     auto& p = pads_[static_cast<std::uint32_t>(activePad_)];
     if (!p.recording || p.recordPosition >= max_frames_) return;
-    const auto offset = static_cast<std::size_t>(activePad_) * max_frames_ * 2U +
-                        static_cast<std::size_t>(p.recordPosition) * 2U;
-    samples_[offset] = left;
-    samples_[offset + 1U] = right;
+    if (!storeSample(static_cast<std::uint32_t>(activePad_), p.recordPosition, left, right)) {
+        finishRecord(static_cast<std::uint32_t>(activePad_));
+        activePad_ = -1;
+        sessionComplete_ = true;
+        return;
+    }
     p.recordPeak = std::max(p.recordPeak, std::max(std::abs(left), std::abs(right)));
     p.recordSumSquares += static_cast<double>(left) * left + static_cast<double>(right) * right;
     ++p.recordPosition;
@@ -259,15 +385,27 @@ void SamplerEngine::handleEvent(const MidiEvent& event) noexcept {
     if (settings_.armed) {
         if (on && settings_.captureMode == CaptureMode::FixedDuration && !sessionComplete_) {
             if (activePad_ >= 0) finishRecord(static_cast<std::uint32_t>(activePad_));
-            if (nextPad_ < kPadCount) beginRecord(nextPad_++);
+            if (nextPad_ < kPadCount) {
+                const auto pad = nextPad_;
+                nextPad_ = followingCapturePad(pad);
+                beginRecord(pad);
+            }
             else { activePad_ = -1; sessionComplete_ = true; }
         } else if (on && settings_.captureMode == CaptureMode::Sequential && activePad_ < 0 && !sessionComplete_) {
-            if (nextPad_ < kPadCount) beginRecord(nextPad_++);
+            if (nextPad_ < kPadCount) {
+                const auto pad = nextPad_;
+                nextPad_ = followingCapturePad(pad);
+                beginRecord(pad);
+            }
             else sessionComplete_ = true;
         } else if (on && settings_.captureMode == CaptureMode::Sequential && activePad_ >= 0) {
             const auto trim = std::min(preRollFrames_, pads_[static_cast<std::uint32_t>(activePad_)].recordedFrames);
             finishRecord(static_cast<std::uint32_t>(activePad_), trim);
-            if (nextPad_ < kPadCount) beginRecord(nextPad_++);
+            if (nextPad_ < kPadCount) {
+                const auto pad = nextPad_;
+                nextPad_ = followingCapturePad(pad);
+                beginRecord(pad);
+            }
             else { activePad_ = -1; sessionComplete_ = true; }
         }
         return; // note identity and note-off do not affect sequential capture
@@ -286,7 +424,7 @@ void SamplerEngine::process(const float* inputLeft, const float* inputRight,
     if (settings_.armed != previousArmed_) {
         if (settings_.armed) {
             activePad_ = -1; sessionComplete_ = false;
-            nextPad_ = settings_.startPad;
+            nextPad_ = firstCapturePad();
         } else if (activePad_ >= 0) {
             finishRecord(static_cast<std::uint32_t>(activePad_));
             activePad_ = -1;
@@ -328,9 +466,6 @@ void SamplerEngine::process(const float* inputLeft, const float* inputRight,
             if (i >= n) { p.playing = false; p.publishedPlaying.store(false, std::memory_order_release); continue; }
             const auto j = (i + 1U < n) ? i + 1U : i;
             const auto frac = static_cast<float>(pos - static_cast<double>(i));
-            const auto base = static_cast<std::size_t>(pad) * max_frames_ * 2U;
-            const auto a = base + static_cast<std::size_t>(i) * 2U;
-            const auto b = base + static_cast<std::size_t>(j) * 2U;
             const double step = p.sourceSampleRate.load(std::memory_order_relaxed) / sample_rate_;
             const double remainingOutputFrames = (static_cast<double>(n) - pos) / step;
             if (!p.envelope.releasing() && p.envelope.releaseFrames() > 0U &&
@@ -338,8 +473,10 @@ void SamplerEngine::process(const float* inputLeft, const float* inputRight,
                 p.envelope.noteOff();
             const float envelopeGain = p.envelope.next();
             const float voiceGain = p.velocityGain * envelopeGain;
-            outL += ((samples_[a] * (1.0f - frac)) + samples_[b] * frac) * voiceGain;
-            outR += ((samples_[a + 1U] * (1.0f - frac)) + samples_[b + 1U] * frac) * voiceGain;
+            outL += ((sampleAt(pad, i, 0U) * (1.0f - frac)) +
+                     sampleAt(pad, j, 0U) * frac) * voiceGain;
+            outR += ((sampleAt(pad, i, 1U) * (1.0f - frac)) +
+                     sampleAt(pad, j, 1U) * frac) * voiceGain;
             p.playPosition += step;
             if (p.playPosition >= n || !p.envelope.active()) {
                 p.playing = false;
@@ -390,8 +527,10 @@ bool SamplerEngine::exportPad(std::uint32_t pad, PadData& destination) const {
     destination.peak = p.publishedPeak.load(std::memory_order_relaxed);
     destination.rms = p.publishedRms.load(std::memory_order_relaxed);
     destination.stereo.resize(static_cast<std::size_t>(n) * 2U);
-    const auto base = static_cast<std::size_t>(pad) * max_frames_ * 2U;
-    std::copy_n(samples_.data() + base, destination.stereo.size(), destination.stereo.data());
+    for (std::uint32_t frame = 0; frame < n; ++frame) {
+        destination.stereo[static_cast<std::size_t>(frame) * 2U] = sampleAt(pad, frame, 0U);
+        destination.stereo[static_cast<std::size_t>(frame) * 2U + 1U] = sampleAt(pad, frame, 1U);
+    }
     return true;
 }
 
@@ -404,7 +543,21 @@ bool SamplerEngine::importPad(std::uint32_t pad, const PadData& source) {
                      source.stereo.begin() + static_cast<std::size_t>(source.frames) * 2U,
                      [](const float sample) noexcept { return std::isfinite(sample); }))
         return false;
+    std::uint32_t storedFrames = source.frames;
+    double storedRate = source.sampleRate;
+    if (source.frames > max_frames_) {
+        const auto convertedFrames = static_cast<std::uint64_t>(std::llround(
+            static_cast<double>(source.frames) * sample_rate_ / source.sampleRate));
+        if (convertedFrames == 0U || convertedFrames > max_frames_) return false;
+        storedFrames = static_cast<std::uint32_t>(convertedFrames);
+        storedRate = sample_rate_;
+    }
+
     auto& p = pads_[pad];
+    const std::uint32_t requiredBlocks =
+        (storedFrames + kSampleBlockFrames - 1U) / kSampleBlockFrames;
+    if (requiredBlocks > free_block_count_ + p.allocatedBlocks)
+        return false;
     if (activePad_ == static_cast<std::int32_t>(pad)) {
         activePad_ = -1;
         nextPad_ = pad;
@@ -415,33 +568,31 @@ bool SamplerEngine::importPad(std::uint32_t pad, const PadData& source) {
     p.envelope.reset();
     p.publishedPlaying.store(false, std::memory_order_release);
     p.publishedRecording.store(false, std::memory_order_release);
-    const auto base = static_cast<std::size_t>(pad) * max_frames_ * 2U;
-    std::uint32_t storedFrames = source.frames;
-    double storedRate = source.sampleRate;
+    releasePadBlocks(pad);
     if (source.frames <= max_frames_) {
-        std::copy_n(source.stereo.data(), static_cast<std::size_t>(source.frames) * 2U, samples_.data() + base);
+        for (std::uint32_t frame = 0; frame < storedFrames; ++frame) {
+            const auto offset = static_cast<std::size_t>(frame) * 2U;
+            static_cast<void>(storeSample(pad, frame, source.stereo[offset],
+                                          source.stereo[offset + 1U]));
+        }
     } else {
-        const auto convertedFrames = static_cast<std::uint64_t>(std::llround(
-            static_cast<double>(source.frames) * sample_rate_ / source.sampleRate));
-        if (convertedFrames == 0U || convertedFrames > max_frames_) return false;
-        storedFrames = static_cast<std::uint32_t>(convertedFrames);
-        storedRate = sample_rate_;
         const double step = source.sampleRate / sample_rate_;
         for (std::uint32_t frame = 0; frame < storedFrames; ++frame) {
             const double position = std::min(static_cast<double>(source.frames - 1U), frame * step);
             const auto first = static_cast<std::uint32_t>(position);
             const auto second = std::min(first + 1U, source.frames - 1U);
             const auto fraction = static_cast<float>(position - first);
-            for (std::uint32_t channel = 0; channel < 2U; ++channel) {
-                const float a = source.stereo[static_cast<std::size_t>(first) * 2U + channel];
-                const float b = source.stereo[static_cast<std::size_t>(second) * 2U + channel];
-                samples_[base + static_cast<std::size_t>(frame) * 2U + channel] =
-                    a + (b - a) * fraction;
-            }
+            const auto firstOffset = static_cast<std::size_t>(first) * 2U;
+            const auto secondOffset = static_cast<std::size_t>(second) * 2U;
+            const float left = source.stereo[firstOffset] +
+                (source.stereo[secondOffset] - source.stereo[firstOffset]) * fraction;
+            const float right = source.stereo[firstOffset + 1U] +
+                (source.stereo[secondOffset + 1U] - source.stereo[firstOffset + 1U]) * fraction;
+            static_cast<void>(storeSample(pad, frame, left, right));
         }
     }
     p.sourceSampleRate = storedRate;
-    p.recordedFrames = storedFrames;
+    p.recordedFrames = p.recordPosition = storedFrames;
     p.publishedPeak.store(source.peak, std::memory_order_relaxed);
     p.publishedRms.store(source.rms, std::memory_order_relaxed);
     p.publishedFrames.store(storedFrames, std::memory_order_release);
@@ -489,6 +640,7 @@ void SamplerEngine::clearPad(std::uint32_t pad) noexcept {
     p.envelope.reset();
     p.publishedPlaying.store(false, std::memory_order_release);
     p.publishedRecording.store(false, std::memory_order_release);
+    releasePadBlocks(pad);
     p.publishedFrames.store(0, std::memory_order_release);
     p.occupied.store(false, std::memory_order_release);
     p.publishedPeak.store(0.0f, std::memory_order_relaxed);
@@ -499,7 +651,8 @@ void SamplerEngine::clearPad(std::uint32_t pad) noexcept {
 
 void SamplerEngine::clearAllPads() noexcept {
     for (std::uint32_t i = 0; i < kPadCount; ++i) clearPad(i);
-    activePad_ = -1; lastCommittedPad_ = -1; sessionComplete_ = false; nextPad_ = settings_.startPad;
+    activePad_ = -1; lastCommittedPad_ = -1; sessionComplete_ = false;
+    nextPad_ = firstCapturePad();
 }
 
 void SamplerEngine::finalizeRecording() noexcept { finalizeRequested_.store(true, std::memory_order_release); }

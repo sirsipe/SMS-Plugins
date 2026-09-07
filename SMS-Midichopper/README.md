@@ -49,7 +49,14 @@ cp -a build/bin/SMS-Midichopper.lv2 ~/.lv2/
 3. The first MIDI note-on starts the first slice. Each later note-on closes that
    slice and immediately starts the next consecutive pad.
 4. Click **FINALIZE** or return to **PLAY** to keep the last open slice.
-5. Play pads from MIDI note 36 upward; the base note is configurable.
+5. Select Bank A–D and play pads from MIDI note 36 upward; the base note is
+   configurable.
+
+The pad layout can be switched between 16 pads (4×4), 12 pads (3×4), and 8 pads
+(4×2). Pad numbering runs from the bottom row upward to match common hardware.
+Each bank retains 16 storage slots, so switching to a smaller layout hides the
+unused slots without deleting their samples. Sequential capture skips hidden
+slots and continues automatically into the next bank.
 
 Open **Sample Editor** to move the pad bank into the right panel and edit the
 selected pad in the main view. Drag the waveform's start/end handles to choose
@@ -61,8 +68,8 @@ reached, triggering another pad stops the oldest playing voice; setting it to
 one provides monophonic playback.
 
 Pre-roll moves boundaries slightly earlier to compensate for late taps. Fixed
-mode records one fixed-length slice per note-on. Samples are stored with the DAW
-project as compact 16-bit stereo state.
+mode records one fixed-length slice per note-on. Samples from all four banks are
+stored with the DAW project as compact 16-bit stereo state.
 
 See [Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md) for implementation details and
 future-format notes. Licensed under the [MIT License](LICENSE).

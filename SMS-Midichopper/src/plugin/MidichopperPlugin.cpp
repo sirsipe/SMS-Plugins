@@ -9,25 +9,29 @@
 #include <array>
 #include <atomic>
 #include <cmath>
+#include <cstdio>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <string>
 
 START_NAMESPACE_DISTRHO
 
 namespace {
 
-constexpr std::array<const char*, midichopper::kPadCount> kPadStateKeys{{
-    "pad_01", "pad_02", "pad_03", "pad_04", "pad_05", "pad_06", "pad_07", "pad_08",
-    "pad_09", "pad_10", "pad_11", "pad_12", "pad_13", "pad_14", "pad_15", "pad_16",
-}};
+std::array<std::string, midichopper::kPadCount> makePadStateKeys(const char* const prefix)
+{
+    std::array<std::string, midichopper::kPadCount> keys;
+    for (std::uint32_t pad = 0; pad < midichopper::kPadCount; ++pad) {
+        char key[24];
+        std::snprintf(key, sizeof(key), "%s%02u", prefix, pad + 1U);
+        keys[pad] = key;
+    }
+    return keys;
+}
 
-constexpr std::array<const char*, midichopper::kPadCount> kPadEditStateKeys{{
-    "pad_edit_01", "pad_edit_02", "pad_edit_03", "pad_edit_04",
-    "pad_edit_05", "pad_edit_06", "pad_edit_07", "pad_edit_08",
-    "pad_edit_09", "pad_edit_10", "pad_edit_11", "pad_edit_12",
-    "pad_edit_13", "pad_edit_14", "pad_edit_15", "pad_edit_16",
-}};
+const auto kPadStateKeys = makePadStateKeys("pad_");
+const auto kPadEditStateKeys = makePadStateKeys("pad_edit_");
 
 constexpr std::uint32_t kAudioStateCount = midichopper::kPadCount;
 constexpr std::uint32_t kEditStateOffset = kAudioStateCount;
@@ -37,22 +41,22 @@ constexpr std::uint32_t kStateCount = kWaveformDataState + 1U;
 constexpr const char* kWaveformRequestKey = "waveform_request";
 constexpr const char* kWaveformDataKey = "waveform_data";
 
-constexpr std::array<const char*, midichopper::kPadCount> kPadOccupiedNames{{
+constexpr std::array<const char*, midichopper::kPadsPerBank> kPadOccupiedNames{{
     "Pad 1 Occupied", "Pad 2 Occupied", "Pad 3 Occupied", "Pad 4 Occupied", "Pad 5 Occupied", "Pad 6 Occupied", "Pad 7 Occupied", "Pad 8 Occupied",
     "Pad 9 Occupied", "Pad 10 Occupied", "Pad 11 Occupied", "Pad 12 Occupied", "Pad 13 Occupied", "Pad 14 Occupied", "Pad 15 Occupied", "Pad 16 Occupied",
 }};
 
-constexpr std::array<const char*, midichopper::kPadCount> kPadOccupiedSymbols{{
+constexpr std::array<const char*, midichopper::kPadsPerBank> kPadOccupiedSymbols{{
     "pad_1_occupied", "pad_2_occupied", "pad_3_occupied", "pad_4_occupied", "pad_5_occupied", "pad_6_occupied", "pad_7_occupied", "pad_8_occupied",
     "pad_9_occupied", "pad_10_occupied", "pad_11_occupied", "pad_12_occupied", "pad_13_occupied", "pad_14_occupied", "pad_15_occupied", "pad_16_occupied",
 }};
 
-constexpr std::array<const char*, midichopper::kPadCount> kPadActivityNames{{
+constexpr std::array<const char*, midichopper::kPadsPerBank> kPadActivityNames{{
     "Pad 1 Activity", "Pad 2 Activity", "Pad 3 Activity", "Pad 4 Activity", "Pad 5 Activity", "Pad 6 Activity", "Pad 7 Activity", "Pad 8 Activity",
     "Pad 9 Activity", "Pad 10 Activity", "Pad 11 Activity", "Pad 12 Activity", "Pad 13 Activity", "Pad 14 Activity", "Pad 15 Activity", "Pad 16 Activity",
 }};
 
-constexpr std::array<const char*, midichopper::kPadCount> kPadActivitySymbols{{
+constexpr std::array<const char*, midichopper::kPadsPerBank> kPadActivitySymbols{{
     "pad_1_activity", "pad_2_activity", "pad_3_activity", "pad_4_activity", "pad_5_activity", "pad_6_activity", "pad_7_activity", "pad_8_activity",
     "pad_9_activity", "pad_10_activity", "pad_11_activity", "pad_12_activity", "pad_13_activity", "pad_14_activity", "pad_15_activity", "pad_16_activity",
 }};
@@ -78,7 +82,7 @@ protected:
     const char* getLabel() const override { return "SMSMidichopper"; }
     const char* getDescription() const override
     {
-        return "Capture incoming stereo audio into 16 sequential MIDI-controlled slices.";
+        return "Capture incoming stereo audio into four banks of MIDI-controlled slices.";
     }
     const char* getMaker() const override { return "SudoMetalStudio"; }
     const char* getHomePage() const override
@@ -163,6 +167,21 @@ protected:
                            kParameterIsInteger,
                            "Maximum number of pads that may play simultaneously.");
             break;
+        case kParameterActiveBank:
+            setupParameter(parameter, "Active Bank", "active_bank", "", 1.0f, 1.0f, 4.0f,
+                           kParameterIsInteger, "Bank selected for MIDI playback and capture.");
+            break;
+        case kParameterPadLayout:
+            setupParameter(parameter, "Pad Layout", "pad_layout", "", 0.0f, 0.0f, 2.0f,
+                           kParameterIsInteger,
+                           "0 = 16 pads, 1 = 12 pads, 2 = 8 pads per bank.");
+            break;
+        case kParameterCurrentCapturePad:
+            setupParameter(parameter, "Current Capture Pad", "current_capture_pad", "",
+                           0.0f, 0.0f, 64.0f,
+                           kParameterIsOutput | kParameterIsInteger,
+                           "Global pad number currently receiving captured audio; zero when idle.");
+            break;
         default:
             if (index >= kFirstPadStatusParameter && index < kFirstPadActivityParameter) {
                 const std::uint32_t pad = index - kFirstPadStatusParameter;
@@ -181,15 +200,15 @@ protected:
     void initState(const uint32_t index, State& state) override
     {
         if (index < kAudioStateCount) {
-            state.key = kPadStateKeys[index];
-            state.label = kPadOccupiedNames[index];
+            state.key = kPadStateKeys[index].c_str();
+            state.label = "Pad Sample Audio";
             state.defaultValue = "";
             // Keep potentially large audio blobs on DSP only. DPF/LV2 know this is
             // already Base64; it must not be sent over the DSP<->UI state channel.
             state.hints = kStateIsBase64Blob | kStateIsOnlyForDSP;
         } else if (index < kWaveformRequestState) {
             const auto pad = index - kEditStateOffset;
-            state.key = kPadEditStateKeys[pad];
+            state.key = kPadEditStateKeys[pad].c_str();
             state.label = "Pad Sample Editor Settings";
             state.defaultValue = "SP1;0;1;0;0;1;0";
             state.hints = kStateIsHostReadable;
@@ -234,7 +253,7 @@ protected:
     String getState(const char* const key) const override
     {
         for (std::uint32_t pad = 0; pad < midichopper::kPadCount; ++pad) {
-            if (std::strcmp(key, kPadStateKeys[pad]) != 0)
+            if (std::strcmp(key, kPadStateKeys[pad].c_str()) != 0)
                 continue;
             midichopper::PadData snapshot;
             if (!sampler_.exportPad(pad, snapshot) || snapshot.frames == 0U)
@@ -243,7 +262,7 @@ protected:
             return String(midichopper::plugin::encodePadState(snapshot, sourceRate).c_str());
         }
         for (std::uint32_t pad = 0; pad < midichopper::kPadCount; ++pad) {
-            if (std::strcmp(key, kPadEditStateKeys[pad]) == 0)
+            if (std::strcmp(key, kPadEditStateKeys[pad].c_str()) == 0)
                 return String(midichopper::plugin::encodePlaybackSettings(
                     sampler_.padPlaybackSettings(pad)).c_str());
         }
@@ -257,7 +276,7 @@ protected:
     void setState(const char* const key, const char* const value) override
     {
         for (std::uint32_t pad = 0; pad < midichopper::kPadCount; ++pad) {
-            if (std::strcmp(key, kPadStateKeys[pad]) != 0)
+            if (std::strcmp(key, kPadStateKeys[pad].c_str()) != 0)
                 continue;
             if (value == nullptr || value[0] == '\0') {
                 sampler_.clearPad(pad);
@@ -269,7 +288,7 @@ protected:
             return;
         }
         for (std::uint32_t pad = 0; pad < midichopper::kPadCount; ++pad) {
-            if (std::strcmp(key, kPadEditStateKeys[pad]) != 0)
+            if (std::strcmp(key, kPadEditStateKeys[pad].c_str()) != 0)
                 continue;
             sms::dsp::SamplePlaybackSettings settings;
             if (midichopper::plugin::decodePlaybackSettings(value, settings))
@@ -286,7 +305,7 @@ protected:
                 static_cast<void>(updateStateValue(kWaveformDataKey, waveform.c_str()));
                 const std::string editor = midichopper::plugin::encodePlaybackSettings(
                     sampler_.padPlaybackSettings(pad));
-                static_cast<void>(updateStateValue(kPadEditStateKeys[pad], editor.c_str()));
+                static_cast<void>(updateStateValue(kPadEditStateKeys[pad].c_str(), editor.c_str()));
             }
             return;
         }
@@ -356,6 +375,7 @@ private:
         case kParameterInputMonitor: return 1.0f;
         case kParameterBaseMidiNote: return 36.0f;
         case kParameterMaxVoices: return 16.0f;
+        case kParameterActiveBank: return 1.0f;
         default: return 0.0f;
         }
     }
@@ -382,6 +402,12 @@ private:
         settings.gain = decibelsToGain(std::clamp(parameter(kParameterOutputGainDb), -24.0f, 12.0f));
         settings.maxVoices = static_cast<std::uint8_t>(
             std::clamp(parameter(kParameterMaxVoices), 1.0f, 16.0f));
+        settings.activeBank = static_cast<std::uint8_t>(
+            std::clamp(parameter(kParameterActiveBank), 1.0f, 4.0f) - 1.0f);
+        const auto layout = static_cast<std::uint32_t>(
+            std::clamp(parameter(kParameterPadLayout), 0.0f, 2.0f));
+        settings.padsPerBank = static_cast<std::uint8_t>(layout == 0U ? 16U :
+                                                        (layout == 1U ? 12U : 8U));
         sampler_.setSettings(settings);
     }
 
@@ -396,11 +422,31 @@ private:
     void updatePadOutputParameters() noexcept
     {
         using namespace midichopper::plugin;
-        for (uint32_t pad = 0; pad < midichopper::kPadCount; ++pad) {
-            const midichopper::PadMetadata metadata = sampler_.padMetadata(pad);
-            parameters_[kFirstPadStatusParameter + pad].store(metadata.occupied ? 1.0f : 0.0f,
-                                                               std::memory_order_relaxed);
-            parameters_[kFirstPadActivityParameter + pad].store(
+        auto settings = sampler_.settings();
+        std::uint32_t currentCapturePad = midichopper::kPadCount;
+        for (std::uint32_t pad = 0; pad < midichopper::kPadCount; ++pad) {
+            if (sampler_.padMetadata(pad).recording) {
+                currentCapturePad = pad;
+                settings.activeBank = static_cast<std::uint8_t>(pad / midichopper::kPadsPerBank);
+                parameters_[kParameterActiveBank].store(
+                    static_cast<float>(settings.activeBank + 1U), std::memory_order_relaxed);
+                break;
+            }
+        }
+        parameters_[kParameterCurrentCapturePad].store(
+            currentCapturePad < midichopper::kPadCount ?
+                static_cast<float>(currentCapturePad + 1U) : 0.0f,
+            std::memory_order_relaxed);
+
+        const std::uint32_t bankBase =
+            static_cast<std::uint32_t>(settings.activeBank) * midichopper::kPadsPerBank;
+        for (std::uint32_t localPad = 0; localPad < midichopper::kPadsPerBank; ++localPad) {
+            const bool visible = localPad < settings.padsPerBank;
+            const midichopper::PadMetadata metadata =
+                visible ? sampler_.padMetadata(bankBase + localPad) : midichopper::PadMetadata{};
+            parameters_[kFirstPadStatusParameter + localPad].store(
+                visible && metadata.occupied ? 1.0f : 0.0f, std::memory_order_relaxed);
+            parameters_[kFirstPadActivityParameter + localPad].store(
                 (metadata.recording || metadata.active) ? 1.0f : 0.0f, std::memory_order_relaxed);
         }
     }

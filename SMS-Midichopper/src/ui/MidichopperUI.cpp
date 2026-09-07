@@ -21,9 +21,12 @@
  *  12..27 pad occupied outputs
  *  28..43 pad activity outputs
  *  44 maximum simultaneous playback voices (1 .. 16)
+ *  45 active bank (1 .. 4)
+ *  46 pad layout (0 = 16, 1 = 12, 2 = 8 pads)
+ *  47 current global capture pad (0 = idle, 1 .. 64)
  *
  * State contract used by the sample editor:
- *   pad_edit_01..16  compact non-destructive cut-point and ADSR settings
+ *   pad_edit_01..64  compact non-destructive cut-point and ADSR settings
  *   waveform_request selected pad index sent from UI to DSP
  *   waveform_data    compact 128-bin min/max summary returned by DSP
  *
@@ -59,15 +62,23 @@ namespace {
 
 constexpr uint kInitialWidth = 960;
 constexpr uint kInitialHeight = 680;
-constexpr uint kPadCount = 16;
+constexpr uint kPadsPerBank = 16;
+constexpr uint kBankCount = 4;
+constexpr uint kPadCount = kPadsPerBank * kBankCount;
 constexpr uint kBaseNoteDefault = 36;
 
-constexpr std::array<const char*, kPadCount> kPadEditStateKeys{{
-    "pad_edit_01", "pad_edit_02", "pad_edit_03", "pad_edit_04",
-    "pad_edit_05", "pad_edit_06", "pad_edit_07", "pad_edit_08",
-    "pad_edit_09", "pad_edit_10", "pad_edit_11", "pad_edit_12",
-    "pad_edit_13", "pad_edit_14", "pad_edit_15", "pad_edit_16",
-}};
+std::array<std::string, kPadCount> makePadEditStateKeys()
+{
+    std::array<std::string, kPadCount> keys;
+    for (uint pad = 0; pad < kPadCount; ++pad) {
+        char key[24];
+        std::snprintf(key, sizeof(key), "pad_edit_%02u", pad + 1U);
+        keys[pad] = key;
+    }
+    return keys;
+}
+
+const auto kPadEditStateKeys = makePadEditStateKeys();
 
 enum Parameter : uint32_t {
     kArm = 0,
@@ -83,8 +94,11 @@ enum Parameter : uint32_t {
     kUndo,
     kClearAll,
     kPadOccupied1,
-    kPadActivity1 = kPadOccupied1 + kPadCount,
-    kMaxVoices = kPadActivity1 + kPadCount,
+    kPadActivity1 = kPadOccupied1 + kPadsPerBank,
+    kMaxVoices = kPadActivity1 + kPadsPerBank,
+    kActiveBank,
+    kPadLayout,
+    kCurrentCapturePad,
 };
 
 const DGL_NAMESPACE::Color kBackground(14, 17, 24);
@@ -114,12 +128,15 @@ public:
           fBaseNote(kBaseNoteDefault),
           fGain(0.0f),
           fMaxVoices(16),
+          fBank(0),
+          fLayout(0),
           fSelectedPad(0),
           fCurrentPad(-1),
           fPressedPad(-1),
           fPressedActionParameter(-1),
           fClearArmed(false),
           fClearTicks(0),
+          fMenuOpen(false),
           fEditorMode(false),
           fDragTarget(-1),
           fDragStartX(0.0f),
@@ -146,22 +163,23 @@ protected:
     {
         if (index >= kPadOccupied1 && index < kPadActivity1)
         {
-            const auto pad = static_cast<std::size_t>(index - kPadOccupied1);
-            const bool wasOccupied = fPadState[pad] != '0';
+            const auto localPad = static_cast<std::size_t>(index - kPadOccupied1);
+            const int pad = globalPad(static_cast<int>(localPad));
+            const bool wasOccupied = fPadState[localPad] != '0';
             const bool isOccupied = value >= 0.5f;
-            fPadState[pad] = isOccupied ? '1' : '0';
-            if (fEditorMode && pad == static_cast<std::size_t>(fSelectedPad) &&
-                wasOccupied != isOccupied)
-                requestWaveform();
+            fPadState[localPad] = isOccupied ? '1' : '0';
+            if (pad == fSelectedPad && wasOccupied != isOccupied)
+                refreshSelectedWaveform();
             repaint();
             return;
         }
         if (index >= kPadActivity1 && index < kMaxVoices)
         {
-            const int pad = static_cast<int>(index - kPadActivity1);
-            const bool wasActive = fPadStatus[static_cast<std::size_t>(pad)] != '0';
+            const int localPad = static_cast<int>(index - kPadActivity1);
+            const int pad = globalPad(localPad);
+            const bool wasActive = fPadStatus[static_cast<std::size_t>(localPad)] != '0';
             const bool isActive = value >= 0.5f;
-            fPadStatus[static_cast<std::size_t>(pad)] = isActive ? '1' : '0';
+            fPadStatus[static_cast<std::size_t>(localPad)] = isActive ? '1' : '0';
             if (fEditorMode && isActive && !wasActive && pad != fSelectedPad)
                 selectEditorPad(pad);
             if (fArm && isActive)
@@ -179,17 +197,43 @@ protected:
         case kPlaybackMode: fPlaybackMode = value; break;
         case kMonitor:     fMonitor = value; break;
         case kStartPad:
-            fStartPad = clampPad(value - 1.0f);
+            fStartPad = clampLocalPad(value - 1.0f);
             if (!fEditorMode)
-                fSelectedPad = fStartPad;
+                fSelectedPad = globalPad(fStartPad);
             break;
         case kPreRoll:     fPreRoll = value; break;
         case kBaseNote:    fBaseNote = clampNote(value); break;
         case kGain:        fGain = value; break;
         case kMaxVoices:
             fMaxVoices = std::clamp(static_cast<int>(std::lround(value)), 1,
-                                    static_cast<int>(kPadCount));
+                                    static_cast<int>(kPadsPerBank));
             break;
+        case kActiveBank:
+            fBank = std::clamp(static_cast<int>(std::lround(value)) - 1, 0,
+                               static_cast<int>(kBankCount - 1));
+            normalizeSelectionForBank();
+            break;
+        case kPadLayout:
+            fLayout = std::clamp(static_cast<int>(std::lround(value)), 0, 2);
+            if (fStartPad >= visiblePadCount())
+                fStartPad = 0;
+            normalizeSelectionForBank();
+            refreshSelectedWaveform();
+            break;
+        case kCurrentCapturePad: {
+            const int pad = static_cast<int>(std::lround(value)) - 1;
+            fCurrentPad = pad >= 0 && pad < static_cast<int>(kPadCount) ? pad : -1;
+            if (fCurrentPad >= 0) {
+                const int captureBank = fCurrentPad / static_cast<int>(kPadsPerBank);
+                const bool bankChanged = captureBank != fBank;
+                fBank = captureBank;
+                if (fEditorMode && fCurrentPad != fSelectedPad)
+                    selectEditorPad(fCurrentPad);
+                else if (bankChanged)
+                    normalizeSelectionForBank();
+            }
+            break;
+        }
         default: return;
         }
         repaint();
@@ -206,9 +250,16 @@ protected:
         else if (std::strcmp(key, "pad_status") == 0)
             copyChars(fPadStatus, value);
         else if (std::strcmp(key, "current_pad") == 0)
+        {
             fCurrentPad = parsePad(value, -1);
+            if (fCurrentPad >= 0)
+                fBank = fCurrentPad / static_cast<int>(kPadsPerBank);
+        }
         else if (std::strcmp(key, "selected_pad") == 0)
+        {
             fSelectedPad = clampPad(std::strtof(value, nullptr));
+            fBank = fSelectedPad / static_cast<int>(kPadsPerBank);
+        }
         else if (std::strcmp(key, "status") == 0)
             copyString(fStatus, value);
         else if (std::strcmp(key, "waveform_data") == 0)
@@ -271,6 +322,8 @@ protected:
             drawControlPanel();
         }
         drawFooter();
+        if (fMenuOpen)
+            drawMenuOverlay();
         restore();
 
     }
@@ -290,6 +343,27 @@ protected:
 
         if (ev.press)
         {
+            if (hit(x, y, 904, 25, 32, 32))
+            {
+                fMenuOpen = !fMenuOpen;
+                repaint();
+                return true;
+            }
+            if (fMenuOpen)
+            {
+                for (int layoutIndex = 0; layoutIndex < 3; ++layoutIndex)
+                {
+                    if (hit(x, y, 756, 100.0f + layoutIndex * 31.0f, 168, 27))
+                    {
+                        fMenuOpen = false;
+                        selectLayout(layoutIndex);
+                        return true;
+                    }
+                }
+                fMenuOpen = false;
+                repaint();
+                return true;
+            }
             if (fEditorMode)
             {
                 if (hit(x, y, 690, 112, 222, 32))
@@ -299,10 +373,18 @@ protected:
                     repaint();
                     return true;
                 }
-                const int editorPad = editorPadGrid().hit({x, y});
+                for (int bank = 0; bank < static_cast<int>(kBankCount); ++bank)
+                {
+                    if (hit(x, y, 690.0f + bank * 57.0f, 166.0f, 51.0f, 26.0f))
+                    {
+                        selectBank(bank);
+                        return true;
+                    }
+                }
+                const int editorPad = localPadFromVisualIndex(editorPadGrid().hit({x, y}));
                 if (editorPad >= 0)
                 {
-                    selectEditorPad(editorPad);
+                    selectEditorPad(globalPad(editorPad));
                     return true;
                 }
                 const float startX = 46.0f + 586.0f * fEditorSettings.start;
@@ -340,15 +422,24 @@ protected:
             if (hit(x, y, 690, 108, 222, 28))
             {
                 fEditorMode = true;
-                fHasWaveform = false;
-                requestWaveform();
+                refreshSelectedWaveform();
                 repaint();
                 return true;
+            }
+            for (int bank = 0; bank < static_cast<int>(kBankCount); ++bank)
+            {
+                if (hit(x, y, 80.0f + bank * 56.0f, 140.0f, 50.0f, 28.0f))
+                {
+                    selectBank(bank);
+                    return true;
+                }
             }
             const int pad = hitPad(x, y);
             if (pad >= 0)
             {
-                fSelectedPad = pad;
+                fSelectedPad = globalPad(pad);
+                fHasWaveform = false;
+                requestWaveform();
                 if (fArm)
                 {
                     setControlValue(kStartPad, static_cast<float>(pad + 1));
@@ -519,19 +610,22 @@ private:
     int fBaseNote;
     float fGain;
     int fMaxVoices;
+    int fBank;
+    int fLayout;
     int fSelectedPad;
     int fCurrentPad;
     int fPressedPad;
     int fPressedActionParameter;
     bool fClearArmed;
     int fClearTicks;
+    bool fMenuOpen;
     bool fEditorMode;
     int fDragTarget;
     float fDragStartX;
     float fDragStartY;
     bool fHasWaveform;
-    std::array<char, kPadCount> fPadState;
-    std::array<char, kPadCount> fPadStatus;
+    std::array<char, kPadsPerBank> fPadState;
+    std::array<char, kPadsPerBank> fPadStatus;
     sms::dsp::SamplePlaybackSettings fEditorSettings{};
     sms::dsp::SamplePlaybackSettings fDragStartSettings{};
     sms::audio::WaveformSummary fWaveform{};
@@ -562,6 +656,11 @@ private:
         return std::clamp(static_cast<int>(std::lround(value)), 0, static_cast<int>(kPadCount - 1));
     }
 
+    int clampLocalPad(const float value) const
+    {
+        return std::clamp(static_cast<int>(std::lround(value)), 0, visiblePadCount() - 1);
+    }
+
     static int clampNote(float value)
     {
         return std::clamp(static_cast<int>(std::lround(value)), 0, 127);
@@ -569,17 +668,65 @@ private:
 
     int hitPad(float x, float y) const
     {
-        return mainPadGrid().hit({x, y});
+        return localPadFromVisualIndex(mainPadGrid().hit({x, y}));
     }
 
-    static sms::ui::PadGridLayout mainPadGrid()
+    int visiblePadCount() const noexcept
     {
-        return {{46.0f, 164.0f, 558.0f, 342.0f}, 4, 4, 10.0f};
+        return fLayout == 0 ? 16 : (fLayout == 1 ? 12 : 8);
     }
 
-    static sms::ui::PadGridLayout editorPadGrid()
+    int gridColumns() const noexcept
     {
-        return {{690.0f, 170.0f, 222.0f, 360.0f}, 2, 8, 6.0f};
+        return fLayout == 1 ? 3 : 4;
+    }
+
+    int gridRows() const noexcept
+    {
+        return visiblePadCount() / gridColumns();
+    }
+
+    int globalPad(const int localPad) const noexcept
+    {
+        return fBank * static_cast<int>(kPadsPerBank) + localPad;
+    }
+
+    int visualIndexForLocalPad(const int localPad) const noexcept
+    {
+        const int columns = gridColumns();
+        const int rowFromBottom = localPad / columns;
+        return (gridRows() - rowFromBottom - 1) * columns + localPad % columns;
+    }
+
+    int localPadFromVisualIndex(const int visualIndex) const noexcept
+    {
+        if (visualIndex < 0 || visualIndex >= visiblePadCount())
+            return -1;
+        const int columns = gridColumns();
+        const int rowFromTop = visualIndex / columns;
+        return (gridRows() - rowFromTop - 1) * columns + visualIndex % columns;
+    }
+
+    void normalizeSelectionForBank()
+    {
+        const int localPad = std::clamp(fSelectedPad % static_cast<int>(kPadsPerBank),
+                                        0, visiblePadCount() - 1);
+        const int selected = globalPad(localPad);
+        if (selected == fSelectedPad)
+            return;
+        fSelectedPad = selected;
+        fEditorSettings = {};
+        refreshSelectedWaveform();
+    }
+
+    sms::ui::PadGridLayout mainPadGrid() const
+    {
+        return {{46.0f, 196.0f, 586.0f, 390.0f}, gridColumns(), gridRows(), 10.0f};
+    }
+
+    sms::ui::PadGridLayout editorPadGrid() const
+    {
+        return {{690.0f, 204.0f, 222.0f, 326.0f}, gridColumns(), gridRows(), 6.0f};
     }
 
     float editorRegionSeconds() const
@@ -661,13 +808,30 @@ private:
 
         // A compact arm/play indicator remains visible while the pad grid is used.
         beginPath();
-        circle(878, 43, 6);
+        circle(842, 43, 6);
         fillColor(fArm ? kAmber : kCyan);
         fill();
         fontSize(13.0f);
         textAlign(ALIGN_RIGHT | ALIGN_MIDDLE);
         fillColor(fArm ? kAmber : kCyan);
-        text(912, 43, fArm ? "ARMED" : "PLAY", nullptr);
+        text(880, 43, fArm ? "ARMED" : "PLAY", nullptr);
+
+        beginPath();
+        roundedRect(904, 25, 32, 32, 6);
+        fillColor(fMenuOpen ? kPanelRaised : kBackground);
+        fill();
+        strokeColor(fMenuOpen ? kCyan : kBorder);
+        strokeWidth(1.0f);
+        stroke();
+        for (int line = 0; line < 3; ++line)
+        {
+            beginPath();
+            moveTo(912, 34.0f + line * 8.0f);
+            lineTo(928, 34.0f + line * 8.0f);
+            strokeColor(fMenuOpen ? kCyan : kMuted);
+            strokeWidth(1.5f);
+            stroke();
+        }
     }
 
     void drawPanel(float x, float y, float w, float h)
@@ -679,6 +843,25 @@ private:
         strokeColor(kBorder);
         strokeWidth(1.0f);
         stroke();
+    }
+
+    void drawMenuOverlay()
+    {
+        drawPanel(744, 68, 192, 132);
+        fontFace(NANOVG_DEJAVU_SANS_TTF);
+        fontSize(10);
+        textAlign(ALIGN_LEFT | ALIGN_TOP);
+        fillColor(kMuted);
+        text(756, 81, "PAD LAYOUT", nullptr);
+
+        static constexpr const char* labels[] = {
+            "16 PADS  ·  4×4",
+            "12 PADS  ·  3×4",
+            "8 PADS   ·  4×2",
+        };
+        for (int layout = 0; layout < 3; ++layout)
+            drawSegment(756, 100.0f + layout * 31.0f, 168, 27, labels[layout],
+                        layout == fLayout, kAmber);
     }
 
     void drawPadPanel()
@@ -693,21 +876,32 @@ private:
         textAlign(ALIGN_RIGHT | ALIGN_TOP);
         fillColor(kMuted);
         text(632, 120, fArm ? "CLICK A PAD TO SET START" : "CLICK TO PLAY", nullptr);
-        drawWaveform(46, 137, 586, 18);
+
+        fontSize(10);
+        textAlign(ALIGN_LEFT | ALIGN_MIDDLE);
+        text(46, 154, "BANK", nullptr);
+        for (int bank = 0; bank < static_cast<int>(kBankCount); ++bank) {
+            char label[4];
+            std::snprintf(label, sizeof(label), "%c", 'A' + bank);
+            drawSegment(80.0f + bank * 56.0f, 140.0f, 50.0f, 28.0f, label,
+                        bank == fBank, kCyan);
+        }
+        drawWaveform(46, 176, 586, 10);
 
         const auto grid = mainPadGrid();
-        for (int i = 0; i < 16; ++i)
+        for (int i = 0; i < visiblePadCount(); ++i)
         {
-            const auto cell = grid.cell(i);
+            const int pad = globalPad(i);
+            const auto cell = grid.cell(visualIndexForLocalPad(i));
             const float x = cell.x;
             const float y = cell.y;
             const float pw = cell.width;
             const float ph = cell.height;
             const bool occupied = fPadState[static_cast<size_t>(i)] != '0' && fPadState[static_cast<size_t>(i)] != '.';
             const bool active = fPadStatus[static_cast<size_t>(i)] != '0';
-            const bool recording = (fArm && active) || fCurrentPad == i;
+            const bool recording = (fArm && active) || fCurrentPad == pad;
             const bool playing = (!fArm && active) || fPressedPad == i;
-            const bool selected = fSelectedPad == i || fStartPad == i;
+            const bool selected = fSelectedPad == pad || (fArm && fStartPad == i);
             const DGL_NAMESPACE::Color base = recording ? kAmber : (occupied ? kCyan : kPanelRaised);
 
             beginPath();
@@ -793,8 +987,10 @@ private:
         fontSize(13);
         textAlign(ALIGN_LEFT | ALIGN_TOP);
         fillColor(kMuted);
-        char heading[48];
-        std::snprintf(heading, sizeof(heading), "SAMPLE EDITOR  /  PAD %02d", fSelectedPad + 1);
+        char heading[80];
+        std::snprintf(heading, sizeof(heading), "SAMPLE EDITOR  /  BANK %c  /  PAD %02d",
+                      'A' + fSelectedPad / static_cast<int>(kPadsPerBank),
+                      fSelectedPad % static_cast<int>(kPadsPerBank) + 1);
         text(46, 120, heading, nullptr);
 
         const float x = 46.0f;
@@ -1100,13 +1296,21 @@ private:
         fillColor(kMuted);
         text(690, 153, "SELECT PAD", nullptr);
 
+        for (int bank = 0; bank < static_cast<int>(kBankCount); ++bank) {
+            char label[4];
+            std::snprintf(label, sizeof(label), "%c", 'A' + bank);
+            drawSegment(690.0f + bank * 57.0f, 166.0f, 51.0f, 26.0f, label,
+                        bank == fBank, kCyan);
+        }
+
         const auto grid = editorPadGrid();
-        for (int pad = 0; pad < 16; ++pad)
+        for (int localPad = 0; localPad < visiblePadCount(); ++localPad)
         {
-            const auto cell = grid.cell(pad);
-            const bool occupied = fPadState[static_cast<std::size_t>(pad)] != '0' &&
-                                  fPadState[static_cast<std::size_t>(pad)] != '.';
-            const bool active = fPadStatus[static_cast<std::size_t>(pad)] != '0';
+            const int pad = globalPad(localPad);
+            const auto cell = grid.cell(visualIndexForLocalPad(localPad));
+            const bool occupied = fPadState[static_cast<std::size_t>(localPad)] != '0' &&
+                                  fPadState[static_cast<std::size_t>(localPad)] != '.';
+            const bool active = fPadStatus[static_cast<std::size_t>(localPad)] != '0';
             const bool selected = pad == fSelectedPad;
             beginPath();
             roundedRect(cell.x, cell.y, cell.width, cell.height, 6);
@@ -1118,13 +1322,13 @@ private:
             stroke();
 
             char padLabel[12];
-            std::snprintf(padLabel, sizeof(padLabel), "%02d", pad + 1);
+            std::snprintf(padLabel, sizeof(padLabel), "%02d", localPad + 1);
             fontSize(11);
             textAlign(ALIGN_LEFT | ALIGN_MIDDLE);
             fillColor(selected ? kAmber : kText);
             text(cell.x + 9, cell.y + cell.height * 0.5f, padLabel, nullptr);
             char note[16];
-            midiName(fBaseNote + pad, note, sizeof(note));
+            midiName(fBaseNote + localPad, note, sizeof(note));
             fontSize(10);
             textAlign(ALIGN_RIGHT | ALIGN_MIDDLE);
             fillColor(occupied ? kCyan : kMuted);
@@ -1151,12 +1355,14 @@ private:
         drawSegment(804, 145, 108, 42, "ARM", fArm, kAmber);
 
         fontSize(11);
+        textAlign(ALIGN_LEFT | ALIGN_TOP);
         fillColor(kMuted);
         text(690, 204, "CAPTURE MODE", nullptr);
         drawSegment(690, 220, 106, 38, "SEQUENTIAL", fRecordMode < 0.5f, kCyan);
         drawSegment(804, 220, 108, 38, "FIXED", fRecordMode >= 0.5f, kCyan);
 
         fontSize(11);
+        textAlign(ALIGN_LEFT | ALIGN_TOP);
         fillColor(kMuted);
         text(690, 278, "FIXED LENGTH", nullptr);
         const float length = std::clamp(fFixedLength, 0.01f, 30.0f);
@@ -1176,6 +1382,7 @@ private:
         drawSegment(804, 352, 108, 36, "GATE", fPlaybackMode >= 0.5f, kCyan);
 
         fontSize(11);
+        textAlign(ALIGN_LEFT | ALIGN_TOP);
         fillColor(kMuted);
         text(690, 400, "MAX VOICES", nullptr);
         char voicesText[8];
@@ -1265,20 +1472,25 @@ private:
         if (fEditorMode)
         {
             std::snprintf(liveStatus, sizeof(liveStatus),
-                          "Editing Pad %02d — drag cut handles or envelope controls",
-                          fSelectedPad + 1);
+                          "Editing Bank %c Pad %02d — drag cut handles or envelope controls",
+                          'A' + fSelectedPad / static_cast<int>(kPadsPerBank),
+                          fSelectedPad % static_cast<int>(kPadsPerBank) + 1);
             textValue = liveStatus;
         }
         else if (fCurrentPad >= 0)
         {
-            std::snprintf(liveStatus, sizeof(liveStatus), "Chopping to Pad %02d — press any pad for next slice",
-                          fCurrentPad + 1);
+            std::snprintf(liveStatus, sizeof(liveStatus),
+                          "Chopping to Bank %c Pad %02d — press any pad for next slice",
+                          'A' + fCurrentPad / static_cast<int>(kPadsPerBank),
+                          fCurrentPad % static_cast<int>(kPadsPerBank) + 1);
             textValue = liveStatus;
         }
         else
         {
-            const bool bankFull = std::all_of(fPadState.begin(), fPadState.end(),
-                [](const char state) { return state != '0' && state != '.'; });
+            bool bankFull = true;
+            for (int pad = 0; pad < visiblePadCount(); ++pad)
+                bankFull = bankFull && fPadState[static_cast<std::size_t>(pad)] != '0' &&
+                           fPadState[static_cast<std::size_t>(pad)] != '.';
             textValue = bankFull ? "Bank full — finalize, undo, or clear to continue" :
                 (fStatus[0] != '\0' ? fStatus : (fArm ? "Press any pad to start" : "Ready to play"));
         }
@@ -1330,6 +1542,12 @@ private:
 #endif
     }
 
+    void refreshSelectedWaveform()
+    {
+        fHasWaveform = false;
+        requestWaveform();
+    }
+
     void selectEditorPad(const int pad)
     {
         fSelectedPad = clampPad(static_cast<float>(pad));
@@ -1339,11 +1557,37 @@ private:
         repaint();
     }
 
+    void selectBank(const int bank)
+    {
+        const int selectedBank = std::clamp(bank, 0, static_cast<int>(kBankCount - 1));
+        if (selectedBank == fBank)
+            return;
+        fBank = selectedBank;
+        normalizeSelectionForBank();
+        setControlValue(kActiveBank, static_cast<float>(fBank + 1));
+        repaint();
+    }
+
+    void selectLayout(const int layout)
+    {
+        const int selectedLayout = std::clamp(layout, 0, 2);
+        if (selectedLayout == fLayout)
+            return;
+        fLayout = selectedLayout;
+        if (fStartPad >= visiblePadCount()) {
+            fStartPad = 0;
+            setControlValue(kStartPad, 1.0f);
+        }
+        normalizeSelectionForBank();
+        setControlValue(kPadLayout, static_cast<float>(fLayout));
+        repaint();
+    }
+
     void commitEditorSettings()
     {
 #if DISTRHO_PLUGIN_WANT_STATE
         const std::string encoded = sms::state::encodeSamplePlaybackSettings(fEditorSettings);
-        setState(kPadEditStateKeys[static_cast<std::size_t>(fSelectedPad)], encoded.c_str());
+        setState(kPadEditStateKeys[static_cast<std::size_t>(fSelectedPad)].c_str(), encoded.c_str());
 #endif
     }
 
@@ -1351,7 +1595,7 @@ private:
     {
         for (std::size_t pad = 0; pad < kPadEditStateKeys.size(); ++pad)
         {
-            if (std::strcmp(key, kPadEditStateKeys[pad]) != 0)
+            if (std::strcmp(key, kPadEditStateKeys[pad].c_str()) != 0)
                 continue;
             sms::dsp::SamplePlaybackSettings decoded;
             if (sms::state::decodeSamplePlaybackSettings(value, decoded) &&
