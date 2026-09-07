@@ -152,10 +152,14 @@ protected:
         if (index >= 28 && index < 44)
         {
             const int pad = static_cast<int>(index - 28);
-            fPadStatus[static_cast<size_t>(pad)] = value >= 0.5f ? '1' : '0';
-            if (fArm && value >= 0.5f)
+            const bool wasActive = fPadStatus[static_cast<std::size_t>(pad)] != '0';
+            const bool isActive = value >= 0.5f;
+            fPadStatus[static_cast<std::size_t>(pad)] = isActive ? '1' : '0';
+            if (fEditorMode && isActive && !wasActive && pad != fSelectedPad)
+                selectEditorPad(pad);
+            if (fArm && isActive)
                 fCurrentPad = pad;
-            else if (fCurrentPad == pad && value < 0.5f)
+            else if (fCurrentPad == pad && !isActive)
                 fCurrentPad = -1;
             repaint();
             return;
@@ -287,11 +291,7 @@ protected:
                 const int editorPad = editorPadGrid().hit({x, y});
                 if (editorPad >= 0)
                 {
-                    fSelectedPad = editorPad;
-                    fEditorSettings = {};
-                    fHasWaveform = false;
-                    requestWaveform();
-                    repaint();
+                    selectEditorPad(editorPad);
                     return true;
                 }
                 const float startX = 46.0f + 586.0f * fEditorSettings.start;
@@ -1298,6 +1298,15 @@ private:
         std::snprintf(pad, sizeof(pad), "%d", fSelectedPad);
         setState("waveform_request", pad);
 #endif
+    }
+
+    void selectEditorPad(const int pad)
+    {
+        fSelectedPad = clampPad(static_cast<float>(pad));
+        fEditorSettings = {};
+        fHasWaveform = false;
+        requestWaveform();
+        repaint();
     }
 
     void commitEditorSettings()
