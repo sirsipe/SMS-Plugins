@@ -210,7 +210,10 @@ protected:
             state.key = kPadEditStateKeys[pad].c_str();
             state.label = "Pad Sample Editor Settings";
             state.defaultValue = "SP1;0;1;0;0;1;0";
-            state.hints = kStateIsHostReadable;
+            // This is persisted plug-in state, but it is not a host-editable
+            // string parameter. Keeping it private also makes DPF use its
+            // direct DSP/UI key-value transport instead of LV2 patch messages.
+            state.hints = 0;
         } else if (index == kWaveformRequestState) {
             state.key = kWaveformRequestKey;
             state.label = "Waveform Request";
@@ -220,7 +223,8 @@ protected:
             state.key = kWaveformDataKey;
             state.label = "Waveform Display Data";
             state.defaultValue = "";
-            state.hints = kStateIsHostReadable;
+            // A waveform summary is transient display data, not project state.
+            state.hints = kStateIsOnlyForUI;
         }
     }
 

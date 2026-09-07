@@ -126,7 +126,7 @@ inline void appendHex16(std::string& destination, const std::uint16_t value)
         parsedFrames.ec != std::errc{} || parsedFrames.ptr != framesText.data() + framesText.size() ||
         parsedSampleRate.ec != std::errc{} ||
         parsedSampleRate.ptr != sampleRateText.data() + sampleRateText.size() ||
-        pad >= 16U || sampleRate <= 1U || sampleRate > 768000U ||
+        sampleRate <= 1U || sampleRate > 768000U ||
         payload.size() != kWaveformBins * 8U)
         return false;
 

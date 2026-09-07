@@ -73,13 +73,14 @@ void editorStateRoundTrip()
           "malformed editor state is rejected");
 
     const float stereo[] = {-1.0f, 0.5f, -0.25f, 1.0f};
-    const auto summary = sms::audio::summarizeStereo(3U, stereo, 2U);
+    const auto summary = sms::audio::summarizeStereo(
+        midichopper::kPadCount - 1U, stereo, 2U);
     const std::string waveform = sms::audio::encodeWaveformSummary(summary);
     sms::audio::WaveformSummary restored;
     check(sms::audio::decodeWaveformSummary(waveform, restored),
           "waveform summary transport decodes");
-    check(restored.pad == 3U && restored.frames == 2U,
-          "waveform summary identity round-trips");
+    check(restored.pad == midichopper::kPadCount - 1U && restored.frames == 2U,
+          "waveform summary identity round-trips for every bank");
     check(std::abs(restored.sampleRate - 48000.0) < 0.5,
           "waveform summary sample rate round-trips");
     check(restored.minimum[0] < -0.99f && restored.maximum[0] > 0.49f,
