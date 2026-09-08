@@ -13,6 +13,7 @@ inline void drawWaveform(DGL_NAMESPACE::NanoVG& canvas, const ui::Rect bounds,
                          const audio::WaveformSummary& summary, const bool hasWaveform,
                          const DGL_NAMESPACE::Color& signal)
 {
+    const ScopedCanvasState canvasState(canvas);
     const Theme& colors = theme();
     canvas.fontFace(NANOVG_DEJAVU_SANS_TTF);
     canvas.beginPath();
@@ -46,6 +47,7 @@ inline void drawWaveform(DGL_NAMESPACE::NanoVG& canvas, const ui::Rect bounds,
 inline void drawCutHandle(DGL_NAMESPACE::NanoVG& canvas, const float x, const float y,
                           const float height, const char* const label)
 {
+    const ScopedCanvasState canvasState(canvas);
     const Theme& colors = theme();
     canvas.beginPath();
     canvas.moveTo(x, y);
@@ -70,6 +72,7 @@ inline void drawWaveformEditor(DGL_NAMESPACE::NanoVG& canvas, const ui::Rect bou
                                const bool hasWaveform,
                                const dsp::SamplePlaybackSettings& settings)
 {
+    const ScopedCanvasState canvasState(canvas);
     const Theme& colors = theme();
     canvas.fontFace(NANOVG_DEJAVU_SANS_TTF);
     canvas.beginPath();
@@ -151,6 +154,7 @@ inline void drawEnvelopeGraph(DGL_NAMESPACE::NanoVG& canvas, const ui::Rect boun
                               const audio::WaveformSummary& summary,
                               const dsp::SamplePlaybackSettings& settings)
 {
+    const ScopedCanvasState canvasState(canvas);
     const Theme& colors = theme();
     canvas.beginPath();
     canvas.roundedRect(bounds.x, bounds.y, bounds.width, bounds.height, 7.0f);
@@ -245,6 +249,7 @@ inline void drawEnvelopeSlider(DGL_NAMESPACE::NanoVG& canvas, const ui::Rect bou
                                const char* const label, const float value,
                                const bool sustain)
 {
+    const ScopedCanvasState canvasState(canvas);
     const Theme& colors = theme();
     const float normalized = sustain ? value : waveform::envelopeTimeToNormalized(value);
     canvas.fontFace(NANOVG_DEJAVU_SANS_TTF);

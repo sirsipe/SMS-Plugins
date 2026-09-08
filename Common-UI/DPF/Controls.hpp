@@ -7,9 +7,30 @@
 
 namespace sms::ui::dpf {
 
+/** Keeps reusable drawing primitives from leaking NanoVG state to callers. */
+class ScopedCanvasState {
+public:
+    explicit ScopedCanvasState(DGL_NAMESPACE::NanoVG& canvas) : canvas_(canvas)
+    {
+        canvas_.save();
+    }
+
+    ~ScopedCanvasState()
+    {
+        canvas_.restore();
+    }
+
+    ScopedCanvasState(const ScopedCanvasState&) = delete;
+    ScopedCanvasState& operator=(const ScopedCanvasState&) = delete;
+
+private:
+    DGL_NAMESPACE::NanoVG& canvas_;
+};
+
 inline void drawPanel(DGL_NAMESPACE::NanoVG& canvas,
                       const float x, const float y, const float width, const float height)
 {
+    const ScopedCanvasState canvasState(canvas);
     const Theme& colors = theme();
     canvas.beginPath();
     canvas.roundedRect(x, y, width, height, colors.panelRadius);
@@ -30,6 +51,7 @@ inline void drawSegment(DGL_NAMESPACE::NanoVG& canvas,
                         const char* const label, const bool active,
                         const DGL_NAMESPACE::Color& accent)
 {
+    const ScopedCanvasState canvasState(canvas);
     const Theme& colors = theme();
     canvas.beginPath();
     canvas.roundedRect(x, y, width, height, 7.0f);
@@ -58,6 +80,7 @@ inline void drawSlider(DGL_NAMESPACE::NanoVG& canvas,
                        const float x, const float y, const float width, const float value,
                        const DGL_NAMESPACE::Color& accent)
 {
+    const ScopedCanvasState canvasState(canvas);
     const Theme& colors = theme();
     canvas.beginPath();
     const float normalizedValue = std::clamp(value, 0.0f, 1.0f);
@@ -79,6 +102,7 @@ inline void drawAction(DGL_NAMESPACE::NanoVG& canvas,
                        const char* const label, const DGL_NAMESPACE::Color& accent,
                        const bool active)
 {
+    const ScopedCanvasState canvasState(canvas);
     const Theme& colors = theme();
     canvas.beginPath();
     canvas.roundedRect(x, y, width, height, colors.controlRadius);
