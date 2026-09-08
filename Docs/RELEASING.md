@@ -10,8 +10,8 @@ To publish a release:
 3. Create and push a matching annotated tag:
 
    ```bash
-   git tag -a SMS-Midichopper-v0.0.2 -m "SMS-Midichopper v0.0.2"
-   git push origin SMS-Midichopper-v0.0.2
+   git tag -a SMS-Midichopper-v0.0.3 -m "SMS-Midichopper v0.0.3"
+   git push origin SMS-Midichopper-v0.0.3
    ```
 
 The release workflow checks that the tag matches the CMake version, performs a

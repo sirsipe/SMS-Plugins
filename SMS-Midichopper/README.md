@@ -7,9 +7,9 @@ the current slice and continues recording onto the next pad.
 > **Disclaimer:** This is an AI-generated project, created under the supervision
 > and testing of [SirSipe](https://github.com/sirsipe/).
 
-![SMS-Midichopper interface](Docs/SMS-Midichopper-v0.0.1.png)
+![SMS-Midichopper interface](Docs/SMS-Midichopper-v0.0.3.png)
 
-_Screenshot from version v0.0.1._
+_Screenshot from version v0.0.3._
 
 ## Vision
 

@@ -9,9 +9,9 @@ Open-source audio plugins from SudoMetalStudio.
 - [SMS-Midichopper](SMS-Midichopper/README.md) — a live stereo chopping
   sampler for Linux, available as LV2 and optionally VST3.
 
-![SMS-Midichopper interface](SMS-Midichopper/Docs/SMS-Midichopper-v0.0.1.png)
+![SMS-Midichopper interface](SMS-Midichopper/Docs/SMS-Midichopper-v0.0.3.png)
 
-_Screenshot from version v0.0.1._
+_Screenshot from version v0.0.3._
 
 Clone with submodules before building:
 
