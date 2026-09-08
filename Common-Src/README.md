@@ -1,5 +1,7 @@
 # SMS plug-in shared source
 
+Audience: AI agents. Read when changing shared DSP, codecs, or geometry.
+
 This directory contains dependency-light C++20 components that are reusable by
 multiple SMS audio plug-ins. It deliberately has no dependency on DPF, LV2, a
 host, or a specific plug-in's state model.

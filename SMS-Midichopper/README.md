@@ -1,7 +1,8 @@
 # SMS-Midichopper
 
-A live stereo chopping sampler for Linux. Arm it, start the vinyl or other
-audio source, and tap any MIDI pad at each slice boundary. Every tap finishes
+A live stereo chopping sampler for Linux, currently under development.
+Arm it, start the vinyl or other audio source, and tap any MIDI pad at each
+slice boundary. After the first tap starts recording, each tap finishes
 the current slice and continues recording onto the next pad.
 
 > **Disclaimer:** This is an AI-generated project, created under the supervision
@@ -13,9 +14,7 @@ _Screenshot from version v0.0.3._
 
 ## Vision
 
-See [Docs/VISION.md](Docs/VISION.md) for the product vision and the principles
-that guide development. All feature requests must fit that vision or they will
-be rejected.
+See [Docs/VISION.md](Docs/VISION.md) for product direction and feature scope.
 
 ## Build
 
@@ -27,9 +26,11 @@ sudo apt install build-essential cmake ninja-build pkg-config git \
   libxrandr-dev libxcursor-dev libxinerama-dev
 ```
 
+From the repository root:
+
 ```bash
 git submodule update --init --recursive
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake -S SMS-Midichopper -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
 cmake --build build
 ctest --test-dir build --output-on-failure
 ```
@@ -71,5 +72,5 @@ Pre-roll moves boundaries slightly earlier to compensate for late taps. Fixed
 mode records one fixed-length slice per note-on. Samples from all four banks are
 stored with the DAW project as compact 16-bit stereo state.
 
-See [Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md) for implementation details and
-future-format notes. Licensed under the [MIT License](LICENSE).
+For development and jalv testing, see [Contributing](../CONTRIBUTING.md).
+Licensed under the [MIT License](LICENSE).

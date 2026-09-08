@@ -1,17 +1,24 @@
 # Releasing plugins
 
+Human maintainer procedure. Agents may prepare local changes and commits but
+must never push branches/tags, publish releases, or trigger publishing workflows.
+
 GitHub Actions builds and tests SMS-Midichopper on every push to `main` and on
-every pull request. Normal CI runs do not retain build artifacts.
+every pull request. A separate documentation job checks links, indexing, and
+size limits. Normal CI runs do not retain build artifacts. Workflow definitions
+live in [.github/workflows](../.github/workflows/).
 
 To publish a release:
 
 1. Update the version in `SMS-Midichopper/CMakeLists.txt` and commit it.
-2. Wait for the Ubuntu CI workflow to pass on `main`.
-3. Create and push a matching annotated tag:
+2. Push the reviewed commit to `main`; wait for Ubuntu CI and Documentation
+   checks to pass on that commit.
+3. From that commit, create and push a matching annotated tag. Replace `X.Y.Z`
+   with the version from CMake:
 
    ```bash
-   git tag -a SMS-Midichopper-v0.0.3 -m "SMS-Midichopper v0.0.3"
-   git push origin SMS-Midichopper-v0.0.3
+   git tag -a SMS-Midichopper-vX.Y.Z -m "SMS-Midichopper vX.Y.Z"
+   git push origin SMS-Midichopper-vX.Y.Z
    ```
 
 The release workflow checks that the tag matches the CMake version, performs a

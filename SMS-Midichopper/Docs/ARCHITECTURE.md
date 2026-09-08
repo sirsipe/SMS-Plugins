@@ -1,11 +1,17 @@
 # SMS-Midichopper architecture
 
+Audience: AI agents. Read only for engine, adapter, state, or UI changes.
+This describes implemented behavior; [VISION.md](VISION.md) describes intended
+scope. File paths below are relative to `SMS-Midichopper/`.
+
 SMS-Midichopper separates the sampler from the plug-in format and UI:
 
 - `src/core` is a standard C++20 stereo capture/playback engine with no DPF,
   LV2, window-system, or DAW dependencies.
 - `src/plugin` adapts DPF parameters, audio, MIDI, and project state to the
-  engine.
+  engine. Start with `Parameters.hpp` for parameter indices/ranges,
+  `MidichopperPlugin.cpp` for host callbacks and symbols, `StateCodec.*` for
+  sample serialization, and `DistrhoPluginInfo.h` for plugin identity/ports.
 - `src/ui/MidichopperUI.cpp` owns host communication and interaction state,
   while `MidichopperView.cpp` composes the product-specific drawing.
 - `tests` exercises slice timing, capture lifecycle, playback resampling, and
@@ -45,13 +51,14 @@ exception handling. Each pad is one voice, with a configurable global limit of
 1–16 simultaneous voices and deterministic oldest-voice stealing.
 Playback uses linear interpolation when a restored sample's source rate differs
 from the current host rate. Each pad has normalized, non-destructive start/end
-points and an allocation-free ADSR voice envelope. Editor changes are published
-atomically and become active on the next note trigger, so a control-thread edit
-cannot tear the settings of an already-running voice.
+points and an allocation-free ADSR voice envelope. Editor values use atomics;
+playback snapshots them on the next note trigger. Preserve that boundary when
+changing live-edit behavior.
 
 Pad import/export and sample-rate reconfiguration are control-thread work.
-DPF's state worker keeps large project-state operations away from the audio
-callback.
+Configuration and pad import must not run concurrently with `process()`; see
+`SamplerEngine.hpp`. Keep large state operations outside the audio callback and
+verify the wrapper's scheduling when changing state transport.
 
 ## Project state
 
@@ -69,15 +76,8 @@ large sample blobs through the UI channel.
 Long recordings make DAW project files correspondingly larger. The current
 limit is 30 seconds per pad.
 
-## Other formats
+## Build and validation
 
-DPF is pinned once at repository level. LV2 is built by default; the same adapter and UI
-can also be compiled as VST3 or CLAP:
-
-```bash
-cmake -S . -B build -G Ninja -DMIDICHOPPER_BUILD_VST3=ON -DMIDICHOPPER_BUILD_CLAP=ON
-cmake --build build
-```
-
-The VST3 build is exercised during development, while Linux LV2 remains the
-primary target. Platform-specific work is confined to DPF/DGL.
+See [development](../../Docs/AI/DEVELOPMENT.md) for formats and build commands,
+and [testing](../../Docs/AI/TESTING.md) for CTest coverage and jalv checks.
+Platform-specific work is confined to DPF/DGL.
