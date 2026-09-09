@@ -137,8 +137,6 @@ protected:
             if (wasActive == isActive)
                 return;
             fPadStatus[static_cast<std::size_t>(localPad)] = isActive ? '1' : '0';
-            if (fEditorMode && isActive && !wasActive && pad != fSelectedPad)
-                selectEditorPad(pad);
             if (fArm && isActive)
                 fCurrentPad = pad;
             else if (fCurrentPad == pad && !isActive)
@@ -253,6 +251,16 @@ protected:
                 else if (bankChanged)
                     normalizeSelectionForBank();
             }
+            break;
+        }
+        case kParameterPlaybackPadEvent: {
+            const std::uint32_t pad = padFromPlaybackEvent(value);
+            changed = fEditorMode && pad < midichopper::kPadCount &&
+                      static_cast<int>(pad) != fSelectedPad;
+            if (!changed)
+                break;
+            fBank = bankForGlobalPad(static_cast<int>(pad));
+            selectEditorPad(static_cast<int>(pad));
             break;
         }
         default: return;

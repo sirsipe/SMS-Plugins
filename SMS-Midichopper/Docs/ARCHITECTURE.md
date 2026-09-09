@@ -35,6 +35,11 @@ changes the active bank. The DSP requests an `active_bank` parameter change from
 the host so the saved selection and UI follow the played note when the host
 supports DSP-initiated input-parameter changes. Changing layout regroups slots
 without changing their unique MIDI notes.
+Every successful playback note-on also advances a hidden output event that
+encodes the global pad index in alternating halves of its range. The editor
+follows that event instead of inferring a selection from sustained pad
+activity, so retriggers and same-index cross-bank notes reliably load the played
+sample even when the host cannot accept the bank change request.
 All Banks limits the effective base note to 64 so every layout remains within
 MIDI notes 0–127. UI-generated note-on and note-off events and displayed note
 labels use the same mapping as the engine. Selected Bank reuses one note range,

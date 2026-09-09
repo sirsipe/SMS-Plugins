@@ -68,6 +68,11 @@ struct PadMetadata {
     bool active = false;
 };
 
+struct PlaybackTrigger {
+    std::uint32_t pad = kPadCount;
+    std::uint64_t generation = 0;
+};
+
 /**
  * Allocation-free/lock-free audio engine. Configuration and pad state import
  * are control-thread operations and must not be called concurrently with
@@ -111,6 +116,11 @@ public:
                  std::span<const MidiEvent> events) noexcept;
 
     [[nodiscard]] PadMetadata padMetadata(std::uint32_t pad) const noexcept;
+    /** Most recent successful MIDI playback trigger; read from the audio thread. */
+    [[nodiscard]] PlaybackTrigger lastPlaybackTrigger() const noexcept
+    {
+        return lastPlaybackTrigger_;
+    }
     /** Copy a stable, already-published pad snapshot on the control/UI thread. */
     [[nodiscard]] bool exportPad(std::uint32_t pad, PadData& destination) const;
     /** Import/replaces a pad on the control thread; stereo must be interleaved. */
@@ -195,6 +205,7 @@ private:
     std::int32_t lastCommittedPad_ = -1;
     std::uint32_t nextPad_ = 0;
     std::uint64_t nextVoiceOrder_ = 1;
+    PlaybackTrigger lastPlaybackTrigger_{};
     bool previousArmed_ = false;
     bool sessionComplete_ = false;
     std::atomic<bool> finalizeRequested_{false};

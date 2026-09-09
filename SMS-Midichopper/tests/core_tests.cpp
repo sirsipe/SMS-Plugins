@@ -1,4 +1,5 @@
 #include "../src/core/SamplerEngine.hpp"
+#include "../src/plugin/Parameters.hpp"
 
 #include <cmath>
 #include <cstdlib>
@@ -234,6 +235,43 @@ void playback_and_rate_conversion() {
     check(e.padMetadata(0).sampleRate == 500.0, "source rate retained");
 }
 
+void playback_trigger_notifications() {
+    midichopper::SamplerEngine e(1000.0, 1.0);
+    midichopper::PadData source;
+    source.sampleRate = 1000.0;
+    source.frames = 100;
+    source.stereo.assign(200U, 1.0f);
+    source.peak = source.rms = 1.0f;
+    check(e.importPad(0, source) && e.importPad(1, source),
+          "import pads for playback notifications");
+
+    float left[1]{};
+    float right[1]{};
+    const midichopper::MidiEvent pad0{0, 36, 127, midichopper::MidiEventType::NoteOn};
+    const midichopper::MidiEvent pad1{0, 37, 127, midichopper::MidiEventType::NoteOn};
+
+    e.process(nullptr, nullptr, left, right, 1, &pad0, 1);
+    const auto first = e.lastPlaybackTrigger();
+    e.process(nullptr, nullptr, left, right, 1, &pad1, 1);
+    const auto second = e.lastPlaybackTrigger();
+    e.process(nullptr, nullptr, left, right, 1, &pad0, 1);
+    const auto retrigger = e.lastPlaybackTrigger();
+
+    check(first.pad == 0U && second.pad == 1U && retrigger.pad == 0U &&
+          first.generation + 1U == second.generation &&
+          second.generation + 1U == retrigger.generation,
+          "every successful MIDI note-on reports its pad, including an active-pad retrigger");
+
+    using namespace midichopper::plugin;
+    const float low = playbackPadEventValue(0U, false);
+    const float high = playbackPadEventValue(0U, true);
+    check(low != high && padFromPlaybackEvent(low) == 0U &&
+          padFromPlaybackEvent(high) == 0U &&
+          padFromPlaybackEvent(std::numeric_limits<float>::quiet_NaN()) ==
+              midichopper::kPadCount,
+          "alternating playback-pad values preserve identity and force a host-visible edge");
+}
+
 void shared_storage_blocks() {
     midichopper::SamplerEngine e(2000.0, 1.0);
     midichopper::PadData source;
@@ -414,6 +452,7 @@ int main() {
     bank_and_layout_mapping();
     all_bank_midi_mapping();
     playback_and_rate_conversion();
+    playback_trigger_notifications();
     shared_storage_blocks();
     maximum_voice_limit();
     sample_region_and_adsr();

@@ -76,6 +76,8 @@ Open **Sample Editor** to move the pad bank into the right panel and edit the
 selected pad in the main view. Drag the waveform's start/end handles to choose
 the playback region, then adjust attack, decay, sustain, and release. These
 settings are stored independently for every pad and do not alter captured audio.
+While the editor is open, playing a populated pad from MIDI selects it and loads
+its waveform, including when an active pad is retriggered.
 
 Max Voices limits how many pads may play simultaneously. When the limit is
 reached, triggering another pad stops the oldest playing voice; setting it to

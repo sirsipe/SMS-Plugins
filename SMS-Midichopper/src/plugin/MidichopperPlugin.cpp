@@ -193,6 +193,11 @@ protected:
                 {0.0f, "Selected Bank"}, {1.0f, "All Banks"},
             };
             break;
+        case kParameterPlaybackPadEvent:
+            setupParameter(index, parameter, "Playback Pad Event", "playback_pad_event", "",
+                           kParameterIsOutput | kParameterIsInteger | kParameterIsHidden,
+                           "Internal UI notification identifying the most recently played pad.");
+            break;
         default:
             if (index >= kFirstPadStatusParameter && index < kFirstPadActivityParameter) {
                 const std::uint32_t pad = index - kFirstPadStatusParameter;
@@ -352,6 +357,7 @@ protected:
 
         activateAllBanksMidiBank(events.data(), eventCount);
         sampler_.process(inputs[0], inputs[1], outputs[0], outputs[1], frames, events.data(), eventCount);
+        updatePlaybackPadEvent();
         updatePadOutputParameters();
     }
 
@@ -496,9 +502,26 @@ private:
         }
     }
 
+    void updatePlaybackPadEvent() noexcept
+    {
+        using namespace midichopper::plugin;
+        const midichopper::PlaybackTrigger trigger = sampler_.lastPlaybackTrigger();
+        if (trigger.generation == publishedPlaybackTriggerGeneration_ ||
+            trigger.pad >= midichopper::kPadCount)
+            return;
+
+        publishedPlaybackTriggerGeneration_ = trigger.generation;
+        playbackPadEventAlternateHalf_ = !playbackPadEventAlternateHalf_;
+        parameters_[kParameterPlaybackPadEvent].store(
+            playbackPadEventValue(trigger.pad, playbackPadEventAlternateHalf_),
+            std::memory_order_relaxed);
+    }
+
     midichopper::SamplerEngine sampler_;
     std::array<std::atomic<float>, midichopper::plugin::kParameterCount> parameters_{};
     std::atomic<std::uint32_t> pendingCommands_{0};
+    std::uint64_t publishedPlaybackTriggerGeneration_ = 0;
+    bool playbackPadEventAlternateHalf_ = false;
 
     DISTRHO_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MidichopperPlugin)
 };

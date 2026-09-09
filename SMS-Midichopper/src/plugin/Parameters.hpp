@@ -2,6 +2,7 @@
 
 #include "Configuration.hpp"
 
+#include <cmath>
 #include <cstdint>
 
 namespace midichopper::plugin {
@@ -28,6 +29,7 @@ enum Parameter : std::uint32_t {
     kParameterPadLayout,
     kParameterCurrentCapturePad,
     kParameterMidiBankMode,
+    kParameterPlaybackPadEvent,
     kParameterCount,
 };
 
@@ -60,7 +62,32 @@ inline constexpr ParameterRange currentCapturePad{
     0.0f, 0.0f, static_cast<float>(kPadCount)};
 inline constexpr ParameterRange midiBankMode{
     static_cast<float>(static_cast<std::uint8_t>(kDefaultMidiBankMode)), 0.0f, 1.0f};
+inline constexpr ParameterRange playbackPadEvent{
+    0.0f, 0.0f, static_cast<float>(kPadCount * 2U)};
 } // namespace parameterRanges
+
+/**
+ * Encode a played pad into alternating halves of the output range. Toggling
+ * the half makes every consecutive MIDI trigger observable by hosts, including
+ * a retrigger while the same pad's activity output remains high.
+ */
+[[nodiscard]] inline constexpr float playbackPadEventValue(
+    const std::uint32_t pad, const bool alternateHalf) noexcept
+{
+    return pad < kPadCount
+        ? static_cast<float>(pad + 1U + (alternateHalf ? kPadCount : 0U))
+        : 0.0f;
+}
+
+[[nodiscard]] inline std::uint32_t padFromPlaybackEvent(const float value) noexcept
+{
+    if (!std::isfinite(value) || value < 0.5f ||
+        value > static_cast<float>(kPadCount * 2U) + 0.5f)
+        return kPadCount;
+    const auto encoded = static_cast<std::uint32_t>(std::lround(value));
+    return encoded >= 1U && encoded <= kPadCount * 2U
+        ? (encoded - 1U) % kPadCount : kPadCount;
+}
 
 [[nodiscard]] inline constexpr ParameterRange parameterRange(const std::uint32_t index) noexcept
 {
@@ -76,6 +103,7 @@ inline constexpr ParameterRange midiBankMode{
     case kParameterPadLayout: return parameterRanges::padLayout;
     case kParameterCurrentCapturePad: return parameterRanges::currentCapturePad;
     case kParameterMidiBankMode: return parameterRanges::midiBankMode;
+    case kParameterPlaybackPadEvent: return parameterRanges::playbackPadEvent;
     default: return parameterRanges::toggle;
     }
 }

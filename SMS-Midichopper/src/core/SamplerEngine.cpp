@@ -95,6 +95,7 @@ void SamplerEngine::reset() noexcept {
     previousArmed_ = settings_.armed;
     ringWritePosition_ = ringCount_ = 0;
     nextVoiceOrder_ = 1;
+    lastPlaybackTrigger_ = {};
     for (std::uint32_t pad = 0; pad < kPadCount; ++pad) {
         releasePadBlocks(pad);
         auto& p = pads_[pad];
@@ -334,6 +335,8 @@ void SamplerEngine::startVoice(std::uint32_t pad, std::uint8_t velocity) noexcep
     p.envelope.noteOn();
     p.playing = true;
     p.voiceOrder = nextVoiceOrder_++;
+    lastPlaybackTrigger_.pad = pad;
+    ++lastPlaybackTrigger_.generation;
     p.publishedPlaying.store(true, std::memory_order_release);
 }
 
