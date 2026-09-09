@@ -113,10 +113,10 @@ private:
         canvas_.fillColor(modeColor);
         canvas_.fill();
         canvas_.fontSize(13.0f);
-        canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_RIGHT |
+        canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_LEFT |
                           DGL_NAMESPACE::NanoVG::ALIGN_MIDDLE);
         canvas_.fillColor(modeColor);
-        canvas_.text(880.0f, 43.0f, state_.armed ? "ARMED" : "PLAY", nullptr);
+        canvas_.text(856.0f, 43.0f, state_.armed ? "ARMED" : "PLAY", nullptr);
 
         const auto& menuColor = state_.menuOpen ? colors.activityPlayback : colors.outline;
         canvas_.beginPath();
@@ -203,8 +203,7 @@ private:
             const bool active = state_.padActivity[static_cast<std::size_t>(localPad)] != '0';
             const bool recording = (state_.armed && active) || state_.currentPad == pad;
             const bool playing = (!state_.armed && active) || state_.pressedPad == localPad;
-            const bool selected = state_.selectedPad == pad ||
-                                  (state_.armed && state_.startPad == localPad);
+            const bool selected = state_.selectedPad == pad;
             const auto base = recording ? colors.activityCapture :
                               (occupied ? colors.activityPlayback : colors.surfaceRaised);
             canvas_.beginPath();
@@ -359,7 +358,8 @@ private:
     {
         const auto& colors = sms::ui::dpf::theme();
         sms::ui::dpf::drawPanel(canvas_, uiLayout::sidePanel);
-        sms::ui::dpf::drawSegment(canvas_, uiLayout::openEditor, "SAMPLE EDITOR", false,
+        sms::ui::dpf::drawSegment(canvas_, uiLayout::openEditor,
+                                  state_.armed ? "EDITOR · PLAY ONLY" : "SAMPLE EDITOR", false,
                                   colors.controlAccent);
         canvas_.fontFace(NANOVG_DEJAVU_SANS_TTF);
         sms::ui::dpf::drawSegment(canvas_, uiLayout::playMode, "PLAY", !state_.armed,

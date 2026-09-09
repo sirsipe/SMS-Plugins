@@ -89,7 +89,8 @@ public:
           fMaxVoices(static_cast<int>(parameterRanges::maxVoices.defaultValue)),
           fBank(0),
           fLayout(0),
-          fSelectedPad(0),
+          fSelectedPad(-1),
+          fLastPlayedPad(-1),
           fCurrentPad(-1),
           fPressedPad(-1),
           fPressedMidiNote(-1),
@@ -131,16 +132,11 @@ protected:
         if (index >= kFirstPadActivityParameter && index < kParameterMaxVoices)
         {
             const int localPad = static_cast<int>(index - kFirstPadActivityParameter);
-            const int pad = globalPad(localPad);
             const bool wasActive = fPadStatus[static_cast<std::size_t>(localPad)] != '0';
             const bool isActive = value >= 0.5f;
             if (wasActive == isActive)
                 return;
             fPadStatus[static_cast<std::size_t>(localPad)] = isActive ? '1' : '0';
-            if (fArm && isActive)
-                fCurrentPad = pad;
-            else if (fCurrentPad == pad && !isActive)
-                fCurrentPad = -1;
             requestRepaint();
             return;
         }
@@ -150,7 +146,17 @@ protected:
         case kParameterMode: {
             const bool armed = value >= 0.5f;
             changed = fArm != armed;
+            if (!changed)
+                break;
             fArm = armed;
+            fStatus[0] = '\0';
+            fSelectedPad = -1;
+            fLastPlayedPad = -1;
+            if (fArm) {
+                fEditorMode = false;
+                fDragTarget = WaveformEditTarget::none;
+                selectAutomaticArmTarget();
+            }
             break;
         }
         case kParameterCaptureMode:
@@ -173,7 +179,7 @@ protected:
             const int previousStartPad = fStartPad;
             const int previousSelectedPad = fSelectedPad;
             fStartPad = clampLocalPad(value - parameterRanges::startPad.minimum);
-            if (!fEditorMode)
+            if (fArm && fCurrentPad < 0)
                 fSelectedPad = globalPad(fStartPad);
             changed = previousStartPad != fStartPad || previousSelectedPad != fSelectedPad;
             break;
@@ -189,13 +195,18 @@ protected:
             break;
         }
         case kParameterMidiBankMode: {
-            const int localPad = localPadForGlobalPad(fSelectedPad);
+            const int localPad = hasSelectedPad() ? localPadForGlobalPad(fSelectedPad) : -1;
             const int mode = value >= 0.5f ? 1 : 0;
             changed = fMidiBankMode != mode;
             fMidiBankMode = mode;
             if (changed) {
-                fSelectedPad = globalPad(std::clamp(localPad, 0, visiblePadCount() - 1));
-                refreshSelectedWaveform();
+                if (fEditorMode && localPad >= 0)
+                    selectEditorPad(globalPad(std::clamp(localPad, 0, visiblePadCount() - 1)));
+                else {
+                    fSelectedPad = -1;
+                    if (!fArm)
+                        fLastPlayedPad = -1;
+                }
             }
             break;
         }
@@ -217,8 +228,17 @@ protected:
             changed = fBank != bank;
             if (!changed)
                 break;
+            const int localPad = hasSelectedPad()
+                ? std::clamp(localPadForGlobalPad(fSelectedPad), 0, visiblePadCount() - 1)
+                : 0;
             fBank = bank;
-            normalizeSelectionForBank();
+            if (fEditorMode)
+                selectEditorPad(globalPad(localPad));
+            else {
+                fSelectedPad = -1;
+                if (!fArm)
+                    fLastPlayedPad = -1;
+            }
             break;
         }
         case kParameterPadLayout: {
@@ -231,8 +251,9 @@ protected:
             fLayout = layout;
             if (fStartPad >= visiblePadCount())
                 fStartPad = 0;
-            normalizeSelectionForBank();
-            refreshSelectedWaveform();
+            if (!fArm && !fEditorMode)
+                fLastPlayedPad = -1;
+            normalizeSelectionForContext();
             break;
         }
         case kParameterCurrentCapturePad: {
@@ -242,25 +263,55 @@ protected:
             if (!changed)
                 break;
             fCurrentPad = currentPad;
-            if (fCurrentPad >= 0) {
-                const int captureBank = bankForGlobalPad(fCurrentPad);
-                const bool bankChanged = captureBank != fBank;
-                fBank = captureBank;
-                if (fEditorMode && fCurrentPad != fSelectedPad)
-                    selectEditorPad(fCurrentPad);
-                else if (bankChanged)
-                    normalizeSelectionForBank();
+            if (fArm && fCurrentPad >= 0) {
+                const int bank = bankForGlobalPad(fCurrentPad);
+                if (bank >= 0 && bank < static_cast<int>(midichopper::kBankCount)) {
+                    const int localPad = localPadForGlobalPad(fCurrentPad);
+                    changed = changed || fBank != bank || fSelectedPad != fCurrentPad ||
+                              fStartPad != localPad;
+                    fBank = bank;
+                    fSelectedPad = fCurrentPad;
+                    fStartPad = localPad;
+                }
             }
             break;
         }
         case kParameterPlaybackPadEvent: {
-            const std::uint32_t pad = padFromPlaybackEvent(value);
-            changed = fEditorMode && pad < midichopper::kPadCount &&
-                      static_cast<int>(pad) != fSelectedPad;
+            const std::uint32_t pad = fPlaybackPadEvents.consume(value);
+            changed = !fArm && pad < midichopper::kPadCount;
             if (!changed)
                 break;
-            fBank = bankForGlobalPad(static_cast<int>(pad));
-            selectEditorPad(static_cast<int>(pad));
+            fLastPlayedPad = static_cast<int>(pad);
+            fBank = bankForGlobalPad(fLastPlayedPad);
+            if (fEditorMode)
+                selectEditorPad(fLastPlayedPad);
+            else {
+                fSelectedPad = fLastPlayedPad;
+                refreshSelectedWaveform();
+            }
+            break;
+        }
+        case kParameterCaptureTargetPad: {
+            if (!fArm) {
+                changed = false;
+                break;
+            }
+            int target = -1;
+            if (std::isfinite(value) && value >= 0.5f &&
+                value <= static_cast<float>(midichopper::kPadCount) + 0.5f) {
+                const int pad = static_cast<int>(std::lround(value)) - 1;
+                if (pad >= 0 && pad < static_cast<int>(midichopper::kPadCount))
+                    target = pad;
+            }
+            changed = fSelectedPad != target;
+            fSelectedPad = target;
+            if (target >= 0) {
+                const int bank = bankForGlobalPad(target);
+                const int localPad = localPadForGlobalPad(target);
+                changed = changed || fBank != bank || fStartPad != localPad;
+                fBank = bank;
+                fStartPad = localPad;
+            }
             break;
         }
         default: return;
@@ -392,6 +443,7 @@ protected:
                 {
                     fEditorMode = false;
                     fDragTarget = WaveformEditTarget::none;
+                    restoreLastPlayedSelection();
                     requestRepaint();
                     return true;
                 }
@@ -447,8 +499,13 @@ protected:
 
             if (hit(x, y, uiLayout::openEditor))
             {
+                if (fArm)
+                    return true;
                 fEditorMode = true;
-                refreshSelectedWaveform();
+                if (!hasSelectedPad() || bankForGlobalPad(fSelectedPad) != fBank)
+                    selectEditorPad(globalPad(0));
+                else
+                    refreshSelectedWaveform();
                 requestRepaint();
                 return true;
             }
@@ -463,11 +520,13 @@ protected:
             const int pad = hitPad(x, y);
             if (pad >= 0)
             {
-                fSelectedPad = globalPad(pad);
-                fHasWaveform = false;
-                requestWaveform();
                 if (fArm)
                 {
+                    if (fCurrentPad >= 0)
+                        return true;
+                    fSelectedPad = globalPad(pad);
+                    fHasWaveform = false;
+                    requestWaveform();
                     setControlValue(kParameterStartPad, static_cast<float>(pad + 1));
                     setLocalStatus("Press any pad to start");
                 }
@@ -630,6 +689,7 @@ private:
     int fBank;
     int fLayout;
     int fSelectedPad;
+    int fLastPlayedPad;
     int fCurrentPad;
     int fPressedPad;
     int fPressedMidiNote;
@@ -642,6 +702,7 @@ private:
     float fDragStartX;
     float fDragStartY;
     bool fHasWaveform;
+    PlaybackPadEventTracker fPlaybackPadEvents;
     std::array<char, midichopper::kPadsPerBank> fPadState;
     std::array<char, midichopper::kPadsPerBank> fPadStatus;
     sms::dsp::SamplePlaybackSettings fEditorSettings{};
@@ -724,16 +785,59 @@ private:
         return padLayout().localIndex(visualIndex);
     }
 
-    void normalizeSelectionForBank()
+    bool hasSelectedPad() const noexcept
     {
+        return fSelectedPad >= 0 && fSelectedPad < static_cast<int>(midichopper::kPadCount);
+    }
+
+    int firstEmptyLocalPad() const noexcept
+    {
+        for (int localPad = 0; localPad < visiblePadCount(); ++localPad) {
+            const char state = fPadState[static_cast<std::size_t>(localPad)];
+            if (state == '0' || state == '.')
+                return localPad;
+        }
+        return 0;
+    }
+
+    void selectAutomaticArmTarget()
+    {
+        const int localPad = firstEmptyLocalPad();
+        fStartPad = localPad;
+        fSelectedPad = globalPad(localPad);
+        fHasWaveform = false;
+        requestWaveform();
+        setParameterValue(kParameterStartPad, static_cast<float>(localPad + 1));
+    }
+
+    void restoreLastPlayedSelection()
+    {
+        if (fLastPlayedPad >= 0 && bankForGlobalPad(fLastPlayedPad) == fBank) {
+            fSelectedPad = fLastPlayedPad;
+            refreshSelectedWaveform();
+            return;
+        }
+        fSelectedPad = -1;
+        fHasWaveform = false;
+    }
+
+    void normalizeSelectionForContext()
+    {
+        if (!hasSelectedPad())
+            return;
         const int localPad = std::clamp(localPadForGlobalPad(fSelectedPad),
                                         0, visiblePadCount() - 1);
-        const int selected = globalPad(localPad);
-        if (selected == fSelectedPad)
+        if (fEditorMode) {
+            selectEditorPad(globalPad(localPad));
             return;
-        fSelectedPad = selected;
-        fEditorSettings = {};
-        refreshSelectedWaveform();
+        }
+        if (fArm && fCurrentPad < 0) {
+            fStartPad = localPad;
+            fSelectedPad = globalPad(localPad);
+            return;
+        }
+        if (!fArm && bankForGlobalPad(fSelectedPad) != fBank)
+            fSelectedPad = -1;
     }
 
     sms::ui::PadGridLayout mainPadGrid() const
@@ -780,6 +884,8 @@ private:
     void requestWaveform()
     {
 #if DISTRHO_PLUGIN_WANT_STATE
+        if (!hasSelectedPad())
+            return;
         char pad[8];
         std::snprintf(pad, sizeof(pad), "%d", fSelectedPad);
         setState("waveform_request", pad);
@@ -804,16 +910,28 @@ private:
     void selectBank(const int bank)
     {
         const int selectedBank = std::clamp(bank, 0, static_cast<int>(midichopper::kBankCount - 1));
-        if (selectedBank == fBank)
+        if (selectedBank == fBank || (fArm && fCurrentPad >= 0))
             return;
+        const int localPad = hasSelectedPad()
+            ? std::clamp(localPadForGlobalPad(fSelectedPad), 0, visiblePadCount() - 1)
+            : 0;
         fBank = selectedBank;
-        normalizeSelectionForBank();
-        setControlValue(kParameterActiveBank, static_cast<float>(fBank + 1));
+        if (fEditorMode)
+            selectEditorPad(globalPad(localPad));
+        else {
+            fSelectedPad = -1;
+            fHasWaveform = false;
+            if (!fArm)
+                fLastPlayedPad = -1;
+        }
+        setParameterValue(kParameterActiveBank, static_cast<float>(fBank + 1));
         requestRepaint();
     }
 
     void selectLayout(const int layout)
     {
+        if (fArm && fCurrentPad >= 0)
+            return;
         const int selectedLayout = std::clamp(layout,
             static_cast<int>(parameterRanges::padLayout.minimum),
             static_cast<int>(parameterRanges::padLayout.maximum));
@@ -824,13 +942,15 @@ private:
             fStartPad = 0;
             setControlValue(kParameterStartPad, 1.0f);
         }
-        normalizeSelectionForBank();
+        normalizeSelectionForContext();
         setControlValue(kParameterPadLayout, static_cast<float>(fLayout));
         requestRepaint();
     }
 
     void selectMidiBankMode(const int mode)
     {
+        if (fArm && fCurrentPad >= 0)
+            return;
         const int selectedMode = mode == 0 ? 0 : 1;
         if (selectedMode != fMidiBankMode)
             setControlValue(kParameterMidiBankMode, static_cast<float>(selectedMode));

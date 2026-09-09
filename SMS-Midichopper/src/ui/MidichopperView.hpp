@@ -23,7 +23,7 @@ struct ViewState {
     int maxVoices = static_cast<int>(kPadsPerBank);
     int bank = 0;
     int layout = 0;
-    int selectedPad = 0;
+    int selectedPad = -1;
     int currentPad = -1;
     int pressedPad = -1;
     bool clearArmed = false;
