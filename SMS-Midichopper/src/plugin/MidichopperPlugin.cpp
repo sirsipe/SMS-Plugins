@@ -198,6 +198,11 @@ protected:
                            kParameterIsOutput | kParameterIsInteger | kParameterIsHidden,
                            "Internal UI notification identifying the most recently played pad.");
             break;
+        case kParameterCaptureTargetPad:
+            setupParameter(index, parameter, "Capture Target Pad", "capture_target_pad", "",
+                           kParameterIsOutput | kParameterIsInteger | kParameterIsHidden,
+                           "Internal UI notification identifying the current capture destination.");
+            break;
         default:
             if (index >= kFirstPadStatusParameter && index < kFirstPadActivityParameter) {
                 const std::uint32_t pad = index - kFirstPadStatusParameter;
@@ -465,9 +470,7 @@ private:
         sampler_.setSettings(settings);
         const float parameterValue =
             static_cast<float>(bank) + parameterRanges::activeBank.minimum;
-        parameters_[kParameterActiveBank].store(parameterValue, std::memory_order_relaxed);
-        if (canRequestParameterValueChanges())
-            static_cast<void>(requestParameterValueChange(kParameterActiveBank, parameterValue));
+        mirrorInputParameter(kParameterActiveBank, parameterValue);
     }
 
     void updatePadOutputParameters() noexcept
@@ -480,8 +483,6 @@ private:
                 currentCapturePad = pad;
                 settings.activeBank = static_cast<std::uint8_t>(midichopper::bankForPad(
                     pad, settings.padsPerBank, settings.midiBankMode));
-                parameters_[kParameterActiveBank].store(
-                    static_cast<float>(settings.activeBank + 1U), std::memory_order_relaxed);
                 break;
             }
         }
@@ -489,6 +490,26 @@ private:
             currentCapturePad < midichopper::kPadCount ?
                 static_cast<float>(currentCapturePad + 1U) : 0.0f,
             std::memory_order_relaxed);
+        const std::uint32_t captureTargetPad = sampler_.captureTargetPad();
+        parameters_[kParameterCaptureTargetPad].store(
+            captureTargetPad < midichopper::kPadCount ?
+                static_cast<float>(captureTargetPad + 1U) : 0.0f,
+            std::memory_order_relaxed);
+        const std::uint32_t displayedCapturePad = currentCapturePad < midichopper::kPadCount
+            ? currentCapturePad : captureTargetPad;
+        if (displayedCapturePad < midichopper::kPadCount) {
+            const std::uint32_t bank = midichopper::bankForPad(
+                displayedCapturePad, settings.padsPerBank, settings.midiBankMode);
+            const std::uint32_t localPad = midichopper::localPadInBank(
+                displayedCapturePad, settings.padsPerBank, settings.midiBankMode);
+            if (bank < midichopper::kBankCount && localPad < settings.padsPerBank) {
+                settings.activeBank = static_cast<std::uint8_t>(bank);
+                mirrorInputParameter(kParameterActiveBank,
+                    static_cast<float>(bank) + parameterRanges::activeBank.minimum);
+                mirrorInputParameter(kParameterStartPad,
+                    static_cast<float>(localPad) + parameterRanges::startPad.minimum);
+            }
+        }
         const std::uint32_t bankBase = static_cast<std::uint32_t>(settings.activeBank) *
             midichopper::bankStride(settings.padsPerBank, settings.midiBankMode);
         for (std::uint32_t localPad = 0; localPad < midichopper::kPadsPerBank; ++localPad) {
@@ -515,6 +536,13 @@ private:
         parameters_[kParameterPlaybackPadEvent].store(
             playbackPadEventValue(trigger.pad, playbackPadEventAlternateHalf_),
             std::memory_order_relaxed);
+    }
+
+    void mirrorInputParameter(const std::uint32_t index, const float value) noexcept
+    {
+        const float previous = parameters_[index].exchange(value, std::memory_order_relaxed);
+        if (previous != value && canRequestParameterValueChanges())
+            static_cast<void>(requestParameterValueChange(index, value));
     }
 
     midichopper::SamplerEngine sampler_;

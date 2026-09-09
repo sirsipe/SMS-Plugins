@@ -30,6 +30,7 @@ enum Parameter : std::uint32_t {
     kParameterCurrentCapturePad,
     kParameterMidiBankMode,
     kParameterPlaybackPadEvent,
+    kParameterCaptureTargetPad,
     kParameterCount,
 };
 
@@ -64,6 +65,8 @@ inline constexpr ParameterRange midiBankMode{
     static_cast<float>(static_cast<std::uint8_t>(kDefaultMidiBankMode)), 0.0f, 1.0f};
 inline constexpr ParameterRange playbackPadEvent{
     0.0f, 0.0f, static_cast<float>(kPadCount * 2U)};
+inline constexpr ParameterRange captureTargetPad{
+    0.0f, 0.0f, static_cast<float>(kPadCount)};
 } // namespace parameterRanges
 
 /**
@@ -89,6 +92,25 @@ inline constexpr ParameterRange playbackPadEvent{
         ? (encoded - 1U) % kPadCount : kPadCount;
 }
 
+class PlaybackPadEventTracker {
+public:
+    /** Return the played pad once per encoded event value, or kPadCount. */
+    [[nodiscard]] std::uint32_t consume(const float value) noexcept
+    {
+        const std::uint32_t pad = padFromPlaybackEvent(value);
+        if (pad >= kPadCount)
+            return kPadCount;
+        const auto encoded = static_cast<std::uint32_t>(std::lround(value));
+        if (encoded == lastEncoded_)
+            return kPadCount;
+        lastEncoded_ = encoded;
+        return pad;
+    }
+
+private:
+    std::uint32_t lastEncoded_ = 0U;
+};
+
 [[nodiscard]] inline constexpr ParameterRange parameterRange(const std::uint32_t index) noexcept
 {
     switch (index) {
@@ -104,6 +126,7 @@ inline constexpr ParameterRange playbackPadEvent{
     case kParameterCurrentCapturePad: return parameterRanges::currentCapturePad;
     case kParameterMidiBankMode: return parameterRanges::midiBankMode;
     case kParameterPlaybackPadEvent: return parameterRanges::playbackPadEvent;
+    case kParameterCaptureTargetPad: return parameterRanges::captureTargetPad;
     default: return parameterRanges::toggle;
     }
 }
