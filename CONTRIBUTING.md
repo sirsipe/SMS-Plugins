@@ -7,7 +7,7 @@ versus observed behavior. Feature proposals must fit the plugin's
 [vision](SMS-Midichopper/Docs/VISION.md).
 
 Build using the [plugin guide](SMS-Midichopper/README.md). Validate code changes
-with the existing tests and appropriate jalv/host checks described in the
+with the existing tests and appropriate host/UI checks described in the
 [testing reference](Docs/AI/TESTING.md).
 
 Keep affected documentation accurate in the same change. Human guides should

@@ -32,8 +32,8 @@ DPF also provides optional VST3 and CLAP builds.
   Preserve host parameter identities, saved-state compatibility, and sample
   timing; inspect the affected contracts before changing them.
 - Make the smallest complete change. Run relevant existing tests; add regression
-  coverage for changed behavior. Use jalv for applicable LV2 audio/MIDI/UI/state
-  integration checks; see [testing](Docs/AI/TESTING.md). Report skipped checks
+  coverage for changed behavior. Use the applicable LV2 hosts and UI tools in
+  [testing](Docs/AI/TESTING.md). Report skipped checks
   and their actual reason. A successful launch alone is not an audio/UI test.
 
 ## Documentation is part of the change

@@ -6,7 +6,7 @@ the row needed for the task. Paths in commands are relative to the repo root.
 | Task | Read | Source of truth / starting point |
 | --- | --- | --- |
 | Build, dependencies, formats | [Development](DEVELOPMENT.md) | [CMake](../../SMS-Midichopper/CMakeLists.txt) |
-| Tests, LV2 discovery, jalv | [Testing](TESTING.md) | [Tests](../../SMS-Midichopper/tests/) |
+| Tests, LV2 discovery, host/UI checks | [Testing](TESTING.md) | [Tests](../../SMS-Midichopper/tests/) |
 | Engine, parameters, state, UI | [Midichopper architecture](../../SMS-Midichopper/Docs/ARCHITECTURE.md) | [Plugin source](../../SMS-Midichopper/src/) |
 | Shared DSP, codecs, geometry | [Common-Src map](../../Common-Src/README.md) | [Common-Src](../../Common-Src/) |
 | Shared DPF UI, pads, waveform | [Common-UI map](../../Common-UI/README.md) | [Common-UI](../../Common-UI/) |

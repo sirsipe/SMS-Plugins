@@ -37,24 +37,36 @@ LV2_PATH="$PWD/build/bin" \
 The URI comes from `src/plugin/DistrhoPluginInfo.h` under `SMS-Midichopper`.
 This checks discovery/metadata; it does not prove audio processing works.
 
-## jalv integration
+## LV2 host integration
 
-[jalv](https://drobilla.net/software/jalv.html) runs LV2 plugins as JACK
-applications. On Ubuntu/Debian the package is `jalv`. Use an existing JACK server
-or PipeWire JACK compatibility setup, and a display for custom UI checks.
-Inspect `jalv --help` locally; UI frontends/options depend on the installed build.
+Use Carla as the primary manual host because it exercises a more DAW-like UI,
+state, and parameter transport. Test the built bundle rather than an older
+installed copy:
 
 ```bash
-LV2_PATH="$PWD/build/bin" \
-  jalv -s https://github.com/sirsipe/SMS-Plugins/SMS-Midichopper
+LV2_URI='https://github.com/sirsipe/SMS-Plugins/SMS-Midichopper'
+LV2_PATH="$PWD/build/bin" pw-jack carla-single native lv2 "$LV2_URI"
 ```
 
-`-s` requests the custom UI when supported. With PipeWire's JACK wrapper, use
-`pw-jack jalv -s` in the same command if your setup requires it. Without a
-display, omit `-s` for audio/MIDI checks. Use `-c symbol=value` for initial
-controls; get symbols from `lv2info` or `MidichopperPlugin.cpp`, not UI labels.
-If the custom UI fails, check available jalv GUI frontends and installed UI
-support; a generic control window does not validate the custom UI.
+Omit `pw-jack` when Carla already uses the desired JACK server. Current
+[Carla main](https://github.com/falkTX/Carla/blob/main/source/backend/plugin/CarlaPluginLV2.cpp)
+includes the LV2 control-input change-request feature that SMS-Midichopper uses
+when MIDI activates a bank, but Carla 2.5.10 does not expose it. A future
+reproducible environment should pin a Carla revision or release containing that
+feature and verify it rather than assuming all Carla versions support it.
+
+Keep jalv as a secondary, minimal LV2 audio/MIDI and diagnostics host:
+
+```bash
+LV2_PATH="$PWD/build/bin" pw-jack jalv -s "$LV2_URI"
+```
+
+The currently tested jalv and Carla 2.5.10 hosts both load the custom UI and can
+route MIDI, but neither provides LV2 control-input change requests. They can
+confirm that MIDI changes engine behavior, but cannot validate that a
+DSP-requested `active_bank` change reaches the custom UI. Do not report that
+behavior as broken based on either host version alone. Inspect local host help;
+frontends, features, and options vary by installed version.
 
 Connect stereo source → plugin inputs, MIDI source → plugin event input, and
 plugin outputs → a recorder or monitoring destination using your JACK graph
@@ -71,11 +83,35 @@ Choose checks matching the change:
   region/ADSR, retrigger, and check that both waveform and sound match.
 - State: save populated pads and editor settings using the host's state-saving
   facility, close, reload that state, and compare playback/settings. Inspect the
-  installed frontend's help for saving; jalv can load a saved state path in place
-  of the plugin URI. Also check DAW project restoration when the change concerns
-  DAW integration.
+  installed host's help for saving. Also check DAW project restoration when the
+  change concerns DAW integration.
+
+## UI interaction tooling
+
+The intended development environment includes maintained command-line tools for
+mouse movement, clicks, window lookup, and window-only screenshots. The planned
+X11 baseline is a pinned Carla with the required LV2 features, `xdotool`,
+`wmctrl`, `xwininfo` (usually `x11-utils`), and ImageMagick `import`; headless
+containers will also need Xvfb and a small window manager. Keep jalv and JACK
+inspection/MIDI tools available for lower-level diagnostics. Package names,
+versions, and the final container setup are provisional.
+
+At present the repository has no development-container definition and does not
+install or wrap this toolchain. UI automation therefore works only when the
+tools and an X11/XWayland display are already available. Until a maintained
+harness exists, use installed tools directly; do not recreate missing utilities
+with one-off foreign-function bindings. Resolve the exact window ID after launch,
+activate it before each interaction, and use window-relative logical coordinates
+from `MidichopperLayout.hpp`. Re-resolve after relaunch or resize rather than
+assuming a desktop position. Native Wayland automation is not yet specified.
+
+Capture only the plug-in window, never the full desktop. Inspect every artifact
+before sharing or committing it, and exclude usernames, home paths, machine
+names, unrelated applications, notifications, accounts, and other private data.
+Repository screenshots should contain only intentional product UI. This workflow
+is subject to change when a reproducible container and UI harness are added.
 
 Report host/frontend, sample rate/buffer size for audio tests, steps, observed
 results, and failures. If JACK, a display, or routing is unavailable, say which
 integration checks remain untested. CI currently runs CTest and `lv2info`, not
-jalv audio/UI tests. Do not silently substitute one for the other.
+interactive host/UI tests. Do not silently substitute one layer for another.
