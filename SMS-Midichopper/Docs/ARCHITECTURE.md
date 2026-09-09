@@ -24,6 +24,23 @@ SMS-Midichopper separates the sampler from the plug-in format and UI:
 - `../third_party/DPF` is the single repository-level DPF submodule used by all
   plug-ins.
 
+## MIDI mapping
+
+The saved `midi_bank_mode` parameter selects between two playback mappings.
+All Banks is the default and maps the sequential storage slots exposed by the
+layout from the base note as a gapless sequence and
+groups them into four pages of the selected size. A valid playback note-on updates
+the engine's active bank to the page containing that sample; note-off never
+changes the active bank. The DSP requests an `active_bank` parameter change from
+the host so the saved selection and UI follow the played note when the host
+supports DSP-initiated input-parameter changes. Changing layout regroups slots
+without changing their unique MIDI notes.
+All Banks limits the effective base note to 64 so every layout remains within
+MIDI notes 0–127. UI-generated note-on and note-off events and displayed note
+labels use the same mapping as the engine. Selected Bank reuses one note range,
+with `active_bank` choosing its target, and retains the released fixed 16-slot
+bank organization.
+
 ## Capture model
 
 While armed in Sequential mode, the first note-on begins capture at the chosen
@@ -31,8 +48,9 @@ start pad in the selected bank. Each later note-on is a sample-accurate
 boundary: the active slice is published and capture continues at the next
 visible pad. Capture advances from Bank A through Bank D and stops rather than
 silently wrapping or overwriting earlier material. The 12- and 8-pad layouts
-skip hidden storage slots at the end of each bank. Note-off does not affect
-capture. Disarming or Finalize publishes the last slice.
+skip hidden storage slots at the end of each bank in Selected Bank mode. All
+Banks instead advances through contiguous layout-sized pages. Note-off does not
+affect capture. Disarming or Finalize publishes the last slice.
 
 The pre-roll ring holds up to 100 ms. At a boundary, that history becomes the
 start of the new slice and is trimmed from the previous slice, avoiding a gap
@@ -79,5 +97,5 @@ limit is 30 seconds per pad.
 ## Build and validation
 
 See [development](../../Docs/AI/DEVELOPMENT.md) for formats and build commands,
-and [testing](../../Docs/AI/TESTING.md) for CTest coverage and jalv checks.
+and [testing](../../Docs/AI/TESTING.md) for CTest and host/UI coverage.
 Platform-specific work is confined to DPF/DGL.

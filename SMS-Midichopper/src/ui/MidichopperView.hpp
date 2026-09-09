@@ -18,6 +18,7 @@ struct ViewState {
     int startPad = 0;
     float preRollMs = 0.0f;
     int baseMidiNote = static_cast<int>(kDefaultBaseMidiNote);
+    int midiBankMode = static_cast<int>(kDefaultMidiBankMode);
     float outputGainDb = 0.0f;
     int maxVoices = static_cast<int>(kPadsPerBank);
     int bank = 0;

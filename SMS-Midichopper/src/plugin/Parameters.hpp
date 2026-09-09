@@ -27,6 +27,7 @@ enum Parameter : std::uint32_t {
     kParameterActiveBank,
     kParameterPadLayout,
     kParameterCurrentCapturePad,
+    kParameterMidiBankMode,
     kParameterCount,
 };
 
@@ -57,6 +58,8 @@ inline constexpr ParameterRange padLayout{
     0.0f, 0.0f, static_cast<float>(kPadLayoutCount - 1U)};
 inline constexpr ParameterRange currentCapturePad{
     0.0f, 0.0f, static_cast<float>(kPadCount)};
+inline constexpr ParameterRange midiBankMode{
+    static_cast<float>(static_cast<std::uint8_t>(kDefaultMidiBankMode)), 0.0f, 1.0f};
 } // namespace parameterRanges
 
 [[nodiscard]] inline constexpr ParameterRange parameterRange(const std::uint32_t index) noexcept
@@ -72,6 +75,7 @@ inline constexpr ParameterRange currentCapturePad{
     case kParameterActiveBank: return parameterRanges::activeBank;
     case kParameterPadLayout: return parameterRanges::padLayout;
     case kParameterCurrentCapturePad: return parameterRanges::currentCapturePad;
+    case kParameterMidiBankMode: return parameterRanges::midiBankMode;
     default: return parameterRanges::toggle;
     }
 }

@@ -12,7 +12,7 @@ inline constexpr unsigned int minimumHeight = 500U;
 inline constexpr sms::ui::Rect mainPanel{24.0f, 96.0f, 630.0f, 516.0f};
 inline constexpr sms::ui::Rect sidePanel{670.0f, 96.0f, 266.0f, 516.0f};
 inline constexpr sms::ui::Rect menuButton{904.0f, 25.0f, 32.0f, 32.0f};
-inline constexpr sms::ui::Rect menuPanel{744.0f, 68.0f, 192.0f, 132.0f};
+inline constexpr sms::ui::Rect menuPanel{744.0f, 68.0f, 192.0f, 228.0f};
 inline constexpr sms::ui::Rect mainPadBounds{46.0f, 196.0f, 586.0f, 390.0f};
 inline constexpr sms::ui::Rect overviewWaveform{46.0f, 176.0f, 586.0f, 10.0f};
 inline constexpr sms::ui::Rect editorWaveform{46.0f, 158.0f, 586.0f, 222.0f};
@@ -37,6 +37,11 @@ inline constexpr sms::ui::Rect clearAction{842.0f, 540.0f, 70.0f, 34.0f};
 [[nodiscard]] constexpr sms::ui::Rect menuOption(const int index) noexcept
 {
     return {756.0f, 100.0f + static_cast<float>(index) * 31.0f, 168.0f, 27.0f};
+}
+
+[[nodiscard]] constexpr sms::ui::Rect midiBankModeOption(const int index) noexcept
+{
+    return {756.0f, 226.0f + static_cast<float>(index) * 31.0f, 168.0f, 27.0f};
 }
 
 [[nodiscard]] constexpr sms::ui::Rect mainBank(const int index) noexcept

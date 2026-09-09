@@ -84,6 +84,7 @@ public:
           fStartPad(0),
           fPreRoll(0.0f),
           fBaseNote(static_cast<int>(parameterRanges::baseMidiNote.defaultValue)),
+          fMidiBankMode(static_cast<int>(midichopper::kDefaultMidiBankMode)),
           fGain(0.0f),
           fMaxVoices(static_cast<int>(parameterRanges::maxVoices.defaultValue)),
           fBank(0),
@@ -91,6 +92,7 @@ public:
           fSelectedPad(0),
           fCurrentPad(-1),
           fPressedPad(-1),
+          fPressedMidiNote(-1),
           fPressedActionParameter(-1),
           fClearArmed(false),
           fMenuOpen(false),
@@ -188,6 +190,17 @@ protected:
             fBaseNote = baseNote;
             break;
         }
+        case kParameterMidiBankMode: {
+            const int localPad = localPadForGlobalPad(fSelectedPad);
+            const int mode = value >= 0.5f ? 1 : 0;
+            changed = fMidiBankMode != mode;
+            fMidiBankMode = mode;
+            if (changed) {
+                fSelectedPad = globalPad(std::clamp(localPad, 0, visiblePadCount() - 1));
+                refreshSelectedWaveform();
+            }
+            break;
+        }
         case kParameterOutputGainDb:
             changed = fGain != value;
             fGain = value;
@@ -232,7 +245,7 @@ protected:
                 break;
             fCurrentPad = currentPad;
             if (fCurrentPad >= 0) {
-                const int captureBank = fCurrentPad / static_cast<int>(midichopper::kPadsPerBank);
+                const int captureBank = bankForGlobalPad(fCurrentPad);
                 const bool bankChanged = captureBank != fBank;
                 fBank = captureBank;
                 if (fEditorMode && fCurrentPad != fSelectedPad)
@@ -262,12 +275,13 @@ protected:
         {
             fCurrentPad = parsePad(value, -1);
             if (fCurrentPad >= 0)
-                fBank = fCurrentPad / static_cast<int>(midichopper::kPadsPerBank);
+                fBank = bankForGlobalPad(fCurrentPad);
         }
         else if (std::strcmp(key, "selected_pad") == 0)
         {
             fSelectedPad = clampPad(std::strtof(value, nullptr));
-            fBank = fSelectedPad / static_cast<int>(midichopper::kPadsPerBank);
+            fBank = std::clamp(bankForGlobalPad(fSelectedPad), 0,
+                               static_cast<int>(midichopper::kBankCount - 1));
         }
         else if (std::strcmp(key, "status") == 0)
             copyString(fStatus, value);
@@ -311,7 +325,7 @@ protected:
         beginLogicalDisplay();
         const midichopper::ui::ViewState view{
             fArm, fRecordMode, fFixedLength, fPlaybackMode, fMonitor,
-            fStartPad, fPreRoll, fBaseNote, fGain, fMaxVoices, fBank, fLayout,
+            fStartPad, fPreRoll, fBaseNote, fMidiBankMode, fGain, fMaxVoices, fBank, fLayout,
             fSelectedPad, fCurrentPad, fPressedPad, fClearArmed, fMenuOpen,
             fEditorMode, fHasWaveform, fPadState, fPadStatus,
             fEditorSettings, fWaveform, fStatus,
@@ -348,6 +362,15 @@ protected:
                     {
                         fMenuOpen = false;
                         selectLayout(layoutIndex);
+                        return true;
+                    }
+                }
+                for (int mode = 0; mode < static_cast<int>(midichopper::kMidiBankModeCount); ++mode)
+                {
+                    if (hit(x, y, uiLayout::midiBankModeOption(mode)))
+                    {
+                        fMenuOpen = false;
+                        selectMidiBankMode(mode);
                         return true;
                     }
                 }
@@ -443,8 +466,9 @@ protected:
                 else
                 {
                     fPressedPad = pad;
+                    fPressedMidiNote = mappedMidiNote(globalPad(pad));
 #if DISTRHO_PLUGIN_WANT_MIDI_INPUT
-                    sendNote(0, static_cast<uint8_t>(fBaseNote + pad), 127);
+                    sendNote(0, static_cast<uint8_t>(fPressedMidiNote), 127);
 #endif
                 }
                 requestRepaint();
@@ -555,9 +579,11 @@ protected:
         else if (fPressedPad >= 0)
         {
 #if DISTRHO_PLUGIN_WANT_MIDI_INPUT
-            sendNote(0, static_cast<uint8_t>(fBaseNote + fPressedPad), 0);
+            if (fPressedMidiNote >= 0)
+                sendNote(0, static_cast<uint8_t>(fPressedMidiNote), 0);
 #endif
             fPressedPad = -1;
+            fPressedMidiNote = -1;
             requestRepaint();
             return true;
         }
@@ -590,6 +616,7 @@ private:
     int fStartPad;
     float fPreRoll;
     int fBaseNote;
+    int fMidiBankMode;
     float fGain;
     int fMaxVoices;
     int fBank;
@@ -597,6 +624,7 @@ private:
     int fSelectedPad;
     int fCurrentPad;
     int fPressedPad;
+    int fPressedMidiNote;
     int fPressedActionParameter;
     bool fClearArmed;
     std::chrono::steady_clock::time_point fClearDeadline{};
@@ -652,7 +680,35 @@ private:
 
     int globalPad(const int localPad) const noexcept
     {
-        return fBank * static_cast<int>(midichopper::kPadsPerBank) + localPad;
+        return fBank * static_cast<int>(midichopper::bankStride(
+            static_cast<std::uint8_t>(visiblePadCount()), midiBankMode())) + localPad;
+    }
+
+    midichopper::MidiBankMode midiBankMode() const noexcept
+    {
+        return fMidiBankMode == 0
+            ? midichopper::MidiBankMode::SelectedBank : midichopper::MidiBankMode::AllBanks;
+    }
+
+    int bankForGlobalPad(const int pad) const noexcept
+    {
+        return static_cast<int>(midichopper::bankForPad(
+            static_cast<std::uint32_t>(std::max(pad, 0)),
+            static_cast<std::uint8_t>(visiblePadCount()), midiBankMode()));
+    }
+
+    int localPadForGlobalPad(const int pad) const noexcept
+    {
+        return static_cast<int>(midichopper::localPadInBank(
+            static_cast<std::uint32_t>(std::max(pad, 0)),
+            static_cast<std::uint8_t>(visiblePadCount()), midiBankMode()));
+    }
+
+    int mappedMidiNote(const int pad) const noexcept
+    {
+        return static_cast<int>(midichopper::midiNoteForPad(
+            static_cast<std::uint32_t>(pad), static_cast<std::uint8_t>(fBaseNote),
+            midiBankMode()));
     }
 
     int localPadFromVisualIndex(const int visualIndex) const noexcept
@@ -662,7 +718,7 @@ private:
 
     void normalizeSelectionForBank()
     {
-        const int localPad = std::clamp(fSelectedPad % static_cast<int>(midichopper::kPadsPerBank),
+        const int localPad = std::clamp(localPadForGlobalPad(fSelectedPad),
                                         0, visiblePadCount() - 1);
         const int selected = globalPad(localPad);
         if (selected == fSelectedPad)
@@ -762,6 +818,14 @@ private:
         }
         normalizeSelectionForBank();
         setControlValue(kParameterPadLayout, static_cast<float>(fLayout));
+        requestRepaint();
+    }
+
+    void selectMidiBankMode(const int mode)
+    {
+        const int selectedMode = mode == 0 ? 0 : 1;
+        if (selectedMode != fMidiBankMode)
+            setControlValue(kParameterMidiBankMode, static_cast<float>(selectedMode));
         requestRepaint();
     }
 

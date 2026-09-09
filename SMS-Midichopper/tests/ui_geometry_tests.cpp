@@ -1,5 +1,6 @@
 #include "Audio/WaveformSummary.hpp"
 #include "DSP/SamplePlaybackSettings.hpp"
+#include "MidichopperLayout.hpp"
 #include "PadLayout.hpp"
 #include "UI/Geometry.hpp"
 #include "WaveformEditor.hpp"
@@ -38,6 +39,21 @@ void padLayouts()
           "four-by-two arrangement");
     check(grid.hit({15.0f, 25.0f}) == 0 && eight.localIndex(0) == 4,
           "grid hit testing composes with pad mapping");
+}
+
+void hamburgerMenuGeometry()
+{
+    namespace menu = midichopper::ui::layout;
+    const auto lastLayout = menu::menuOption(2);
+    const auto firstMidiMode = menu::midiBankModeOption(0);
+    const auto lastMidiMode = menu::midiBankModeOption(1);
+    check(firstMidiMode.y > lastLayout.y + lastLayout.height,
+          "MIDI bank choices follow pad-layout choices without overlap");
+    check(menu::menuPanel.contains({firstMidiMode.x + firstMidiMode.width * 0.5f,
+                                    firstMidiMode.y + firstMidiMode.height * 0.5f}) &&
+          menu::menuPanel.contains({lastMidiMode.x + lastMidiMode.width * 0.5f,
+                                    lastMidiMode.y + lastMidiMode.height * 0.5f}),
+          "MIDI bank choices remain inside the hamburger panel");
 }
 
 void waveformGeometry()
@@ -93,6 +109,7 @@ void waveformGeometry()
 int main()
 {
     padLayouts();
+    hamburgerMenuGeometry();
     waveformGeometry();
     std::cout << "UI geometry tests passed\n";
 }

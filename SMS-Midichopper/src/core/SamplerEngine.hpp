@@ -41,6 +41,7 @@ struct EngineSettings {
     std::uint8_t baseNote = kDefaultBaseMidiNote;
     std::uint8_t startPad = 0;
     std::uint8_t activeBank = 0;
+    MidiBankMode midiBankMode = kDefaultMidiBankMode;
     std::uint8_t padsPerBank = static_cast<std::uint8_t>(kPadsPerBank);
     float preRollMilliseconds = 0.0f;
     float gain = 1.0f;
@@ -72,9 +73,10 @@ struct PadMetadata {
  * are control-thread operations and must not be called concurrently with
  * process(). Events passed to process() must be sorted by frameOffset.
  *
- * Audio is stereo, non-interleaved. MIDI notes address the visible pads in the
- * active bank, starting at baseNote. Banks always retain 16 storage slots;
- * 12- and 8-pad layouts leave the remaining slots hidden without deleting them.
+ * Audio is stereo, non-interleaved. MIDI notes either address the visible pads
+ * in the active bank or a gapless sequence across all four visible bank pages,
+ * starting at baseNote. Selected Bank retains fixed 16-slot storage banks;
+ * All Banks groups sequential sample slots by the selected layout size.
  * When armed in Sequential mode, the first note-on starts a slice at startPad,
  * and each later note-on commits the current slice and advances one visible
  * pad, continuing into the next bank when needed.

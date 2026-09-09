@@ -112,6 +112,7 @@ void SamplerEngine::reset() noexcept {
 void SamplerEngine::setSettings(const EngineSettings& s) noexcept {
     settings_ = s;
     if (settings_.activeBank >= kBankCount) settings_.activeBank = 0;
+    settings_.baseNote = effectiveBaseMidiNote(settings_.baseNote, settings_.midiBankMode);
     settings_.padsPerBank = settings_.padsPerBank <= 8U ? 8U :
                             (settings_.padsPerBank <= 12U ? 12U : 16U);
     if (settings_.startPad >= settings_.padsPerBank) settings_.startPad = 0;
@@ -126,20 +127,23 @@ void SamplerEngine::setSettings(const EngineSettings& s) noexcept {
 }
 
 std::uint32_t SamplerEngine::noteToPad(std::uint8_t note) const noexcept {
-    if (note < settings_.baseNote ||
-        note >= static_cast<std::uint16_t>(settings_.baseNote) + settings_.padsPerBank)
-        return kPadCount;
-    return static_cast<std::uint32_t>(settings_.activeBank) * kPadsPerBank +
-           static_cast<std::uint32_t>(note - settings_.baseNote);
+    return padForMidiNote(note, settings_.baseNote, settings_.activeBank,
+                          settings_.padsPerBank, settings_.midiBankMode);
 }
 
 std::uint32_t SamplerEngine::firstCapturePad() const noexcept {
-    return static_cast<std::uint32_t>(settings_.activeBank) * kPadsPerBank +
+    return static_cast<std::uint32_t>(settings_.activeBank) *
+               bankStride(settings_.padsPerBank, settings_.midiBankMode) +
            settings_.startPad;
 }
 
 std::uint32_t SamplerEngine::followingCapturePad(const std::uint32_t pad) const noexcept {
     if (pad >= kPadCount) return kPadCount;
+    if (settings_.midiBankMode == MidiBankMode::AllBanks) {
+        const std::uint32_t addressablePads =
+            static_cast<std::uint32_t>(settings_.padsPerBank) * kBankCount;
+        return pad + 1U < addressablePads ? pad + 1U : kPadCount;
+    }
     const std::uint32_t bank = pad / kPadsPerBank;
     const std::uint32_t localPad = pad % kPadsPerBank;
     if (localPad + 1U < settings_.padsPerBank)

@@ -40,7 +40,35 @@ public:
 private:
     [[nodiscard]] int globalPad(const int localPad) const noexcept
     {
-        return state_.bank * static_cast<int>(kPadsPerBank) + localPad;
+        return state_.bank * static_cast<int>(bankStride(
+            static_cast<std::uint8_t>(pads_.visiblePadCount()), midiBankMode())) + localPad;
+    }
+
+    [[nodiscard]] MidiBankMode midiBankMode() const noexcept
+    {
+        return state_.midiBankMode == 0
+            ? MidiBankMode::SelectedBank : MidiBankMode::AllBanks;
+    }
+
+    [[nodiscard]] int bankForGlobalPad(const int pad) const noexcept
+    {
+        return static_cast<int>(bankForPad(
+            static_cast<std::uint32_t>(std::max(pad, 0)),
+            static_cast<std::uint8_t>(pads_.visiblePadCount()), midiBankMode()));
+    }
+
+    [[nodiscard]] int localPadForGlobalPad(const int pad) const noexcept
+    {
+        return static_cast<int>(localPadInBank(
+            static_cast<std::uint32_t>(std::max(pad, 0)),
+            static_cast<std::uint8_t>(pads_.visiblePadCount()), midiBankMode()));
+    }
+
+    [[nodiscard]] int mappedMidiNote(const int pad) const noexcept
+    {
+        return static_cast<int>(midiNoteForPad(
+            static_cast<std::uint32_t>(pad), static_cast<std::uint8_t>(state_.baseMidiNote),
+            midiBankMode()));
     }
 
     [[nodiscard]] sms::ui::PadGridLayout mainGrid() const noexcept
@@ -126,6 +154,15 @@ private:
         for (int index = 0; index < static_cast<int>(kPadLayoutCount); ++index)
             sms::ui::dpf::drawSegment(canvas_, uiLayout::menuOption(index), labels[index],
                                       index == state_.layout, colors.selection);
+        canvas_.fillColor(colors.contentSecondary);
+        canvas_.text(756.0f, 207.0f, "MIDI BANK MODE", nullptr);
+        static constexpr const char* midiLabels[] = {
+            "SELECTED  ·  SHARED", "ALL BANKS  ·  UNIQUE",
+        };
+        for (int index = 0; index < static_cast<int>(kMidiBankModeCount); ++index)
+            sms::ui::dpf::drawSegment(canvas_, uiLayout::midiBankModeOption(index),
+                                      midiLabels[index], index == state_.midiBankMode,
+                                      colors.selection);
     }
 
     void drawPadPanel()
@@ -193,7 +230,7 @@ private:
             canvas_.fillColor(selected ? colors.selection : colors.contentSecondary);
             canvas_.text(cell.x + 12.0f, cell.y + 10.0f, padNumber, nullptr);
             char note[16];
-            midiName(state_.baseMidiNote + localPad, note, sizeof(note));
+            midiName(mappedMidiNote(pad), note, sizeof(note));
             canvas_.fontSize(20.0f);
             canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_CENTER |
                               DGL_NAMESPACE::NanoVG::ALIGN_MIDDLE);
@@ -223,8 +260,8 @@ private:
         canvas_.fillColor(colors.contentSecondary);
         char heading[80];
         std::snprintf(heading, sizeof(heading), "SAMPLE EDITOR  /  BANK %c  /  PAD %02d",
-                      'A' + state_.selectedPad / static_cast<int>(kPadsPerBank),
-                      state_.selectedPad % static_cast<int>(kPadsPerBank) + 1);
+                      'A' + bankForGlobalPad(state_.selectedPad),
+                      localPadForGlobalPad(state_.selectedPad) + 1);
         canvas_.text(46.0f, 120.0f, heading, nullptr);
         sms::ui::dpf::drawWaveformEditor(canvas_, uiLayout::editorWaveform,
             state_.waveform, state_.hasWaveform, state_.editorSettings);
@@ -302,7 +339,7 @@ private:
             canvas_.fillColor(selected ? colors.selection : colors.contentPrimary);
             canvas_.text(cell.x + 9.0f, cell.y + cell.height * 0.5f, label, nullptr);
             char note[16];
-            midiName(state_.baseMidiNote + localPad, note, sizeof(note));
+            midiName(mappedMidiNote(pad), note, sizeof(note));
             canvas_.fontSize(10.0f);
             canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_RIGHT |
                               DGL_NAMESPACE::NanoVG::ALIGN_MIDDLE);
@@ -416,14 +453,14 @@ private:
         if (state_.editorMode) {
             std::snprintf(liveStatus, sizeof(liveStatus),
                           "Editing Bank %c Pad %02d — drag cut handles or envelope controls",
-                          'A' + state_.selectedPad / static_cast<int>(kPadsPerBank),
-                          state_.selectedPad % static_cast<int>(kPadsPerBank) + 1);
+                          'A' + bankForGlobalPad(state_.selectedPad),
+                          localPadForGlobalPad(state_.selectedPad) + 1);
             status = liveStatus;
         } else if (state_.currentPad >= 0) {
             std::snprintf(liveStatus, sizeof(liveStatus),
                           "Chopping to Bank %c Pad %02d — press any pad for next slice",
-                          'A' + state_.currentPad / static_cast<int>(kPadsPerBank),
-                          state_.currentPad % static_cast<int>(kPadsPerBank) + 1);
+                          'A' + bankForGlobalPad(state_.currentPad),
+                          localPadForGlobalPad(state_.currentPad) + 1);
             status = liveStatus;
         } else {
             bool bankFull = true;

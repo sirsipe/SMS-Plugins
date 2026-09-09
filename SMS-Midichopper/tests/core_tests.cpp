@@ -55,6 +55,7 @@ void full_bank_and_undo() {
 void bank_and_layout_mapping() {
     midichopper::SamplerEngine e(1000.0, 1.0);
     auto settings = e.settings();
+    settings.midiBankMode = midichopper::MidiBankMode::SelectedBank;
     settings.armed = true;
     settings.monitorInput = false;
     settings.padsPerBank = 12;
@@ -106,6 +107,117 @@ void bank_and_layout_mapping() {
     e.setSettings(settings);
     e.process(nullptr, nullptr, output, output, 1, &hiddenPlay, 1);
     check(e.padMetadata(12).active, "restoring the layout reveals preserved pad audio");
+}
+
+void all_bank_midi_mapping() {
+    midichopper::SamplerEngine defaultEngine(1000.0, 1.0);
+    check(midichopper::kDefaultMidiBankMode == midichopper::MidiBankMode::AllBanks &&
+          defaultEngine.settings().midiBankMode == midichopper::MidiBankMode::AllBanks,
+          "All Banks is the engine default MIDI mapping");
+
+    check(midichopper::midiNoteForPad(0, midichopper::kDefaultBaseMidiNote,
+              midichopper::MidiBankMode::AllBanks) == 36 &&
+          midichopper::midiNoteForPad(16, midichopper::kDefaultBaseMidiNote,
+              midichopper::MidiBankMode::AllBanks) == 52 &&
+          midichopper::midiNoteForPad(63, midichopper::kDefaultBaseMidiNote,
+              midichopper::MidiBankMode::AllBanks) == 99,
+          "UI-facing all-bank note mapping matches the four fixed ranges");
+    check(midichopper::midiNoteForPad(63, midichopper::kDefaultBaseMidiNote,
+              midichopper::MidiBankMode::SelectedBank) == 51,
+          "UI-facing selected-bank mapping reuses the local note range");
+
+    midichopper::SamplerEngine e(1000.0, 1.0);
+    auto settings = e.settings();
+    settings.monitorInput = false;
+    settings.playbackMode = midichopper::PlaybackMode::Gated;
+    settings.midiBankMode = midichopper::MidiBankMode::AllBanks;
+    e.setSettings(settings);
+
+    midichopper::PadData pad;
+    pad.sampleRate = 1000.0;
+    pad.frames = 16;
+    pad.stereo.assign(32U, 1.0f);
+    pad.peak = pad.rms = 1.0f;
+    check(e.importPad(0, pad) && e.importPad(16, pad) && e.importPad(63, pad),
+          "import pads across all MIDI banks");
+
+    float outputLeft[2]{};
+    float outputRight[2]{};
+    const midichopper::MidiEvent bankBOn{0, 52, 127, midichopper::MidiEventType::NoteOn};
+    e.process(nullptr, nullptr, outputLeft, outputRight, 1, &bankBOn, 1);
+    check(e.padMetadata(16).active && !e.padMetadata(0).active,
+          "all-bank mode uses a fixed 16-note bank stride");
+
+    settings.activeBank = 3;
+    e.setSettings(settings);
+    const midichopper::MidiEvent bankBOff{0, 52, 0, midichopper::MidiEventType::NoteOff};
+    e.process(nullptr, nullptr, outputLeft, outputRight, 1, &bankBOff, 1);
+    check(!e.padMetadata(16).active,
+          "all-bank note-off ignores visible bank changes");
+
+    const midichopper::MidiEvent bankAOn{0, 36, 127, midichopper::MidiEventType::NoteOn};
+    e.process(nullptr, nullptr, outputLeft, outputRight, 1, &bankAOn, 1);
+    check(e.padMetadata(0).active,
+          "all-bank note-on ignores the selected view bank");
+    const midichopper::MidiEvent bankAOff{0, 36, 0, midichopper::MidiEventType::NoteOff};
+    e.process(nullptr, nullptr, outputLeft, outputRight, 1, &bankAOff, 1);
+
+    const midichopper::MidiEvent lastOn{0, 99, 127, midichopper::MidiEventType::NoteOn};
+    e.process(nullptr, nullptr, outputLeft, outputRight, 1, &lastOn, 1);
+    check(e.padMetadata(63).active, "all-bank mapping includes its upper boundary");
+    const midichopper::MidiEvent lastOff{0, 99, 0, midichopper::MidiEventType::NoteOff};
+    e.process(nullptr, nullptr, outputLeft, outputRight, 1, &lastOff, 1);
+    const midichopper::MidiEvent aboveRange{0, 100, 127, midichopper::MidiEventType::NoteOn};
+    e.process(nullptr, nullptr, outputLeft, outputRight, 1, &aboveRange, 1);
+    check(!e.padMetadata(63).active, "all-bank mapping rejects notes above its range");
+
+    settings.padsPerBank = 8;
+    e.setSettings(settings);
+    check(e.importPad(8, pad), "import the first Bank B pad in the eight-pad layout");
+    const midichopper::MidiEvent regroupedOn{0, 44, 127, midichopper::MidiEventType::NoteOn};
+    e.process(nullptr, nullptr, outputLeft, outputRight, 1, &regroupedOn, 1);
+    check(e.padMetadata(8).active &&
+          midichopper::bankForPad(8, 8, midichopper::MidiBankMode::AllBanks) == 1,
+          "eight-pad layout groups sample slot eight into Bank B");
+    const midichopper::MidiEvent regroupedOff{0, 44, 0, midichopper::MidiEventType::NoteOff};
+    e.process(nullptr, nullptr, outputLeft, outputRight, 1, &regroupedOff, 1);
+
+    settings.padsPerBank = 12;
+    e.setSettings(settings);
+    e.process(nullptr, nullptr, outputLeft, outputRight, 1, &regroupedOn, 1);
+    check(e.padMetadata(8).active &&
+          midichopper::bankForPad(8, 12, midichopper::MidiBankMode::AllBanks) == 0,
+          "twelve-pad layout regroups the same sample and preserves its MIDI note");
+    check(midichopper::midiNoteForPad(8, midichopper::kDefaultBaseMidiNote,
+              midichopper::MidiBankMode::AllBanks) == 44,
+          "layout changes do not renumber a sample in all-bank mode");
+
+    settings.baseNote = 112;
+    settings.padsPerBank = 16;
+    e.setSettings(settings);
+    check(e.settings().baseNote == midichopper::maximumBaseMidiNote(
+              midichopper::MidiBankMode::AllBanks),
+          "all-bank base note clamps so all 64 pads remain addressable");
+
+    midichopper::SamplerEngine capture(1000.0, 1.0);
+    auto captureSettings = capture.settings();
+    captureSettings.armed = true;
+    captureSettings.monitorInput = false;
+    captureSettings.midiBankMode = midichopper::MidiBankMode::AllBanks;
+    captureSettings.padsPerBank = 8;
+    captureSettings.startPad = 7;
+    capture.setSettings(captureSettings);
+    float input[2]{};
+    const midichopper::MidiEvent boundaries[]{
+        {0, 60, 127, midichopper::MidiEventType::NoteOn},
+        {1, 60, 127, midichopper::MidiEventType::NoteOn},
+    };
+    capture.process(input, input, outputLeft, outputRight, 2, boundaries, 2);
+    capture.finalizeRecording();
+    capture.process(nullptr, nullptr, outputLeft, outputRight, 0);
+    check(capture.padMetadata(7).occupied && capture.padMetadata(8).occupied &&
+          !capture.padMetadata(16).occupied,
+          "all-bank capture advances through sequential layout pages");
 }
 
 void playback_and_rate_conversion() {
@@ -300,6 +412,7 @@ int main() {
     sequential_boundaries_and_preroll();
     full_bank_and_undo();
     bank_and_layout_mapping();
+    all_bank_midi_mapping();
     playback_and_rate_conversion();
     shared_storage_blocks();
     maximum_voice_limit();

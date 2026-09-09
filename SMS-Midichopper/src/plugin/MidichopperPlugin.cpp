@@ -141,7 +141,8 @@ protected:
             break;
         case kParameterBaseMidiNote:
             setupParameter(index, parameter, "Base MIDI Note", "base_midi_note", "",
-                           kParameterIsInteger, "Pad 1 note; pads occupy this note through +15.");
+                           kParameterIsInteger,
+                           "Pad 1 note; All Banks mode limits the effective base to 64.");
             break;
         case kParameterOutputGainDb:
             setupParameter(index, parameter, "Output Gain", "output_gain", "dB",
@@ -169,7 +170,8 @@ protected:
             break;
         case kParameterActiveBank:
             setupParameter(index, parameter, "Active Bank", "active_bank", "",
-                           kParameterIsInteger, "Bank selected for MIDI playback and capture.");
+                           kParameterIsInteger,
+                           "Visible bank and capture start; also the playback target in Selected Bank mode.");
             break;
         case kParameterPadLayout:
             setupParameter(index, parameter, "Pad Layout", "pad_layout", "",
@@ -180,6 +182,16 @@ protected:
             setupParameter(index, parameter, "Current Capture Pad", "current_capture_pad", "",
                            kParameterIsOutput | kParameterIsInteger,
                            "Global pad number currently receiving captured audio; zero when idle.");
+            break;
+        case kParameterMidiBankMode:
+            setupParameter(index, parameter, "MIDI Bank Mode", "midi_bank_mode", "",
+                           kParameterIsBoolean | kParameterIsInteger,
+                           "0 = selected bank shares one note range, 1 = all banks use unique notes.");
+            parameter.enumValues.count = 2;
+            parameter.enumValues.restrictedMode = true;
+            parameter.enumValues.values = new ParameterEnumerationValue[2]{
+                {0.0f, "Selected Bank"}, {1.0f, "All Banks"},
+            };
             break;
         default:
             if (index >= kFirstPadStatusParameter && index < kFirstPadActivityParameter) {
@@ -338,6 +350,7 @@ protected:
             events[eventCount++] = {event.frame, note, velocity, type};
         }
 
+        activateAllBanksMidiBank(events.data(), eventCount);
         sampler_.process(inputs[0], inputs[1], outputs[0], outputs[1], frames, events.data(), eventCount);
         updatePadOutputParameters();
     }
@@ -405,6 +418,8 @@ private:
         settings.maxVoices = static_cast<std::uint8_t>(clampedParameter(kParameterMaxVoices));
         settings.activeBank = static_cast<std::uint8_t>(
             clampedParameter(kParameterActiveBank) - parameterRanges::activeBank.minimum);
+        settings.midiBankMode = parameter(kParameterMidiBankMode) >= 0.5f
+            ? midichopper::MidiBankMode::AllBanks : midichopper::MidiBankMode::SelectedBank;
         const auto layout = static_cast<std::uint32_t>(
             clampedParameter(kParameterPadLayout));
         settings.padsPerBank = midichopper::padsPerBankForLayout(layout);
@@ -419,6 +434,36 @@ private:
         if ((commands & 0x4U) != 0U) sampler_.clearAllPads();
     }
 
+    void activateAllBanksMidiBank(const midichopper::MidiEvent* const events,
+                                  const std::uint32_t eventCount) noexcept
+    {
+        using namespace midichopper::plugin;
+        auto settings = sampler_.settings();
+        if (settings.armed || settings.midiBankMode != midichopper::MidiBankMode::AllBanks)
+            return;
+
+        std::uint32_t bank = settings.activeBank;
+        for (std::uint32_t index = 0; index < eventCount; ++index) {
+            if (!events[index].isNoteOn())
+                continue;
+            const std::uint32_t pad = midichopper::padForMidiNote(
+                events[index].note, settings.baseNote, settings.activeBank,
+                settings.padsPerBank, settings.midiBankMode);
+            if (pad < midichopper::kPadCount)
+                bank = midichopper::bankForPad(
+                    pad, settings.padsPerBank, settings.midiBankMode);
+        }
+        if (bank == settings.activeBank || bank >= midichopper::kBankCount)
+            return;
+        settings.activeBank = static_cast<std::uint8_t>(bank);
+        sampler_.setSettings(settings);
+        const float parameterValue =
+            static_cast<float>(bank) + parameterRanges::activeBank.minimum;
+        parameters_[kParameterActiveBank].store(parameterValue, std::memory_order_relaxed);
+        if (canRequestParameterValueChanges())
+            static_cast<void>(requestParameterValueChange(kParameterActiveBank, parameterValue));
+    }
+
     void updatePadOutputParameters() noexcept
     {
         using namespace midichopper::plugin;
@@ -427,7 +472,8 @@ private:
         for (std::uint32_t pad = 0; pad < midichopper::kPadCount; ++pad) {
             if (sampler_.padMetadata(pad).recording) {
                 currentCapturePad = pad;
-                settings.activeBank = static_cast<std::uint8_t>(pad / midichopper::kPadsPerBank);
+                settings.activeBank = static_cast<std::uint8_t>(midichopper::bankForPad(
+                    pad, settings.padsPerBank, settings.midiBankMode));
                 parameters_[kParameterActiveBank].store(
                     static_cast<float>(settings.activeBank + 1U), std::memory_order_relaxed);
                 break;
@@ -437,9 +483,8 @@ private:
             currentCapturePad < midichopper::kPadCount ?
                 static_cast<float>(currentCapturePad + 1U) : 0.0f,
             std::memory_order_relaxed);
-
-        const std::uint32_t bankBase =
-            static_cast<std::uint32_t>(settings.activeBank) * midichopper::kPadsPerBank;
+        const std::uint32_t bankBase = static_cast<std::uint32_t>(settings.activeBank) *
+            midichopper::bankStride(settings.padsPerBank, settings.midiBankMode);
         for (std::uint32_t localPad = 0; localPad < midichopper::kPadsPerBank; ++localPad) {
             const bool visible = localPad < settings.padsPerBank;
             const midichopper::PadMetadata metadata =
