@@ -1,76 +1,61 @@
 # SudoMetalStudio Plugins
 
-[![Ubuntu CI](https://github.com/sirsipe/SMS-Plugins/actions/workflows/ubuntu-ci.yml/badge.svg)](https://github.com/sirsipe/SMS-Plugins/actions/workflows/ubuntu-ci.yml)
-
-Native Linux audio plugins from **SudoMetalStudio (SMS)**, a YouTube channel.
-The project is developed using AI with human direction and testing.
+Native Linux audio plugins developed with AI and human testing.
 
 ## Plugins
 
-- [SMS-Midichopper](SMS-Midichopper/README.md) — a live stereo chopping
-  sampler under development. LV2 is the primary format; VST3 is also built
-  for releases.
+- [SMS-Midichopper](SMS-Midichopper/README.md) — live stereo chopping sampler
+  for LV2 and VST3.
 
 ![SMS-Midichopper interface](SMS-Midichopper/Docs/SMS-Midichopper-v0.0.3.png)
 
-_Screenshot from version v0.0.3._
+## Quick Start: AI autopilot in an isolated container
 
-Clone with submodules before building:
+Requirements: Ubuntu Linux and ChatGPT Plus, or another plan that includes
+GPT-5.6 Sol.
 
-```bash
-git clone --recurse-submodules https://github.com/sirsipe/SMS-Plugins.git
-```
+1. Install [Visual Studio Code](https://code.visualstudio.com/) and its
+   [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers).
 
-The repository-level `third_party/DPF` submodule and `Common-UI` sources are
-shared by all plug-ins. Each plug-in contains its own build and usage
-instructions.
+2. Install Docker and add your user to its group:
 
-## Docker Dev Container
+   ```bash
+   sudo apt update
+   sudo apt install docker.io
+   sudo systemctl enable --now docker
+   sudo usermod -aG docker "$USER"
+   sudo reboot
+   ```
 
-The repository includes a Docker-based [Dev Container](.devcontainer/devcontainer.json)
-with the build toolchain, LV2/VST3 dependencies, Carla and jalv, dummy JACK,
-and a TigerVNC/Openbox desktop. Install Docker Engine, Visual Studio Code, and
-the recommended **Dev Containers** extension
-(`ms-vscode-remote.remote-containers`) on the host. Then:
+   **Reboot before opening VS Code.** Logging out may leave VS Code background
+   processes without Docker permission.
 
-1. Open this repository in a second VS Code window.
-2. Run **Dev Containers: Reopen in Container**.
-3. Wait for `desktop-health` to succeed in the container terminal.
-4. Open VS Code's forwarded port 6080 for noVNC, or connect a VNC viewer to
-   forwarded port 5901.
+3. Clone and open the repository:
 
-The workspace opens directly at `/workspaces/SMS-Plugins` as user `vscode`.
-The container-side Codex, CMake Tools, and clangd extensions install
-automatically. Codex CLI is also available; run `codex` and sign in when needed.
-Codex state and an optional VNC password persist in two narrowly scoped Docker
-volumes. No host home, display/audio socket, Docker socket, private key, or
-unrelated repository is mounted.
+   ```bash
+   git clone --recurse-submodules https://github.com/sirsipe/SMS-Plugins.git
+   code SMS-Plugins
+   ```
 
-The passwordless VNC default is intended only for VS Code's local tunnel or the
-Make workflow's loopback-bound ports. In a Dev Container terminal, set a
-persistent password with
-`tigervncpasswd "$HOME/.config/sms-plugins-devcontainer/tigervnc.passwd"`; the
-manual workflow provides `make dev-vnc-password`. Restart the container after
-either command. Never expose ports 5901 or 6080 publicly without authentication
-and transport security.
+4. In VS Code, run **Dev Containers: Reopen in Container**. The first image
+   build downloads the complete audio, GUI, and AI toolchain and can take
+   several minutes. Later starts are much faster.
 
-Dev Containers is the primary workflow. The equivalent manual commands are:
+5. Open the Codex panel on the right and sign in. Select **Full access**,
+   **GPT-5.6 Sol**, and **High** reasoning for autopilot-style work.
 
-```bash
-make dev-build dev-run dev-ready
-make dev-shell             # or: make dev-codex
-```
+6. Try this prompt:
 
-Close any VS Code remote window before `make dev-wipe`. That target removes
-only Docker resources carrying this repository's label and its two exact named
-volumes; it never runs a global prune. Removing the Codex volume requires
-signing in again. Host ports may be changed with `NOVNC_HOST_PORT=6081` and
-`VNC_HOST_PORT=5902` on `make dev-run`.
+   > Hello! Make the ARM button of SMS-Midichopper red, test it, and show me a
+   > picture of how it looks.
 
-Release builds are produced by GitHub Actions. See
-[Docs/RELEASING.md](Docs/RELEASING.md) for the release procedure.
+7. (*Optional*) - To satisfy your curiosity, follow the agent's virtual screen at
+   [http://localhost:6080/vnc.html](http://localhost:6080/vnc.html).
 
-Report bugs and propose features in
-[GitHub Issues](https://github.com/sirsipe/SMS-Plugins/issues).
-See [Contributing](CONTRIBUTING.md) for development and documentation upkeep.
-AI agents start at [AGENTS.md](AGENTS.md) and use its task index.
+Inside the container, an AI agent can build and install the plugin, run its
+tests, launch Carla, operate the real plugin UI, and capture window-only
+screenshots. Docker provides the outer safety boundary for Full access: the
+agent can change this checkout and use the network, but receives no host home,
+display, audio, Docker socket, private keys, or unrelated repositories.
+
+See [Contributing](CONTRIBUTING.md) for manual development and validation.
