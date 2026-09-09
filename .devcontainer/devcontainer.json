@@ -1,0 +1,55 @@
+{
+  "name": "SMS-Plugins",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "initializeCommand": [
+    "bash",
+    "${localWorkspaceFolder}/.devcontainer/scripts/prepare-volumes.sh"
+  ],
+  "workspaceFolder": "/workspaces/SMS-Plugins",
+  "containerUser": "vscode",
+  "remoteUser": "vscode",
+  "updateRemoteUserUID": true,
+  "overrideCommand": false,
+  "shutdownAction": "stopContainer",
+  "mounts": [
+    "source=sms-plugins-devcontainer-codex,target=/home/vscode/.codex,type=volume",
+    "source=sms-plugins-devcontainer-vnc,target=/home/vscode/.config/sms-plugins-devcontainer,type=volume"
+  ],
+  "runArgs": [
+    "--label",
+    "io.sudometalstudio.sms-plugins-devcontainer=true",
+    "--shm-size=1g",
+    "--cap-drop=ALL",
+    "--security-opt=no-new-privileges"
+  ],
+  "forwardPorts": [
+    6080,
+    5901
+  ],
+  "portsAttributes": {
+    "6080": {
+      "label": "SMS desktop (noVNC)",
+      "onAutoForward": "notify"
+    },
+    "5901": {
+      "label": "SMS desktop (VNC)",
+      "onAutoForward": "silent"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "openai.chatgpt",
+        "ms-vscode.cmake-tools",
+        "llvm-vs-code-extensions.vscode-clangd"
+      ],
+      "settings": {
+        "cmake.generator": "Ninja",
+        "terminal.integrated.cwd": "/workspaces/SMS-Plugins"
+      }
+    }
+  }
+}

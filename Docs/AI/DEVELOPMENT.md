@@ -26,6 +26,29 @@ CLAP is not currently covered by CI. Both optional format switches default OFF.
 Use a fresh ignored `build-*` directory if an existing CMake cache uses a
 different source path or generator. Avoid repeatedly rebuilding unchanged code.
 
+## Docker development environment
+
+The repository-owned [Dev Container](../../.devcontainer/devcontainer.json) is
+the maintained full toolchain. Its Ubuntu 24.04 image supplies C++20 compilers,
+CMake, Ninja, clangd, DPF's X11/OpenGL dependencies, LV2 tools, VST3 build
+support, Carla, jalv, dummy JACK, and GUI diagnostics. It runs as non-root user
+`vscode`; Dev Containers updates that user's UID/GID on Linux. The normal
+workspace mount is `/workspaces/SMS-Plugins`.
+
+The image starts its supervised desktop automatically. It drops all Linux
+capabilities and enables `no-new-privileges`; it does not mount host service
+sockets or directories beyond the current checkout. The Codex standalone CLI
+is installed using the official Linux installer. Set Docker build argument
+`INSTALL_CODEX_CLI=0` when a CLI-free image is required. Authentication is not
+baked into the image and persists only in the labeled
+`sms-plugins-devcontainer-codex` volume.
+
+Dev Containers is authoritative. Root Make targets provide a matching manual
+Docker workflow for diagnostics: `make dev-build dev-run dev-ready`. Ports are
+published on host loopback only. `make dev-wipe` selects labeled project
+resources and verifies the exact persistent volume labels; it never performs a
+global prune. Close the VS Code remote window before wiping.
+
 ## Change routing
 
 - Engine/timing: `SMS-Midichopper/src/core`; `sampler-core` tests.

@@ -1,0 +1,5 @@
+**
+!.devcontainer/
+!.devcontainer/Dockerfile
+!.devcontainer/scripts/
+!.devcontainer/scripts/*.sh

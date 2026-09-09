@@ -88,28 +88,31 @@ Choose checks matching the change:
 
 ## UI interaction tooling
 
-The intended development environment includes maintained command-line tools for
-mouse movement, clicks, window lookup, and window-only screenshots. The planned
-X11 baseline is a pinned Carla with the required LV2 features, `xdotool`,
-`wmctrl`, `xwininfo` (usually `x11-utils`), and ImageMagick `import`; headless
-containers will also need Xvfb and a small window manager. Keep jalv and JACK
-inspection/MIDI tools available for lower-level diagnostics. Package names,
-versions, and the final container setup are provisional.
+The [Dev Container](../../.devcontainer/devcontainer.json) provides fixed X11
+display `:1` through TigerVNC, Openbox, noVNC, dummy JACK, software Mesa,
+`xdotool`, `wmctrl`, `xwininfo`, and ImageMagick. Desktop services start with the
+container. Run `desktop-health` to check tini supervision, zombies, X11 pointer
+movement, native VNC, noVNC, JACK, and the OpenGL renderer. View the same pointer
+that automation controls through forwarded noVNC port 6080; do not use the VNC
+mouse during an automated sequence.
 
-At present the repository has no development-container definition and does not
-install or wrap this toolchain. UI automation therefore works only when the
-tools and an X11/XWayland display are already available. Until a maintained
-harness exists, use installed tools directly; do not recreate missing utilities
-with one-off foreign-function bindings. Resolve the exact window ID after launch,
-activate it before each interaction, and use window-relative logical coordinates
-from `MidichopperLayout.hpp`. Re-resolve after relaunch or resize rather than
-assuming a desktop position. Native Wayland automation is not yet specified.
+From `/workspaces/SMS-Plugins`, `test-plugin` runs the release VST3/LV2 build,
+CTest, `lv2info`, launches the built LV2 directly in Carla, resolves its visible
+window, clicks ARM at its layout coordinate, and saves an exact-window PNG under
+the ignored `build/gui-test/` directory. Use `test-plugin --keep-open` for more
+interactions. `screenshot-window WINDOW_ID OUTPUT.png` refuses desktop-wide
+capture. Resolve and activate the window again after every relaunch or resize.
 
 Capture only the plug-in window, never the full desktop. Inspect every artifact
 before sharing or committing it, and exclude usernames, home paths, machine
 names, unrelated applications, notifications, accounts, and other private data.
-Repository screenshots should contain only intentional product UI. This workflow
-is subject to change when a reproducible container and UI harness are added.
+Repository screenshots should contain only intentional product UI.
+
+The image uses Ubuntu's distribution Carla rather than pinning a post-2.5.10
+revision. Therefore the MIDI-triggered `active_bank` UI synchronization path is
+still not validated by this harness; Carla versions through 2.5.10 lack the
+needed LV2 control-input change-request feature. Report the installed Carla
+version with results and do not treat that limitation as a plug-in failure.
 
 Report host/frontend, sample rate/buffer size for audio tests, steps, observed
 results, and failures. If JACK, a display, or routing is unavailable, say which
