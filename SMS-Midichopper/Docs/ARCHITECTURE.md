@@ -1,8 +1,8 @@
 # SMS-Midichopper architecture
 
-Audience: AI agents. Read only for engine, adapter, state, or UI changes.
-This describes implemented behavior; [VISION.md](VISION.md) describes intended
-scope. File paths below are relative to `SMS-Midichopper/`.
+Audience: agents changing engine, adapter, state, or UI. This describes
+implemented behavior; [VISION.md](VISION.md) describes intended scope. Paths
+below are relative to `SMS-Midichopper/`.
 
 SMS-Midichopper separates the sampler from the plug-in format and UI:
 
@@ -19,20 +19,18 @@ SMS-Midichopper separates the sampler from the plug-in format and UI:
 - `../Common-Src` contains plug-in-independent sample-region, ADSR, waveform
   summary, state-codec, and UI geometry components intended for reuse by future
   SMS plug-ins.
-- `../Common-UI` contains the shared semantic theme, host-safe DPF/NanoVG base,
-  control primitives, banked-pad layouts, and waveform/envelope editor pieces.
+- `../Common-UI` contains the shared theme, DPF/NanoVG base, controls,
+  context-menu and hover primitives, pad layouts, and waveform editor pieces.
 - `../third_party/DPF` is the single repository-level DPF submodule used by all
   plug-ins.
 
 ## MIDI mapping
 
-The saved `midi_bank_mode` parameter selects between two playback mappings.
-All Banks is the default and maps the sequential storage slots exposed by the
-layout from the base note as a gapless sequence and
-groups them into four pages of the selected size. A valid playback note-on
-updates the engine's active bank; note-off does not. The DSP requests an
-`active_bank` host change so supporting hosts save the new selection. Changing
-layout regroups slots without changing their unique MIDI notes.
+The saved `midi_bank_mode` selects two mappings. All Banks maps exposed storage
+slots from the base note as a gapless sequence, grouped into four layout-sized
+pages. A valid note-on updates the active bank; note-off does not. The DSP asks
+supporting hosts to save this `active_bank` change. Layout changes regroup slots
+without changing their MIDI notes.
 Every successful playback note-on also advances a hidden output event that
 encodes the global pad index in alternating halves of its range. Both UI views
 follow that event, so bank, MIDI labels, and the single last-played selection
@@ -100,6 +98,9 @@ never receives the full PCM state: it requests the selected pad and the DSP-side
 worker returns a fixed 128-bin min/max waveform summary. This keeps waveform
 drawing and editor interaction away from the audio callback and avoids sending
 large sample blobs through the UI channel.
+
+The `pad_clear_request` UI state publishes only an atomic command and reads back
+as neutral `0`; the audio callback clears that pad at the next block boundary.
 
 Long recordings make DAW project files correspondingly larger. The current
 limit is 30 seconds per pad.

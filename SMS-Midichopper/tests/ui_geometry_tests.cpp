@@ -1,5 +1,7 @@
 #include "Audio/WaveformSummary.hpp"
+#include "ContextMenu.hpp"
 #include "DSP/SamplePlaybackSettings.hpp"
+#include "Interaction.hpp"
 #include "MidichopperLayout.hpp"
 #include "LevelMeter.hpp"
 #include "PadLayout.hpp"
@@ -55,6 +57,29 @@ void hamburgerMenuGeometry()
           menu::menuPanel.contains({lastMidiMode.x + lastMidiMode.width * 0.5f,
                                     lastMidiMode.y + lastMidiMode.height * 0.5f}),
           "MIDI bank choices remain inside the hamburger panel");
+}
+
+void contextMenuGeometry()
+{
+    const sms::ui::Rect canvas{0.0f, 0.0f, 960.0f, 680.0f};
+    const sms::ui::ContextMenuGeometry middle({200.0f, 300.0f}, 2, canvas);
+    check(middle.bounds().x == 200.0f && middle.bounds().y == 300.0f,
+          "context menu preserves an in-bounds anchor");
+    check(middle.hit({middle.item(0).x + 1.0f, middle.item(0).y + 1.0f}) == 0 &&
+          middle.hit({middle.item(1).x + 1.0f, middle.item(1).y + 1.0f}) == 1,
+          "context menu items have stable hit identities");
+    check(middle.hit({0.0f, 0.0f}) == -1,
+          "context menu rejects points outside its items");
+
+    const sms::ui::ContextMenuGeometry edge({955.0f, 675.0f}, 2, canvas);
+    check(edge.bounds().x + edge.bounds().width <= canvas.x + canvas.width &&
+          edge.bounds().y + edge.bounds().height <= canvas.y + canvas.height,
+          "context menu clamps to the logical canvas");
+
+    sms::ui::HoverState hover;
+    check(hover.target() == sms::ui::kNoInteractiveTarget && hover.update(0) &&
+          !hover.update(0) && hover.clear() && !hover.clear(),
+          "hover state reports only target transitions");
 }
 
 void levelMeterGeometry()
@@ -155,6 +180,7 @@ int main()
 {
     padLayouts();
     hamburgerMenuGeometry();
+    contextMenuGeometry();
     levelMeterGeometry();
     waveformGeometry();
     std::cout << "UI geometry tests passed\n";

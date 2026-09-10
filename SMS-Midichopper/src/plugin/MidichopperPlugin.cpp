@@ -38,9 +38,13 @@ constexpr std::uint32_t kAudioStateCount = midichopper::kPadCount;
 constexpr std::uint32_t kEditStateOffset = kAudioStateCount;
 constexpr std::uint32_t kWaveformRequestState = kEditStateOffset + midichopper::kPadCount;
 constexpr std::uint32_t kWaveformDataState = kWaveformRequestState + 1U;
-constexpr std::uint32_t kStateCount = kWaveformDataState + 1U;
+constexpr std::uint32_t kPadClearRequestState = kWaveformDataState + 1U;
+constexpr std::uint32_t kStateCount = kPadClearRequestState + 1U;
 constexpr const char* kWaveformRequestKey = "waveform_request";
 constexpr const char* kWaveformDataKey = "waveform_data";
+constexpr const char* kPadClearRequestKey = "pad_clear_request";
+static_assert(midichopper::kPadCount <= 64U,
+              "pending clear requests use one bit per pad");
 
 constexpr std::array<const char*, midichopper::kPadsPerBank> kPadOccupiedNames{{
     "Pad 1 Occupied", "Pad 2 Occupied", "Pad 3 Occupied", "Pad 4 Occupied", "Pad 5 Occupied", "Pad 6 Occupied", "Pad 7 Occupied", "Pad 8 Occupied",
@@ -267,12 +271,19 @@ protected:
             state.label = "Waveform Request";
             state.defaultValue = "0";
             state.hints = kStateIsOnlyForDSP;
-        } else {
+        } else if (index == kWaveformDataState) {
             state.key = kWaveformDataKey;
             state.label = "Waveform Display Data";
             state.defaultValue = "";
             // A waveform summary is transient display data, not project state.
             state.hints = kStateIsOnlyForUI;
+        } else {
+            state.key = kPadClearRequestKey;
+            state.label = "Clear Pad Request";
+            state.defaultValue = "0";
+            // This command is transient. setState only publishes an atomic
+            // request; the sampler mutation happens at an audio block boundary.
+            state.hints = kStateIsOnlyForDSP;
         }
     }
 
@@ -330,6 +341,8 @@ protected:
             return String("0");
         if (std::strcmp(key, kWaveformDataKey) == 0)
             return String();
+        if (std::strcmp(key, kPadClearRequestKey) == 0)
+            return String("0");
         return String();
     }
 
@@ -371,6 +384,18 @@ protected:
         }
         if (std::strcmp(key, kWaveformDataKey) == 0)
             return;
+        if (std::strcmp(key, kPadClearRequestKey) == 0) {
+            const char* const input = value != nullptr ? value : "";
+            char* end = nullptr;
+            const auto requested = std::strtoul(input, &end, 10);
+            if (end != input && *end == '\0' && requested >= 1U &&
+                requested <= midichopper::kPadCount) {
+                const auto pad = static_cast<std::uint32_t>(requested - 1U);
+                pendingClearPads_.fetch_or(
+                    std::uint64_t{1} << pad, std::memory_order_release);
+            }
+            return;
+        }
     }
 
     void run(const float** const inputs, float** const outputs, const uint32_t frames,
@@ -485,6 +510,14 @@ private:
         if ((commands & 0x1U) != 0U) sampler_.finalizeRecording();
         if ((commands & 0x2U) != 0U) sampler_.undoLastSlice();
         if ((commands & 0x4U) != 0U) sampler_.clearAllPads();
+        const std::uint64_t clearPads =
+            pendingClearPads_.exchange(0U, std::memory_order_acquire);
+        if (clearPads != 0U) {
+            for (std::uint32_t pad = 0; pad < midichopper::kPadCount; ++pad) {
+                if ((clearPads & (std::uint64_t{1} << pad)) != 0U)
+                    sampler_.clearPad(pad);
+            }
+        }
         const std::uint32_t captureTarget =
             pendingCaptureTarget_.exchange(0U, std::memory_order_acquire);
         if (captureTarget != 0U)
@@ -609,6 +642,7 @@ private:
     sms::dsp::StereoPeakMeter outputMeter_;
     std::array<std::atomic<float>, midichopper::plugin::kParameterCount> parameters_{};
     std::atomic<std::uint32_t> pendingCommands_{0};
+    std::atomic<std::uint64_t> pendingClearPads_{0};
     std::atomic<std::uint32_t> pendingCaptureTarget_{0};
     std::uint64_t publishedPlaybackTriggerGeneration_ = 0;
     bool playbackPadEventAlternateHalf_ = false;

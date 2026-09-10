@@ -1,7 +1,7 @@
 # Pad context menu
 
-Audience: agents implementing pad interactions. This is an approved design
-direction, not implemented behavior. It is related to
+Audience: agents implementing pad interactions. The shared menu foundation and
+Clear Pad action are implemented; later actions remain approved direction. It is related to
 [issue #10](https://github.com/sirsipe/SMS-Plugins/issues/10), which requests
 copy, delete, MIDI assignment, and optional color. The menu is a general pad
 action surface; WAV operations are one consumer, not its defining purpose.
@@ -47,15 +47,18 @@ features until an action needs them.
 
 ## First implementation slice
 
-Build and validate the shared menu first with one **Clear Pad** action, using
-the existing single-pad clear behavior. It is enabled only when the clicked pad
-contains audio. Because it destroys unsaved audio, final user-facing behavior
-must require an explicit confirmation or an equivalent reliable undo; the menu
-exercise is not justification for an unsafe shortcut.
+The first slice provides one **Clear Pad** action using the engine's single-pad
+clear behavior. It is enabled only when the clicked pad contains audio. The
+first activation changes the item to **Confirm Clear** for two seconds; the
+second queues the clear for the next audio block. The transient
+`pad_clear_request` state is an atomic UI-to-DSP command, not saved project
+content or a host parameter: its readable value is always neutral `0`. This
+preserves released parameter identities and keeps sampler mutation on the audio
+boundary.
 
-Test Clear Pad and the menu lifecycle in both Play and Sample Editor before
-adding file operations. Verify target selection without audition, both pad
-layouts and banks, disabled entries, hover transitions, dismissal by mapped
-MIDI playback and other interactions, canvas-edge placement, resizing, and UI
-scaling. WAV actions then follow the separate
+Maintain coverage for Clear Pad and the menu lifecycle in both Play and Sample
+Editor. Verify target selection without audition, pad layouts and banks,
+disabled entries, hover transitions, dismissal by mapped MIDI playback and
+other interactions, canvas-edge placement, resizing, and UI scaling. WAV
+actions then follow the separate
 [pad WAV contract](PAD-WAV-IO.md).

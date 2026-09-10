@@ -3,6 +3,7 @@
 #include "DistrhoUI.hpp"
 #include "Audio/WaveformSummary.hpp"
 #include "Configuration.hpp"
+#include "ContextMenu.hpp"
 #include "DSP/SamplePlaybackSettings.hpp"
 
 #include <array>
@@ -29,6 +30,10 @@ struct ViewState {
     int pressedPad = -1;
     bool clearArmed = false;
     bool menuOpen = false;
+    bool padContextMenuOpen = false;
+    sms::ui::ContextMenuGeometry padContextMenu;
+    std::span<const sms::ui::ContextMenuItemView> padContextMenuItems;
+    int hoveredContextMenuItem = -1;
     bool editorMode = false;
     bool hasWaveform = false;
     std::array<float, 2> inputLevels{};

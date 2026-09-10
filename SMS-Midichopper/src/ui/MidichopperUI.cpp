@@ -9,6 +9,7 @@
  *   pad_edit_01..64  compact non-destructive cut-point and ADSR settings
  *   waveform_request selected pad index sent from UI to DSP
  *   waveform_data    compact 128-bin min/max summary returned by DSP
+ *   pad_clear_request one-based pad command consumed at an audio block boundary
  *
  * The UI sends C1 + pad as MIDI note-on/off in PLAY mode only. In ARM mode a
  * clicked pad selects the first destination and the next incoming MIDI note is
@@ -23,12 +24,14 @@
 
 #include "Audio/WaveformSummary.hpp"
 #include "Configuration.hpp"
+#include "ContextMenu.hpp"
 #include "DPF/NanoUI.hpp"
 #include "DPF/Theme.hpp"
 #include "DSP/SamplePlaybackSettings.hpp"
 #include "LevelMeter.hpp"
 #include "State/SamplePlaybackSettingsCodec.hpp"
 #include "UI/Geometry.hpp"
+#include "Interaction.hpp"
 #include "PadLayout.hpp"
 #include "WaveformEditor.hpp"
 #include "MidichopperLayout.hpp"
@@ -54,6 +57,11 @@ using WaveformEditTarget = sms::ui::waveform::EditTarget;
 
 inline constexpr auto kClearConfirmationTimeout = std::chrono::seconds(2);
 inline constexpr auto kMeterFrameInterval = std::chrono::milliseconds(33);
+
+enum class PadMenuAction : int {
+    clear = 0,
+    count,
+};
 
 std::array<std::string, midichopper::kPadCount> makePadEditStateKeys()
 {
@@ -99,6 +107,10 @@ public:
           fPressedActionParameter(-1),
           fClearArmed(false),
           fMenuOpen(false),
+          fPadContextMenuOpen(false),
+          fPadContextTarget(-1),
+          fPadContextClearArmed(false),
+          fPadContextPointerCaptured(false),
           fEditorMode(false),
           fDragTarget(WaveformEditTarget::none),
           fDragStartX(0.0f),
@@ -142,6 +154,8 @@ protected:
             if (wasOccupied == isOccupied)
                 return;
             fPadState[localPad] = isOccupied ? '1' : '0';
+            if (pad == fPadContextTarget)
+                closePadContextMenu();
             if (pad == fSelectedPad)
                 refreshSelectedWaveform();
             requestRepaint();
@@ -166,6 +180,7 @@ protected:
             changed = fArm != armed;
             if (!changed)
                 break;
+            closePadContextMenu();
             fArm = armed;
             fStatus[0] = '\0';
             fSelectedPad = -1;
@@ -218,6 +233,7 @@ protected:
             changed = fMidiBankMode != mode;
             fMidiBankMode = mode;
             if (changed) {
+                closePadContextMenu();
                 if (fEditorMode && localPad >= 0)
                     selectEditorPad(globalPad(std::clamp(localPad, 0, visiblePadCount() - 1)));
                 else {
@@ -246,6 +262,7 @@ protected:
             changed = fBank != bank;
             if (!changed)
                 break;
+            closePadContextMenu();
             const int localPad = hasSelectedPad()
                 ? std::clamp(localPadForGlobalPad(fSelectedPad), 0, visiblePadCount() - 1)
                 : 0;
@@ -266,6 +283,7 @@ protected:
             changed = fLayout != layout;
             if (!changed)
                 break;
+            closePadContextMenu();
             fLayout = layout;
             if (fStartPad >= visiblePadCount())
                 fStartPad = 0;
@@ -299,6 +317,7 @@ protected:
             changed = !fArm && pad < midichopper::kPadCount;
             if (!changed)
                 break;
+            closePadContextMenu();
             fLastPlayedPad = static_cast<int>(pad);
             fBank = bankForGlobalPad(fLastPlayedPad);
             if (fEditorMode)
@@ -344,8 +363,10 @@ protected:
         if (key == nullptr || value == nullptr)
             return;
 
-        if (std::strcmp(key, "pad_mask") == 0)
+        if (std::strcmp(key, "pad_mask") == 0) {
             parsePadMask(value, fPadState);
+            closePadContextMenu();
+        }
         else if (std::strcmp(key, "pad_status") == 0)
             copyChars(fPadStatus, value);
         else if (std::strcmp(key, "current_pad") == 0)
@@ -388,6 +409,10 @@ protected:
             fClearArmed = false;
             requestRepaint();
         }
+        if (fPadContextClearArmed && now >= fPadContextClearDeadline) {
+            fPadContextClearArmed = false;
+            requestRepaint();
+        }
         if (fMeterRepaintPending && now >= fNextMeterRepaint) {
             fMeterRepaintPending = false;
             fNextMeterRepaint = now + kMeterFrameInterval;
@@ -411,10 +436,18 @@ protected:
         fill();
 
         beginLogicalDisplay();
+        const std::array contextMenuItems{
+            sms::ui::ContextMenuItemView{
+                fPadContextClearArmed ? "CONFIRM CLEAR" : "CLEAR PAD",
+                padContextTargetOccupied(), true},
+        };
         const midichopper::ui::ViewState view{
             fArm, fRecordMode, fFixedLength, fPlaybackMode, fMonitor,
             fStartPad, fPreRoll, fBaseNote, fMidiBankMode, fGain, fMaxVoices, fBank, fLayout,
             fSelectedPad, fCurrentPad, fPressedPad, fClearArmed, fMenuOpen,
+            fPadContextMenuOpen, fPadContextMenu,
+            std::span<const sms::ui::ContextMenuItemView>{contextMenuItems},
+            fPadContextHover.target(),
             fEditorMode, fHasWaveform, fInputLevels, fOutputLevels, fPadState, fPadStatus,
             fEditorSettings, fWaveform, fStatus,
         };
@@ -425,15 +458,76 @@ protected:
 
     bool onMouse(const MouseEvent& ev) override
     {
-        if (ev.button != 1)
-            return false;
-
         const auto position = toLogicalPosition(ev.pos);
         const float x = position.getX() - uiLayout::contentOffsetX;
         const float y = position.getY();
 
+        if (ev.button == 2)
+        {
+            if (!ev.press)
+                return fPadContextMenuOpen;
+            if (fArm)
+                return false;
+
+            const int visualIndex = fEditorMode
+                ? editorPadGrid().hit({x, y}) : mainPadGrid().hit({x, y});
+            const int localPad = localPadFromVisualIndex(visualIndex);
+            if (localPad >= 0)
+            {
+                fMenuOpen = false;
+                const int pad = globalPad(localPad);
+                if (fEditorMode)
+                    selectEditorPad(pad);
+                else {
+                    fSelectedPad = pad;
+                    refreshSelectedWaveform();
+                }
+                openPadContextMenu(pad, {x, y});
+                requestRepaint();
+                return true;
+            }
+            if (fPadContextMenuOpen)
+            {
+                closePadContextMenu();
+                requestRepaint();
+                return true;
+            }
+            return false;
+        }
+
+        if (ev.button != 1)
+            return false;
+
         if (ev.press)
         {
+            if (fPadContextMenuOpen)
+            {
+                fPadContextPointerCaptured = true;
+                const int item = fPadContextMenu.hit({x, y});
+                if (item == static_cast<int>(PadMenuAction::clear))
+                {
+                    if (!padContextTargetOccupied())
+                        return true;
+                    if (!fPadContextClearArmed)
+                    {
+                        fPadContextClearArmed = true;
+                        fPadContextClearDeadline = std::chrono::steady_clock::now() +
+                                                   kClearConfirmationTimeout;
+                        setLocalStatus("Click CLEAR PAD again to confirm");
+                    }
+                    else
+                    {
+                        requestPadClear();
+                        closePadContextMenu();
+                        setLocalStatus("Pad cleared");
+                    }
+                    requestRepaint();
+                    return true;
+                }
+                closePadContextMenu();
+                requestRepaint();
+                return true;
+            }
             if (hit(x, y, uiLayout::menuButton))
             {
                 fMenuOpen = !fMenuOpen;
@@ -670,6 +764,11 @@ protected:
                 return true;
             }
         }
+        else if (fPadContextPointerCaptured)
+        {
+            fPadContextPointerCaptured = false;
+            return true;
+        }
         else if (fEditorMode && fDragTarget != WaveformEditTarget::none)
         {
             commitEditorSettings();
@@ -699,12 +798,32 @@ protected:
 
     bool onMotion(const MotionEvent& ev) override
     {
-        if (!fEditorMode || fDragTarget == WaveformEditTarget::none)
-            return false;
         const auto position = toLogicalPosition(ev.pos);
         const float x = position.getX() - uiLayout::contentOffsetX;
         const float y = position.getY();
+        if (fPadContextMenuOpen)
+        {
+            int item = fPadContextMenu.hit({x, y});
+            if (item == static_cast<int>(PadMenuAction::clear) &&
+                !padContextTargetOccupied())
+                item = sms::ui::kNoInteractiveTarget;
+            if (fPadContextHover.update(item))
+                requestRepaint();
+            return true;
+        }
+        if (!fEditorMode || fDragTarget == WaveformEditTarget::none)
+            return false;
         updateEditorDrag(x, y);
+        return true;
+    }
+
+    bool onKeyboard(const KeyboardEvent& ev) override
+    {
+        if (!ev.press || ev.key != DGL_NAMESPACE::kKeyEscape ||
+            !fPadContextMenuOpen)
+            return false;
+        closePadContextMenu();
+        requestRepaint();
         return true;
     }
 
@@ -731,6 +850,13 @@ private:
     bool fClearArmed;
     std::chrono::steady_clock::time_point fClearDeadline{};
     bool fMenuOpen;
+    bool fPadContextMenuOpen;
+    int fPadContextTarget;
+    sms::ui::ContextMenuGeometry fPadContextMenu;
+    sms::ui::HoverState fPadContextHover;
+    bool fPadContextClearArmed;
+    std::chrono::steady_clock::time_point fPadContextClearDeadline{};
+    bool fPadContextPointerCaptured;
     bool fEditorMode;
     WaveformEditTarget fDragTarget;
     float fDragStartX;
@@ -757,6 +883,48 @@ private:
     static float normalizedX(const float x, const sms::ui::Rect bounds) noexcept
     {
         return std::clamp((x - bounds.x) / bounds.width, 0.0f, 1.0f);
+    }
+
+    void openPadContextMenu(const int pad, const sms::ui::Point anchor)
+    {
+        fPadContextTarget = pad;
+        fPadContextMenu = sms::ui::ContextMenuGeometry(
+            anchor, static_cast<int>(PadMenuAction::count), uiLayout::contentBounds);
+        static_cast<void>(fPadContextHover.clear());
+        fPadContextClearArmed = false;
+        fPadContextMenuOpen = true;
+    }
+
+    void closePadContextMenu() noexcept
+    {
+        fPadContextMenuOpen = false;
+        fPadContextTarget = -1;
+        static_cast<void>(fPadContextHover.clear());
+        fPadContextClearArmed = false;
+    }
+
+    [[nodiscard]] bool padContextTargetOccupied() const noexcept
+    {
+        if (!fPadContextMenuOpen || fPadContextTarget < 0 ||
+            bankForGlobalPad(fPadContextTarget) != fBank)
+            return false;
+        const int localPad = localPadForGlobalPad(fPadContextTarget);
+        if (localPad < 0 || localPad >= visiblePadCount())
+            return false;
+        const char state = fPadState[static_cast<std::size_t>(localPad)];
+        return state != '0' && state != '.';
+    }
+
+    void requestPadClear()
+    {
+#if DISTRHO_PLUGIN_WANT_STATE
+        if (fPadContextTarget < 0 || fPadContextTarget >= static_cast<int>(midichopper::kPadCount))
+            return;
+        char pad[4];
+        std::snprintf(pad, sizeof(pad), "%u",
+                      static_cast<unsigned int>(fPadContextTarget + 1));
+        setState("pad_clear_request", pad);
+#endif
     }
 
     static int clampPad(float value)

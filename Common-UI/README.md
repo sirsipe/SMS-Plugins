@@ -14,6 +14,8 @@ shared UI and framework-neutral source include paths.
 - `DPF/Theme.hpp`: semantic color and drawing metrics.
 - `DPF/Controls.hpp`: reusable NanoVG panel, segment, slider, and action
   primitives.
+- `Interaction.hpp`, `ContextMenu.hpp`, and `DPF/ContextMenu.hpp`: reusable
+  hover transitions, menu geometry/hit testing, and NanoVG menu rendering.
 - `LevelMeter.hpp` and `DPF/LevelMeter.hpp`: renderer-independent variable-size
   stereo LED geometry/level mapping and its NanoVG renderer.
 - `DPF/WaveformRenderer.hpp`: waveform, region, and ADSR drawing.

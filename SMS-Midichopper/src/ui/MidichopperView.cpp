@@ -2,6 +2,7 @@
 
 #include "Configuration.hpp"
 #include "DPF/Controls.hpp"
+#include "DPF/ContextMenu.hpp"
 #include "DPF/LevelMeter.hpp"
 #include "DPF/Theme.hpp"
 #include "DPF/WaveformRenderer.hpp"
@@ -43,6 +44,9 @@ public:
         drawFooter();
         if (state_.menuOpen)
             drawMenuOverlay();
+        if (state_.padContextMenuOpen)
+            sms::ui::dpf::drawContextMenu(canvas_, state_.padContextMenu,
+                state_.padContextMenuItems, state_.hoveredContextMenuItem);
         canvas_.restore();
     }
 
