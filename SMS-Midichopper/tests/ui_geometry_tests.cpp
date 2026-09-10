@@ -1,6 +1,7 @@
 #include "Audio/WaveformSummary.hpp"
 #include "DSP/SamplePlaybackSettings.hpp"
 #include "MidichopperLayout.hpp"
+#include "LevelMeter.hpp"
 #include "PadLayout.hpp"
 #include "UI/Geometry.hpp"
 #include "WaveformEditor.hpp"
@@ -54,6 +55,47 @@ void hamburgerMenuGeometry()
           menu::menuPanel.contains({lastMidiMode.x + lastMidiMode.width * 0.5f,
                                     lastMidiMode.y + lastMidiMode.height * 0.5f}),
           "MIDI bank choices remain inside the hamburger panel");
+}
+
+void levelMeterGeometry()
+{
+    namespace meter = sms::ui::meter;
+    check(meter::activeSegmentCount(0.0f) == 0U,
+          "silence lights no meter segments");
+    check(meter::activeSegmentCount(1.0f) == meter::defaultSegmentCount,
+          "full scale lights every meter segment");
+    check(meter::activeSegmentCount(2.0f) == meter::defaultSegmentCount &&
+          meter::activeSegmentCount(INFINITY) == meter::defaultSegmentCount &&
+          meter::activeSegmentCount(NAN) == 0U,
+          "meter counts clamp overloads and reject non-finite values");
+    check(std::abs(meter::amplitudeToDb(0.1f) + 20.0f) < 1.0e-5f,
+          "meter uses logarithmic decibel mapping");
+
+    const meter::StereoGeometry narrow({2.0f, 10.0f, 24.0f, 510.0f});
+    const auto narrowLeft = narrow.channel(0U);
+    const auto narrowRight = narrow.channel(1U);
+    check(narrowLeft.width > 0.0f && narrowRight.x > narrowLeft.x + narrowLeft.width,
+          "narrow stereo meter columns do not overlap");
+    const auto bottom = narrow.segment(0U, 0U);
+    const auto top = narrow.segment(0U, meter::defaultSegmentCount - 1U);
+    check(top.y >= 10.0f && bottom.y + bottom.height <= 520.0f && top.y < bottom.y,
+          "vertical meter segments stay inside tall bounds");
+
+    const meter::StereoGeometry wide({5.0f, 7.0f, 80.0f, 120.0f}, 12U);
+    const auto wideLeft = wide.channel(0U);
+    const auto wideRight = wide.channel(1U);
+    check(wideLeft.width > narrowLeft.width && wideRight.x + wideRight.width <= 85.0f,
+          "meter geometry adapts to wider and shorter bounds");
+    const meter::StereoGeometry tiny({0.0f, 0.0f, 8.0f, 10.0f});
+    const auto tinyTop = tiny.segment(0U, meter::defaultSegmentCount - 1U);
+    const auto tinyBottom = tiny.segment(0U, 0U);
+    check(tinyTop.y >= 0.0f && tinyTop.height > 0.0f &&
+          tinyBottom.y + tinyBottom.height <= 10.0f,
+          "meter segments stay inside genuinely short bounds");
+    check(meter::segmentZone(19U) == meter::Zone::green &&
+          meter::segmentZone(20U) == meter::Zone::yellow &&
+          meter::segmentZone(26U) == meter::Zone::red,
+          "LED zones transition at minus 18 and minus 6 dB");
 }
 
 void waveformGeometry()
@@ -110,6 +152,7 @@ int main()
 {
     padLayouts();
     hamburgerMenuGeometry();
+    levelMeterGeometry();
     waveformGeometry();
     std::cout << "UI geometry tests passed\n";
 }

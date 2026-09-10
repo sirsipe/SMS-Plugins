@@ -2,6 +2,7 @@
 
 #include "Configuration.hpp"
 #include "DPF/Controls.hpp"
+#include "DPF/LevelMeter.hpp"
 #include "DPF/Theme.hpp"
 #include "DPF/WaveformRenderer.hpp"
 #include "MidichopperLayout.hpp"
@@ -24,6 +25,13 @@ public:
 
     void draw()
     {
+        sms::ui::dpf::drawStereoLedMeter(
+            canvas_, uiLayout::inputMeter, state_.inputLevels[0], state_.inputLevels[1], "IN");
+        sms::ui::dpf::drawStereoLedMeter(
+            canvas_, uiLayout::outputMeter, state_.outputLevels[0], state_.outputLevels[1], "OUT");
+
+        canvas_.save();
+        canvas_.translate(uiLayout::contentOffsetX, 0.0f);
         drawHeader();
         if (state_.editorMode) {
             drawSampleEditor();
@@ -35,6 +43,7 @@ public:
         drawFooter();
         if (state_.menuOpen)
             drawMenuOverlay();
+        canvas_.restore();
     }
 
 private:

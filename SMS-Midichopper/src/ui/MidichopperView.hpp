@@ -5,6 +5,7 @@
 #include "Configuration.hpp"
 #include "DSP/SamplePlaybackSettings.hpp"
 
+#include <array>
 #include <span>
 
 namespace midichopper::ui {
@@ -30,6 +31,8 @@ struct ViewState {
     bool menuOpen = false;
     bool editorMode = false;
     bool hasWaveform = false;
+    std::array<float, 2> inputLevels{};
+    std::array<float, 2> outputLevels{};
     std::span<const char> padState;
     std::span<const char> padActivity;
     const sms::dsp::SamplePlaybackSettings& editorSettings;

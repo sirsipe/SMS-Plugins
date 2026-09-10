@@ -16,6 +16,9 @@ struct Theme {
     DGL_NAMESPACE::Color selection{255, 175, 84};
     DGL_NAMESPACE::Color controlAccent{255, 175, 84};
     DGL_NAMESPACE::Color intentDanger{238, 101, 112};
+    DGL_NAMESPACE::Color meterGreen{75, 211, 112};
+    DGL_NAMESPACE::Color meterYellow{245, 198, 66};
+    DGL_NAMESPACE::Color meterRed{239, 83, 96};
 
     float panelRadius = 12.0f;
     float controlRadius = 6.0f;

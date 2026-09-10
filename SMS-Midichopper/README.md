@@ -1,9 +1,8 @@
 # SMS-Midichopper
 
-A live stereo chopping sampler for Linux, currently under development.
-Arm it, start the vinyl or other audio source, and tap any MIDI pad at each
-slice boundary. After the first tap starts recording, each tap finishes
-the current slice and continues recording onto the next pad.
+A live stereo chopping sampler for Linux. Arm it, start an audio source, and tap
+a MIDI pad at each slice boundary. The first tap starts recording; later taps
+finish the current slice and continue onto the next pad.
 
 > **Disclaimer:** This is an AI-generated project, created under the supervision
 > and testing of [SirSipe](https://github.com/sirsipe/).
@@ -85,6 +84,10 @@ one provides monophonic playback.
 Pre-roll moves boundaries slightly earlier to compensate for late taps. Fixed
 mode records one fixed-length slice per note-on. Samples from all four banks are
 stored with the DAW project as compact 16-bit stereo state.
+
+Stereo LED rails show raw input on the left and final output on the right in
+every mode, even with monitoring off. Yellow begins at −18 dBFS and red at
+−6 dBFS.
 
 For development and host/UI testing, see [Contributing](../CONTRIBUTING.md).
 Licensed under the [MIT License](LICENSE).

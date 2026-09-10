@@ -4,10 +4,14 @@
 
 namespace midichopper::ui::layout {
 
-inline constexpr unsigned int canvasWidth = 960U;
+inline constexpr unsigned int canvasWidth = 1040U;
 inline constexpr unsigned int canvasHeight = 680U;
-inline constexpr unsigned int minimumWidth = 700U;
+inline constexpr unsigned int minimumWidth = 765U;
 inline constexpr unsigned int minimumHeight = 500U;
+inline constexpr float contentOffsetX = 40.0f;
+
+inline constexpr sms::ui::Rect inputMeter{8.0f, 96.0f, 24.0f, 510.0f};
+inline constexpr sms::ui::Rect outputMeter{1008.0f, 96.0f, 24.0f, 510.0f};
 
 inline constexpr sms::ui::Rect mainPanel{24.0f, 96.0f, 630.0f, 516.0f};
 inline constexpr sms::ui::Rect sidePanel{670.0f, 96.0f, 266.0f, 516.0f};

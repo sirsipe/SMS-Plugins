@@ -1,6 +1,8 @@
 #include "../src/core/SamplerEngine.hpp"
 #include "../src/plugin/Parameters.hpp"
+#include "DSP/PeakMeter.hpp"
 
+#include <array>
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
@@ -12,6 +14,44 @@ void check(bool value, const char* message) {
     if (!value) { std::cerr << "FAIL: " << message << '\n'; std::exit(EXIT_FAILURE); }
 }
 void close(float a, float b, const char* message) { check(std::abs(a - b) < 1.0e-5f, message); }
+
+void live_peak_meter() {
+    sms::dsp::StereoPeakMeter meter;
+    const float left[] = {-0.25f, 0.5f, -0.1f};
+    const float right[] = {0.1f, -0.75f, 0.2f};
+    meter.process(left, right, 3, 1000.0);
+    close(meter.left(), 0.5f, "peak meter measures left magnitude");
+    close(meter.right(), 0.75f, "peak meter measures right magnitude");
+
+    std::array<float, 100> quiet{};
+    quiet.fill(0.1f);
+    meter.process(quiet.data(), quiet.data(), 50, 1000.0);
+    close(meter.left(), 0.5f, "peak meter holds transients");
+    close(meter.right(), 0.75f, "stereo channels hold independently");
+    meter.process(quiet.data(), quiet.data(), 100, 1000.0);
+    check(meter.left() < 0.5f && meter.left() > 0.1f,
+          "peak meter releases after its hold");
+    check(meter.right() < 0.75f && meter.right() > meter.left(),
+          "peak meter preserves channel separation during release");
+
+    const float invalid[] = {std::numeric_limits<float>::quiet_NaN(),
+                             std::numeric_limits<float>::infinity(), 2.0f};
+    meter.process(invalid, nullptr, 3, 1000.0);
+    close(meter.left(), 1.0f, "peak meter clamps clipping and infinity");
+    check(meter.right() < 1.0f, "null channel remains independent");
+    meter.reset();
+    close(meter.left(), 0.0f, "peak meter reset clears left");
+    close(meter.right(), 0.0f, "peak meter reset clears right");
+    meter.process(left, right, 3, 1000.0);
+    meter.process(nullptr, nullptr, 5000, 1000.0);
+    close(meter.left(), 0.0f, "peak meter stops below the visible floor");
+    close(meter.right(), 0.0f, "silent peak meter avoids subnormal decay");
+
+    using namespace midichopper::plugin;
+    check(kParameterInputLevelLeft == kParameterCaptureTargetRequest + 1U &&
+          kParameterOutputLevelRight + 1U == kParameterCount,
+          "meter outputs remain appended after released parameters");
+}
 
 void sequential_boundaries_and_preroll() {
     midichopper::SamplerEngine e(1000.0, 1.0);
@@ -587,6 +627,7 @@ void disarm_note_off_gain_and_rate_change() {
 }
 
 int main() {
+    live_peak_meter();
     sequential_boundaries_and_preroll();
     full_bank_and_undo();
     bank_and_layout_mapping();

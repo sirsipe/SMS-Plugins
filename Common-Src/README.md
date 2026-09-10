@@ -9,6 +9,8 @@ host, or a specific plug-in's state model.
 - `DSP/SamplePlaybackSettings.hpp`: sanitized, non-destructive sample region
   and ADSR value type.
 - `DSP/AdsrEnvelope.hpp`: allocation-free per-voice linear ADSR processor.
+- `DSP/PeakMeter.hpp`: allocation-free stereo sample-peak follower with hold
+  and release ballistics for live meters.
 - `Audio/WaveformSummary.hpp`: fixed-size stereo min/max reduction and compact
   DSP-to-UI transport.
 - `State/SamplePlaybackSettingsCodec.hpp`: versioned settings serialization.

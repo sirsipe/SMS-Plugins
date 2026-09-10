@@ -83,6 +83,12 @@ Configuration and pad import must not run concurrently with `process()`; see
 `SamplerEngine.hpp`. Keep large state operations outside the audio callback and
 verify the wrapper's scheduling when changing state transport.
 
+Four hidden outputs carry allocation-free sample peaks
+from raw input before processing and final output after monitoring, voices,
+envelopes, and gain. Input therefore ignores plug-in settings; output matches
+samples written by the plug-in. Host hard bypass that skips DSP cannot be
+metered.
+
 ## Project state
 
 Each of the 64 pad slots is stored independently with a magic value, version, channel count,
@@ -101,6 +107,6 @@ limit is 30 seconds per pad.
 
 ## Build and validation
 
-See [development](../../Docs/AI/DEVELOPMENT.md) for formats and build commands,
-and [testing](../../Docs/AI/TESTING.md) for CTest and host/UI coverage.
+See [development](../../Docs/AI/DEVELOPMENT.md) and
+[testing](../../Docs/AI/TESTING.md).
 Platform-specific work is confined to DPF/DGL.

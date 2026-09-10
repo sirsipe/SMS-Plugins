@@ -1,6 +1,7 @@
 #include "DistrhoPlugin.hpp"
 
 #include "Audio/WaveformSummary.hpp"
+#include "DSP/PeakMeter.hpp"
 #include "Parameters.hpp"
 #include "StateCodec.hpp"
 #include "SamplerEngine.hpp"
@@ -208,6 +209,26 @@ protected:
                            kParameterIsInteger | kParameterIsHidden,
                            "Internal UI command selecting a global idle armed capture destination.");
             break;
+        case kParameterInputLevelLeft:
+            setupParameter(index, parameter, "Input Level Left", "input_level_left", "",
+                           kParameterIsOutput | kParameterIsHidden,
+                           "Live sample peak of the raw left input.");
+            break;
+        case kParameterInputLevelRight:
+            setupParameter(index, parameter, "Input Level Right", "input_level_right", "",
+                           kParameterIsOutput | kParameterIsHidden,
+                           "Live sample peak of the raw right input.");
+            break;
+        case kParameterOutputLevelLeft:
+            setupParameter(index, parameter, "Output Level Left", "output_level_left", "",
+                           kParameterIsOutput | kParameterIsHidden,
+                           "Live sample peak of the final left output.");
+            break;
+        case kParameterOutputLevelRight:
+            setupParameter(index, parameter, "Output Level Right", "output_level_right", "",
+                           kParameterIsOutput | kParameterIsHidden,
+                           "Live sample peak of the final right output.");
+            break;
         default:
             if (index >= kFirstPadStatusParameter && index < kFirstPadActivityParameter) {
                 const std::uint32_t pad = index - kFirstPadStatusParameter;
@@ -358,6 +379,10 @@ protected:
         applySettings();
         applyCommandTriggers();
 
+        // Observe inputs before processing in case a host supplies in-place
+        // buffers. This tap intentionally ignores every plug-in mode/setting.
+        inputMeter_.process(inputs[0], inputs[1], frames, getSampleRate());
+
         std::array<midichopper::MidiEvent, 1024> events{};
         std::uint32_t eventCount = 0;
         for (uint32_t index = 0; index < midiEventCount && eventCount < events.size(); ++index) {
@@ -376,6 +401,9 @@ protected:
 
         activateAllBanksMidiBank(events.data(), eventCount);
         sampler_.process(inputs[0], inputs[1], outputs[0], outputs[1], frames, events.data(), eventCount);
+        // The output tap follows monitoring, pad voices, envelopes, and gain.
+        outputMeter_.process(outputs[0], outputs[1], frames, getSampleRate());
+        updateMeterOutputParameters();
         updatePlaybackPadEvent();
         updatePadOutputParameters();
     }
@@ -556,6 +584,19 @@ private:
             std::memory_order_relaxed);
     }
 
+    void updateMeterOutputParameters() noexcept
+    {
+        using namespace midichopper::plugin;
+        parameters_[kParameterInputLevelLeft].store(
+            inputMeter_.left(), std::memory_order_relaxed);
+        parameters_[kParameterInputLevelRight].store(
+            inputMeter_.right(), std::memory_order_relaxed);
+        parameters_[kParameterOutputLevelLeft].store(
+            outputMeter_.left(), std::memory_order_relaxed);
+        parameters_[kParameterOutputLevelRight].store(
+            outputMeter_.right(), std::memory_order_relaxed);
+    }
+
     void mirrorInputParameter(const std::uint32_t index, const float value) noexcept
     {
         const float previous = parameters_[index].exchange(value, std::memory_order_relaxed);
@@ -564,6 +605,8 @@ private:
     }
 
     midichopper::SamplerEngine sampler_;
+    sms::dsp::StereoPeakMeter inputMeter_;
+    sms::dsp::StereoPeakMeter outputMeter_;
     std::array<std::atomic<float>, midichopper::plugin::kParameterCount> parameters_{};
     std::atomic<std::uint32_t> pendingCommands_{0};
     std::atomic<std::uint32_t> pendingCaptureTarget_{0};

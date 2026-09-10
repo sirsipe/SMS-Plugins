@@ -116,6 +116,20 @@ public:
 protected:
     void parameterChanged(uint32_t index, float value) override
     {
+        if (index >= kParameterInputLevelLeft && index <= kParameterOutputLevelRight)
+        {
+            auto& levels = index <= kParameterInputLevelRight
+                ? fInputLevels : fOutputLevels;
+            const std::size_t channel = static_cast<std::size_t>(
+                (index - kParameterInputLevelLeft) % 2U);
+            const float level = std::isfinite(value)
+                ? std::clamp(value, 0.0f, 1.0f) : 0.0f;
+            if (levels[channel] == level)
+                return;
+            levels[channel] = level;
+            requestRepaint();
+            return;
+        }
         if (index >= kFirstPadStatusParameter && index < kFirstPadActivityParameter)
         {
             const auto localPad = static_cast<std::size_t>(index - kFirstPadStatusParameter);
@@ -387,7 +401,7 @@ protected:
             fArm, fRecordMode, fFixedLength, fPlaybackMode, fMonitor,
             fStartPad, fPreRoll, fBaseNote, fMidiBankMode, fGain, fMaxVoices, fBank, fLayout,
             fSelectedPad, fCurrentPad, fPressedPad, fClearArmed, fMenuOpen,
-            fEditorMode, fHasWaveform, fPadState, fPadStatus,
+            fEditorMode, fHasWaveform, fInputLevels, fOutputLevels, fPadState, fPadStatus,
             fEditorSettings, fWaveform, fStatus,
         };
         midichopper::ui::draw(*this, view);
@@ -401,7 +415,7 @@ protected:
             return false;
 
         const auto position = toLogicalPosition(ev.pos);
-        const float x = position.getX();
+        const float x = position.getX() - uiLayout::contentOffsetX;
         const float y = position.getY();
 
         if (ev.press)
@@ -674,7 +688,7 @@ protected:
         if (!fEditorMode || fDragTarget == WaveformEditTarget::none)
             return false;
         const auto position = toLogicalPosition(ev.pos);
-        const float x = position.getX();
+        const float x = position.getX() - uiLayout::contentOffsetX;
         const float y = position.getY();
         updateEditorDrag(x, y);
         return true;
@@ -708,6 +722,8 @@ private:
     float fDragStartX;
     float fDragStartY;
     bool fHasWaveform;
+    std::array<float, 2> fInputLevels{};
+    std::array<float, 2> fOutputLevels{};
     bool fCaptureTargetRequestAlternateHalf;
     PlaybackPadEventTracker fPlaybackPadEvents;
     std::array<char, midichopper::kPadsPerBank> fPadState;

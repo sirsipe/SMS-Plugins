@@ -76,7 +76,7 @@ for launch_attempt in $(seq 1 80); do
         if [ "$width" -lt 700 ] || [ "$height" -lt 500 ]; then
             continue
         fi
-        score=$(( (${width} - 960) * (${width} - 960) + \
+        score=$(( (${width} - 1040) * (${width} - 1040) + \
             (${height} - 680) * (${height} - 680) ))
         if [ "$score" -lt "$best_score" ]; then
             plugin_window="$candidate"
@@ -96,8 +96,9 @@ fi
 
 window_name="$(DISPLAY="$DISPLAY" xdotool getwindowname "$plugin_window")"
 DISPLAY="$DISPLAY" xdotool windowactivate --sync "$plugin_window"
-# ARM is centered at logical coordinate (858, 166) in MidichopperLayout.hpp.
-DISPLAY="$DISPLAY" xdotool mousemove --sync --window "$plugin_window" 858 166
+# The original controls are translated by contentOffsetX in MidichopperLayout.hpp.
+# ARM is centered at logical coordinate (898, 166).
+DISPLAY="$DISPLAY" xdotool mousemove --sync --window "$plugin_window" 898 166
 DISPLAY="$DISPLAY" xdotool click 1
 sleep 0.5
 
