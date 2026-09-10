@@ -92,9 +92,11 @@ The [Dev Container](../../.devcontainer/devcontainer.json) provides fixed X11
 display `:1` through TigerVNC, Openbox, noVNC, dummy JACK, software Mesa,
 `xdotool`, `wmctrl`, `xwininfo`, and ImageMagick. Desktop services start with the
 container. Run `desktop-health` to check tini supervision, zombies, X11 pointer
-movement, native VNC, noVNC, JACK, and the OpenGL renderer. View the same pointer
-that automation controls through forwarded noVNC port 6080; do not use the VNC
-mouse during an automated sequence.
+movement, native VNC, noVNC, JACK, software OpenGL, the isolated session bus,
+and the portal FileChooser interface. Run `desktop-health --dialogs` after an
+image rebuild or portal change; it opens and cancels real Open and Save dialogs
+on `:1`. View the same pointer that automation controls through forwarded noVNC
+port 6080; do not use the VNC mouse during an automated sequence.
 
 From `/workspaces/SMS-Plugins`, `test-plugin` runs the release VST3/LV2 build,
 CTest, `lv2info`, launches the built LV2 directly in Carla, resolves its visible

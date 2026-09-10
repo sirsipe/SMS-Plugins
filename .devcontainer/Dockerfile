@@ -30,6 +30,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     jackd2 \
     jalv \
     jq \
+    libdbus-1-dev \
     libegl1-mesa-dev \
     libgl-dev \
     libgl1-mesa-dev \
@@ -54,6 +55,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \
     procps \
     python3 \
+    python3-dbus \
+    python3-gi \
     python3-pip \
     ripgrep \
     strace \
@@ -68,6 +71,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     x11-xserver-utils \
     xdotool \
     xterm \
+    xdg-desktop-portal \
+    xdg-desktop-portal-gtk \
     && rm -rf /var/lib/apt/lists/*
 
 ARG DEV_USER=vscode
@@ -112,13 +117,19 @@ RUN if [ "${INSTALL_CODEX_CLI}" = "1" ]; then \
 COPY .devcontainer/scripts/container-entrypoint.sh /usr/local/bin/container-entrypoint
 COPY .devcontainer/scripts/start-desktop.sh /usr/local/bin/start-desktop
 COPY .devcontainer/scripts/desktop-health.sh /usr/local/bin/desktop-health
+COPY .devcontainer/scripts/portal-dialog-health.sh /usr/local/bin/portal-dialog-health
+COPY .devcontainer/scripts/portal-dialog-health.py /usr/local/libexec/portal-dialog-health
 COPY .devcontainer/scripts/screenshot-window.sh /usr/local/bin/screenshot-window
 COPY .devcontainer/scripts/test-plugin.sh /usr/local/bin/test-plugin
+COPY .devcontainer/dbus-session.conf /usr/local/share/sms-plugins/dbus-session.conf
+COPY .devcontainer/xdg-desktop-portal/portals.conf /etc/xdg/xdg-desktop-portal/portals.conf
 
 RUN chmod 0755 \
     /usr/local/bin/container-entrypoint \
     /usr/local/bin/start-desktop \
     /usr/local/bin/desktop-health \
+    /usr/local/bin/portal-dialog-health \
+    /usr/local/libexec/portal-dialog-health \
     /usr/local/bin/screenshot-window \
     /usr/local/bin/test-plugin
 
@@ -126,8 +137,10 @@ USER ${DEV_USER}
 WORKDIR /workspaces/SMS-Plugins
 
 ENV DISPLAY=:1 \
+    DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/runtime-vscode/bus \
     QT_QPA_PLATFORM=xcb \
     LIBGL_ALWAYS_SOFTWARE=1 \
+    XDG_CURRENT_DESKTOP=Openbox \
     XDG_RUNTIME_DIR=/tmp/runtime-vscode \
     NOVNC_PORT=6080 \
     VNC_PORT=5901

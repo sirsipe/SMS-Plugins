@@ -69,21 +69,20 @@ Enable DPF's direct asynchronous `openFileBrowser()` API, not a host-provided
 browser. DPF has no extension filters, so validate after selection. Open dialogs
 can use its Linux X11 fallback, but the pinned fallback cannot save.
 
-### First task when WAV work begins
+### Dev Container prerequisite
 
-Before implementing file dialogs, make the maintained Dev Container exercise
-the same portal path expected from Linux users. Add `libdbus-1-dev`,
-`xdg-desktop-portal`, and `xdg-desktop-portal-gtk`; the image already has
-`libdbus-1-3` and `dbus-x11`. Run the container desktop inside its own
-`dbus-run-session`, and configure Openbox to select the GTK portal backend. Do
-not mount the host D-Bus socket into the container.
+The maintained Dev Container now exercises the portal path expected from Linux
+users. It installs `libdbus-1-dev`, `xdg-desktop-portal`, and the GTK backend,
+runs the desktop inside its own `dbus-run-session`, and explicitly selects GTK
+for Openbox. A fixed container-local bus address lets VS Code exec shells share
+that session. No host D-Bus socket is mounted.
 
-Extend desktop health checks to prove that `pkg-config` finds `dbus-1`, a user
-session bus exists, `org.freedesktop.portal.Desktop` activates with the
-FileChooser interface, and real Open and Save dialogs complete on the VNC
-display. Preserve a way to test the documented portal-absent fallback. These
-container changes and checks are the first deliverable of the later WAV/file
-dialog session, before plug-in file actions.
+`desktop-health` proves that `pkg-config` finds `dbus-1`, the session bus works,
+and `org.freedesktop.portal.Desktop` activates with FileChooser.
+`desktop-health --dialogs` opens and cancels real Open and Save dialogs on VNC;
+`make dev-ready` runs this stronger check. Launch a host with `env -u
+DBUS_SESSION_BUS_ADDRESS` to test the portal-absent fallback without disrupting
+the shared bus. Complete these checks before enabling DPF file browsing.
 
 Linux release builds must deliberately enable D-Bus and fail configuration if
 development files are absent. `libdbus-1` is a runtime requirement. Export

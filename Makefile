@@ -48,7 +48,7 @@ dev-run:
 
 dev-ready:
 	@for ready_attempt in $$(seq 1 30); do \
-		if $(DOCKER) exec $(CONTAINER) desktop-health; then exit 0; fi; \
+		if $(DOCKER) exec $(CONTAINER) desktop-health --dialogs; then exit 0; fi; \
 		sleep 1; \
 	done; \
 	echo "Container desktop did not become ready. Run: make dev-logs" >&2; \
