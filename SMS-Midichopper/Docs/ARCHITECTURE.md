@@ -29,17 +29,14 @@ SMS-Midichopper separates the sampler from the plug-in format and UI:
 The saved `midi_bank_mode` parameter selects between two playback mappings.
 All Banks is the default and maps the sequential storage slots exposed by the
 layout from the base note as a gapless sequence and
-groups them into four pages of the selected size. A valid playback note-on updates
-the engine's active bank to the page containing that sample; note-off never
-changes the active bank. The DSP requests an `active_bank` parameter change from
-the host so the saved selection and UI follow the played note when the host
-supports DSP-initiated input-parameter changes. Changing layout regroups slots
-without changing their unique MIDI notes.
+groups them into four pages of the selected size. A valid playback note-on
+updates the engine's active bank; note-off does not. The DSP requests an
+`active_bank` host change so supporting hosts save the new selection. Changing
+layout regroups slots without changing their unique MIDI notes.
 Every successful playback note-on also advances a hidden output event that
-encodes the global pad index in alternating halves of its range. The editor
-follows that event instead of inferring a selection from sustained pad
-activity, so retriggers and same-index cross-bank notes reliably load the played
-sample even when the host cannot accept the bank change request.
+encodes the global pad index in alternating halves of its range. Both UI views
+follow that event, so bank, MIDI labels, and the single last-played selection
+stay current across retriggers even without host input-parameter changes.
 All Banks limits the effective base note to 64 so every layout remains within
 MIDI notes 0–127. UI-generated note-on and note-off events and displayed note
 labels use the same mapping as the engine. Selected Bank reuses one note range,
@@ -48,14 +45,17 @@ bank organization.
 
 ## Capture model
 
-While armed in Sequential mode, the first note-on begins capture at the chosen
-start pad in the selected bank. Each later note-on is a sample-accurate
+Arming chooses the first empty visible pad in the selected bank, or its first
+pad when full. An idle mouse selection overrides that target. A hidden output
+reports the engine's actual target to the UI. The first Sequential note-on
+begins capture there. Each later note-on is a sample-accurate
 boundary: the active slice is published and capture continues at the next
 visible pad. Capture advances from Bank A through Bank D and stops rather than
 silently wrapping or overwriting earlier material. The 12- and 8-pad layouts
 skip hidden storage slots at the end of each bank in Selected Bank mode. All
 Banks instead advances through contiguous layout-sized pages. Note-off does not
-affect capture. Disarming or Finalize publishes the last slice.
+affect capture. Active recording ignores manual retargeting. Disarming or
+Finalize publishes the last slice.
 
 The pre-roll ring holds up to 100 ms. At a boundary, that history becomes the
 start of the new slice and is trimmed from the previous slice, avoiding a gap

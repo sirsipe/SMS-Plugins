@@ -76,22 +76,20 @@ void SamplerEngine::setSampleRate(double sampleRate) {
     ringCapacityFrames_ = static_cast<std::uint32_t>(std::max(1.0, std::ceil(sample_rate_ * 0.1)));
     ring_.assign(static_cast<std::size_t>(ringCapacityFrames_) * 2U, 0.0f);
     ringWritePosition_ = ringCount_ = 0;
-    nextPad_ = firstCapturePad();
-    sessionComplete_ = false;
+    activePad_ = -1;
     previousArmed_ = false;
     for (auto& p : pads_) {
         p.recording = p.playing = false;
         p.publishedRecording.store(false, std::memory_order_release);
         p.publishedPlaying.store(false, std::memory_order_release);
     }
+    resetCaptureTarget(settings_.armed);
     setSettings(settings_);
 }
 
 void SamplerEngine::reset() noexcept {
     activePad_ = -1;
     lastCommittedPad_ = -1;
-    nextPad_ = firstCapturePad();
-    sessionComplete_ = false;
     previousArmed_ = settings_.armed;
     ringWritePosition_ = ringCount_ = 0;
     nextVoiceOrder_ = 1;
@@ -108,9 +106,11 @@ void SamplerEngine::reset() noexcept {
         p.occupied.store(false, std::memory_order_release);
         p.publishedRecording.store(false, std::memory_order_release);
     }
+    resetCaptureTarget(settings_.armed);
 }
 
 void SamplerEngine::setSettings(const EngineSettings& s) noexcept {
+    const EngineSettings previous = settings_;
     settings_ = s;
     if (settings_.activeBank >= kBankCount) settings_.activeBank = 0;
     settings_.baseNote = effectiveBaseMidiNote(settings_.baseNote, settings_.midiBankMode);
@@ -125,6 +125,17 @@ void SamplerEngine::setSettings(const EngineSettings& s) noexcept {
     preRollFrames_ = static_cast<std::uint32_t>(std::clamp(
         std::llround(static_cast<double>(settings_.preRollMilliseconds) * sample_rate_ / 1000.0),
         0LL, static_cast<long long>(ringCapacityFrames_)));
+
+    if (settings_.armed && activePad_ < 0) {
+        const bool automaticTargetChanged = !previous.armed ||
+            settings_.activeBank != previous.activeBank ||
+            settings_.padsPerBank != previous.padsPerBank ||
+            settings_.midiBankMode != previous.midiBankMode;
+        if (automaticTargetChanged)
+            resetCaptureTarget(true);
+        else if (settings_.startPad != previous.startPad)
+            resetCaptureTarget(false);
+    }
 }
 
 std::uint32_t SamplerEngine::noteToPad(std::uint8_t note) const noexcept {
@@ -138,16 +149,54 @@ std::uint32_t SamplerEngine::firstCapturePad() const noexcept {
            settings_.startPad;
 }
 
+std::uint32_t SamplerEngine::firstAvailableCapturePad() const noexcept {
+    const std::uint32_t first = static_cast<std::uint32_t>(settings_.activeBank) *
+        bankStride(settings_.padsPerBank, settings_.midiBankMode);
+    for (std::uint32_t localPad = 0; localPad < settings_.padsPerBank; ++localPad) {
+        const std::uint32_t pad = first + localPad;
+        if (pad < kPadCount && !pads_[pad].occupied.load(std::memory_order_acquire))
+            return pad;
+    }
+    return first;
+}
+
+void SamplerEngine::resetCaptureTarget(const bool preferEmpty) noexcept {
+    capturePadsPerBank_ = settings_.padsPerBank;
+    captureMidiBankMode_ = settings_.midiBankMode;
+    nextPad_ = preferEmpty ? firstAvailableCapturePad() : firstCapturePad();
+    sessionComplete_ = false;
+}
+
+std::uint32_t SamplerEngine::captureTargetPad() const noexcept {
+    if (!settings_.armed)
+        return kPadCount;
+    if (activePad_ >= 0)
+        return static_cast<std::uint32_t>(activePad_);
+    return !sessionComplete_ && nextPad_ < kPadCount ? nextPad_ : kPadCount;
+}
+
+void SamplerEngine::selectCaptureTarget(const std::uint32_t pad) noexcept {
+    if (!settings_.armed || activePad_ >= 0 || pad >= kPadCount ||
+        bankForPad(pad, settings_.padsPerBank, settings_.midiBankMode) != settings_.activeBank)
+        return;
+    const std::uint32_t localPad =
+        localPadInBank(pad, settings_.padsPerBank, settings_.midiBankMode);
+    if (localPad >= settings_.padsPerBank)
+        return;
+    settings_.startPad = static_cast<std::uint8_t>(localPad);
+    resetCaptureTarget(false);
+}
+
 std::uint32_t SamplerEngine::followingCapturePad(const std::uint32_t pad) const noexcept {
     if (pad >= kPadCount) return kPadCount;
-    if (settings_.midiBankMode == MidiBankMode::AllBanks) {
+    if (captureMidiBankMode_ == MidiBankMode::AllBanks) {
         const std::uint32_t addressablePads =
-            static_cast<std::uint32_t>(settings_.padsPerBank) * kBankCount;
+            static_cast<std::uint32_t>(capturePadsPerBank_) * kBankCount;
         return pad + 1U < addressablePads ? pad + 1U : kPadCount;
     }
     const std::uint32_t bank = pad / kPadsPerBank;
     const std::uint32_t localPad = pad % kPadsPerBank;
-    if (localPad + 1U < settings_.padsPerBank)
+    if (localPad + 1U < capturePadsPerBank_)
         return pad + 1U;
     return bank + 1U < kBankCount ? (bank + 1U) * kPadsPerBank : kPadCount;
 }
@@ -430,8 +479,9 @@ void SamplerEngine::process(const float* inputLeft, const float* inputRight,
     if (!outputLeft || !outputRight) return;
     if (settings_.armed != previousArmed_) {
         if (settings_.armed) {
-            activePad_ = -1; sessionComplete_ = false;
-            nextPad_ = firstCapturePad();
+            // setSettings() already prepared either the automatic empty target
+            // or a later explicit idle retarget before this audio block.
+            activePad_ = -1;
         } else if (activePad_ >= 0) {
             finishRecord(static_cast<std::uint32_t>(activePad_));
             activePad_ = -1;
@@ -658,8 +708,8 @@ void SamplerEngine::clearPad(std::uint32_t pad) noexcept {
 
 void SamplerEngine::clearAllPads() noexcept {
     for (std::uint32_t i = 0; i < kPadCount; ++i) clearPad(i);
-    activePad_ = -1; lastCommittedPad_ = -1; sessionComplete_ = false;
-    nextPad_ = firstCapturePad();
+    activePad_ = -1; lastCommittedPad_ = -1;
+    resetCaptureTarget(settings_.armed);
 }
 
 void SamplerEngine::finalizeRecording() noexcept { finalizeRequested_.store(true, std::memory_order_release); }

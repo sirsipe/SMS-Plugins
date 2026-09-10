@@ -46,24 +46,25 @@ cp -a build/bin/SMS-Midichopper.lv2 ~/.lv2/
 ## Use
 
 1. Insert **SMS-Midichopper** on a stereo Reaper track receiving audio and MIDI.
-2. Select the first destination pad, enable monitoring if needed, then click **ARM**.
-3. The first MIDI note-on starts the first slice. Each later note-on closes that
-   slice and immediately starts the next consecutive pad.
+2. Choose a bank, enable monitoring if needed, then click **ARM**. The first
+   empty visible pad is selected; click another pad while idle to override it.
+3. The first MIDI note-on starts the slice. Later note-ons close the current
+   slice and continue at the next pad; their note identity does not choose it.
 4. Click **FINALIZE** or return to **PLAY** to keep the last open slice.
-5. Select Bank A–D and play pads from MIDI note 36 upward; the base note is
-   configurable.
+5. Select Bank A–D and play from MIDI note 36 upward. The base is configurable.
+
+The yellow outline is the last successfully played pad in Play and the current
+or next capture destination in Arm. A manual Play bank change clears it.
 
 The hamburger menu provides two MIDI bank modes. **All Banks** (the default)
 assigns stable, gapless notes to the sequential sample slots exposed by the
-layout. **Selected Bank** reuses the base-note range for whichever bank is
-visible. With 16 pads per bank and the default base note, Banks A–D use 36–51,
-52–67, 68–83, and 84–99. With eight pads they instead use consecutive
-eight-note ranges. A
-note-on activates the bank containing that sample. Hosts that support plug-in
-input-parameter change requests also mirror that bank in the UI. Changing
-layout regroups the same sample slots into differently sized bank pages without
-changing a sample's note. Base notes above 64 are limited to 64 in this mode so
-every layout can fit in MIDI's 0–127 note range.
+layout. **Selected Bank** reuses the base-note range for the visible bank. With
+16 pads and the default base, Banks A–D use 36–51, 52–67, 68–83, and 84–99.
+With eight pads they use consecutive eight-note ranges. A note-on activates its
+bank, and the custom UI follows it directly. Supporting hosts also mirror the
+change in the saved Active Bank parameter. Layout changes regroup slots without
+changing their notes. All Banks limits effective base notes to 64 so every
+layout fits within MIDI 0–127.
 
 The pad layout can be switched between 16 pads (4×4), 12 pads (3×4), and 8 pads
 (4×2). Pad numbering runs from the bottom row upward to match common hardware.
@@ -72,12 +73,10 @@ unused slots without deleting their samples. Sequential capture skips hidden
 slots and continues automatically into the next bank in Selected Bank mode. In
 All Banks mode, capture and display instead use contiguous layout-sized pages.
 
-Open **Sample Editor** to move the pad bank into the right panel and edit the
-selected pad in the main view. Drag the waveform's start/end handles to choose
-the playback region, then adjust attack, decay, sustain, and release. These
-settings are stored independently for every pad and do not alter captured audio.
-While the editor is open, playing a populated pad from MIDI selects it and loads
-its waveform, including when an active pad is retriggered.
+In Play, open **Sample Editor** to edit a pad's region and ADSR non-destructively.
+Side-panel clicks select and load pads without auditioning them. MIDI playback
+also selects and loads populated pads, including active-pad retriggers. The
+editor is unavailable in Arm so capture controls remain visible.
 
 Max Voices limits how many pads may play simultaneously. When the limit is
 reached, triggering another pad stops the oldest playing voice; setting it to

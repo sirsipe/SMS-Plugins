@@ -121,6 +121,13 @@ public:
     {
         return lastPlaybackTrigger_;
     }
+    /**
+     * Current recording pad, or the next destination while armed and idle.
+     * This is an audio-thread observation; kPadCount means there is no target.
+     */
+    [[nodiscard]] std::uint32_t captureTargetPad() const noexcept;
+    /** Explicitly choose an idle armed capture destination in the active bank. */
+    void selectCaptureTarget(std::uint32_t pad) noexcept;
     /** Copy a stable, already-published pad snapshot on the control/UI thread. */
     [[nodiscard]] bool exportPad(std::uint32_t pad, PadData& destination) const;
     /** Import/replaces a pad on the control thread; stereo must be interleaved. */
@@ -168,7 +175,9 @@ private:
     };
     std::uint32_t noteToPad(std::uint8_t note) const noexcept;
     [[nodiscard]] std::uint32_t firstCapturePad() const noexcept;
+    [[nodiscard]] std::uint32_t firstAvailableCapturePad() const noexcept;
     [[nodiscard]] std::uint32_t followingCapturePad(std::uint32_t pad) const noexcept;
+    void resetCaptureTarget(bool preferEmpty) noexcept;
     [[nodiscard]] bool ensurePadBlock(std::uint32_t pad, std::uint32_t block) noexcept;
     void releasePadBlocks(std::uint32_t pad) noexcept;
     void trimPadBlocks(std::uint32_t pad, std::uint32_t frames) noexcept;
@@ -204,6 +213,8 @@ private:
     std::int32_t activePad_ = -1;
     std::int32_t lastCommittedPad_ = -1;
     std::uint32_t nextPad_ = 0;
+    std::uint8_t capturePadsPerBank_ = static_cast<std::uint8_t>(kPadsPerBank);
+    MidiBankMode captureMidiBankMode_ = kDefaultMidiBankMode;
     std::uint64_t nextVoiceOrder_ = 1;
     PlaybackTrigger lastPlaybackTrigger_{};
     bool previousArmed_ = false;

@@ -206,6 +206,9 @@ void all_bank_midi_mapping() {
     captureSettings.monitorInput = false;
     captureSettings.midiBankMode = midichopper::MidiBankMode::AllBanks;
     captureSettings.padsPerBank = 8;
+    capture.setSettings(captureSettings);
+    // Arming chooses the first empty pad; a later start-pad change is an
+    // explicit manual destination selection.
     captureSettings.startPad = 7;
     capture.setSettings(captureSettings);
     float input[2]{};
@@ -219,6 +222,134 @@ void all_bank_midi_mapping() {
     check(capture.padMetadata(7).occupied && capture.padMetadata(8).occupied &&
           !capture.padMetadata(16).occupied,
           "all-bank capture advances through sequential layout pages");
+}
+
+midichopper::PadData occupiedPad() {
+    midichopper::PadData pad;
+    pad.sampleRate = 1000.0;
+    pad.frames = 1;
+    pad.stereo = {1.0f, 1.0f};
+    pad.peak = pad.rms = 1.0f;
+    return pad;
+}
+
+void capture_target_selection() {
+    const auto pad = occupiedPad();
+
+    midichopper::SamplerEngine selected(1000.0, 1.0);
+    check(selected.captureTargetPad() == midichopper::kPadCount,
+          "Play mode has no capture target");
+    check(selected.importPad(16, pad) && selected.importPad(17, pad),
+          "populate leading Selected Bank pads");
+    auto settings = selected.settings();
+    settings.armed = true;
+    settings.monitorInput = false;
+    settings.activeBank = 1;
+    settings.padsPerBank = 12;
+    settings.midiBankMode = midichopper::MidiBankMode::SelectedBank;
+    selected.setSettings(settings);
+    check(selected.captureTargetPad() == 18U,
+          "arming chooses the first empty visible Selected Bank pad");
+
+    settings.activeBank = 2;
+    selected.setSettings(settings);
+    check(selected.captureTargetPad() == 32U,
+          "idle Selected Bank changes choose the new bank's first empty pad");
+    settings.startPad = 4;
+    selected.setSettings(settings);
+    check(selected.captureTargetPad() == 36U,
+          "an idle start-pad-only change explicitly retargets capture");
+
+    float input[1] = {1.0f};
+    float outputLeft[1]{};
+    float outputRight[1]{};
+    const midichopper::MidiEvent trigger{0, 99, 127, midichopper::MidiEventType::NoteOn};
+    selected.process(input, input, outputLeft, outputRight, 1, &trigger, 1);
+    check(selected.captureTargetPad() == 36U && selected.padMetadata(36).recording,
+          "MIDI note identity starts capture at the explicit target");
+
+    settings.activeBank = 3;
+    settings.startPad = 2;
+    settings.padsPerBank = 8;
+    settings.midiBankMode = midichopper::MidiBankMode::AllBanks;
+    selected.setSettings(settings);
+    check(selected.captureTargetPad() == 36U,
+          "target-setting changes are ignored while a pad is recording");
+    selected.process(input, input, outputLeft, outputRight, 1, &trigger, 1);
+    check(selected.captureTargetPad() == 37U && selected.padMetadata(37).recording,
+          "mid-capture routing changes preserve the established sequence");
+
+    midichopper::SamplerEngine unique(1000.0, 1.0);
+    check(unique.importPad(16, pad), "populate the leading All Banks pad");
+    settings = unique.settings();
+    settings.armed = true;
+    settings.activeBank = 2;
+    settings.padsPerBank = 8;
+    settings.midiBankMode = midichopper::MidiBankMode::AllBanks;
+    unique.setSettings(settings);
+    check(unique.captureTargetPad() == 17U,
+          "arming uses contiguous layout pages in All Banks mode");
+
+    midichopper::SamplerEngine full(1000.0, 1.0);
+    for (std::uint32_t localPad = 0; localPad < 8U; ++localPad)
+        check(full.importPad(16U + localPad, pad), "populate a full visible bank");
+    settings = full.settings();
+    settings.armed = true;
+    settings.activeBank = 2;
+    settings.padsPerBank = 8;
+    settings.midiBankMode = midichopper::MidiBankMode::AllBanks;
+    full.setSettings(settings);
+    check(full.captureTargetPad() == 16U,
+          "a full visible bank falls back to its first pad");
+    full.clearAllPads();
+    check(full.captureTargetPad() == 16U,
+          "clearing an armed bank resets its target to the first visible pad");
+}
+
+void completed_capture_retargeting() {
+    midichopper::SamplerEngine e(1000.0, 1.0);
+    auto settings = e.settings();
+    settings.armed = true;
+    settings.monitorInput = false;
+    settings.activeBank = 3;
+    settings.midiBankMode = midichopper::MidiBankMode::SelectedBank;
+    e.setSettings(settings);
+    settings.startPad = 15;
+    e.setSettings(settings);
+
+    float input[1] = {1.0f};
+    float outputLeft[1]{};
+    float outputRight[1]{};
+    const midichopper::MidiEvent trigger{0, 60, 127, midichopper::MidiEventType::NoteOn};
+    e.process(input, input, outputLeft, outputRight, 1, &trigger, 1);
+    e.process(input, input, outputLeft, outputRight, 1, &trigger, 1);
+    check(e.captureTargetPad() == midichopper::kPadCount && e.padMetadata(63).occupied,
+          "exhausting the final bank leaves no capture target");
+
+    e.selectCaptureTarget(47U);
+    check(e.captureTargetPad() == midichopper::kPadCount,
+          "an explicit target outside the active bank is rejected");
+    e.selectCaptureTarget(63U);
+    check(e.captureTargetPad() == 63U,
+          "reselecting the same local pad reopens a completed capture session");
+    e.process(input, input, outputLeft, outputRight, 1, &trigger, 1);
+    check(e.padMetadata(63).recording,
+          "capture restarts when the exhausted target is selected again");
+    e.finalizeRecording();
+    e.process(nullptr, nullptr, outputLeft, outputRight, 0);
+
+    settings.startPad = 14;
+    e.setSettings(settings);
+    check(e.captureTargetPad() == 62U,
+          "an explicit idle target change reopens a completed capture session");
+    e.process(input, input, outputLeft, outputRight, 1, &trigger, 1);
+    check(e.padMetadata(62).recording,
+          "capture restarts at the explicit target after session completion");
+
+    using namespace midichopper::plugin;
+    check(padFromCaptureTargetRequest(captureTargetRequestValue(63U, false)) == 63U &&
+          padFromCaptureTargetRequest(captureTargetRequestValue(63U, true)) == 63U,
+          "alternating capture-target commands preserve repeated global-pad requests");
 }
 
 void playback_and_rate_conversion() {
@@ -270,6 +401,15 @@ void playback_trigger_notifications() {
           padFromPlaybackEvent(std::numeric_limits<float>::quiet_NaN()) ==
               midichopper::kPadCount,
           "alternating playback-pad values preserve identity and force a host-visible edge");
+    PlaybackPadEventTracker tracker;
+    check(tracker.consume(low) == 0U &&
+          tracker.consume(low) == midichopper::kPadCount &&
+          tracker.consume(high) == 0U,
+          "playback-pad tracking ignores duplicates but accepts alternate-half retriggers");
+    const auto targetRange = parameterRange(kParameterCaptureTargetPad);
+    check(targetRange.minimum == 0.0f &&
+          targetRange.maximum == static_cast<float>(midichopper::kPadCount),
+          "capture-target output covers no-target and every global pad");
 }
 
 void shared_storage_blocks() {
@@ -451,6 +591,8 @@ int main() {
     full_bank_and_undo();
     bank_and_layout_mapping();
     all_bank_midi_mapping();
+    capture_target_selection();
+    completed_capture_retargeting();
     playback_and_rate_conversion();
     playback_trigger_notifications();
     shared_storage_blocks();
