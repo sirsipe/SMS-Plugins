@@ -13,6 +13,8 @@ the row needed for the task. Paths in commands are relative to the repo root.
 | Shared DSP, codecs, geometry | [Common-Src map](../../Common-Src/README.md) | [Common-Src](../../Common-Src/) |
 | Shared DPF UI, pads, waveform | [Common-UI map](../../Common-UI/README.md) | [Common-UI](../../Common-UI/) |
 | Feature scope and direction | [Vision](../../SMS-Midichopper/Docs/VISION.md) | Intended scope; not an implementation checklist |
+| Pad context menu and actions | [Context-menu design](PAD-CONTEXT-MENU.md) | Approved direction; not implemented behavior |
+| Pad WAV import/export | [WAV I/O design](PAD-WAV-IO.md) | Formats, real-time boundary, dialogs, support notes |
 | User-visible behavior | [Plugin guide](../../SMS-Midichopper/README.md) | Verify against affected source/tests |
 | Project overview | [Project README](../../README.md) | Human entry point |
 | Contributions, doc maintenance | [Contributing](../../CONTRIBUTING.md) | [Doc checker](../../scripts/check_docs.py) |
