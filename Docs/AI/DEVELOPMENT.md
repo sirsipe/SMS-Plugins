@@ -26,6 +26,11 @@ CLAP is not currently covered by CI. Both optional format switches default OFF.
 Use a fresh ignored `build-*` directory if an existing CMake cache uses a
 different source path or generator. Avoid repeatedly rebuilding unchanged code.
 
+Windows and macOS formats are deferred and are not supported release targets.
+The investigated build path, known gaps, and required validation are recorded in
+[Platform builds](PLATFORM-BUILDS.md); do not present its unverified commands as
+current release instructions.
+
 ## Docker development environment
 
 The repository-owned [Dev Container](../../.devcontainer/devcontainer.json) is
