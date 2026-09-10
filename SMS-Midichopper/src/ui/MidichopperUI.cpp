@@ -101,7 +101,8 @@ public:
           fDragTarget(WaveformEditTarget::none),
           fDragStartX(0.0f),
           fDragStartY(0.0f),
-          fHasWaveform(false)
+          fHasWaveform(false),
+          fCaptureTargetRequestAlternateHalf(false)
     {
         fPadState.fill('0');
         fPadStatus.fill('0');
@@ -528,6 +529,11 @@ protected:
                     fHasWaveform = false;
                     requestWaveform();
                     setControlValue(kParameterStartPad, static_cast<float>(pad + 1));
+                    fCaptureTargetRequestAlternateHalf = !fCaptureTargetRequestAlternateHalf;
+                    setParameterValue(kParameterCaptureTargetRequest,
+                        captureTargetRequestValue(
+                            static_cast<std::uint32_t>(globalPad(pad)),
+                            fCaptureTargetRequestAlternateHalf));
                     setLocalStatus("Press any pad to start");
                 }
                 else
@@ -702,6 +708,7 @@ private:
     float fDragStartX;
     float fDragStartY;
     bool fHasWaveform;
+    bool fCaptureTargetRequestAlternateHalf;
     PlaybackPadEventTracker fPlaybackPadEvents;
     std::array<char, midichopper::kPadsPerBank> fPadState;
     std::array<char, midichopper::kPadsPerBank> fPadStatus;

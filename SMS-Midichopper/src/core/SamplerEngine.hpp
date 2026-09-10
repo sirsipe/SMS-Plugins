@@ -126,6 +126,8 @@ public:
      * This is an audio-thread observation; kPadCount means there is no target.
      */
     [[nodiscard]] std::uint32_t captureTargetPad() const noexcept;
+    /** Explicitly choose an idle armed capture destination in the active bank. */
+    void selectCaptureTarget(std::uint32_t pad) noexcept;
     /** Copy a stable, already-published pad snapshot on the control/UI thread. */
     [[nodiscard]] bool exportPad(std::uint32_t pad, PadData& destination) const;
     /** Import/replaces a pad on the control thread; stereo must be interleaved. */

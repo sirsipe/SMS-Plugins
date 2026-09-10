@@ -326,6 +326,18 @@ void completed_capture_retargeting() {
     check(e.captureTargetPad() == midichopper::kPadCount && e.padMetadata(63).occupied,
           "exhausting the final bank leaves no capture target");
 
+    e.selectCaptureTarget(47U);
+    check(e.captureTargetPad() == midichopper::kPadCount,
+          "an explicit target outside the active bank is rejected");
+    e.selectCaptureTarget(63U);
+    check(e.captureTargetPad() == 63U,
+          "reselecting the same local pad reopens a completed capture session");
+    e.process(input, input, outputLeft, outputRight, 1, &trigger, 1);
+    check(e.padMetadata(63).recording,
+          "capture restarts when the exhausted target is selected again");
+    e.finalizeRecording();
+    e.process(nullptr, nullptr, outputLeft, outputRight, 0);
+
     settings.startPad = 14;
     e.setSettings(settings);
     check(e.captureTargetPad() == 62U,
@@ -333,6 +345,11 @@ void completed_capture_retargeting() {
     e.process(input, input, outputLeft, outputRight, 1, &trigger, 1);
     check(e.padMetadata(62).recording,
           "capture restarts at the explicit target after session completion");
+
+    using namespace midichopper::plugin;
+    check(padFromCaptureTargetRequest(captureTargetRequestValue(63U, false)) == 63U &&
+          padFromCaptureTargetRequest(captureTargetRequestValue(63U, true)) == 63U,
+          "alternating capture-target commands preserve repeated global-pad requests");
 }
 
 void playback_and_rate_conversion() {

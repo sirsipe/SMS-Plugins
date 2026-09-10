@@ -203,6 +203,11 @@ protected:
                            kParameterIsOutput | kParameterIsInteger | kParameterIsHidden,
                            "Internal UI notification identifying the current capture destination.");
             break;
+        case kParameterCaptureTargetRequest:
+            setupParameter(index, parameter, "Capture Target Request", "capture_target_request", "",
+                           kParameterIsInteger | kParameterIsHidden,
+                           "Internal UI command selecting a global idle armed capture destination.");
+            break;
         default:
             if (index >= kFirstPadStatusParameter && index < kFirstPadActivityParameter) {
                 const std::uint32_t pad = index - kFirstPadStatusParameter;
@@ -268,6 +273,15 @@ protected:
             index <= midichopper::plugin::kParameterClearAll && value >= 0.5f) {
             const auto bit = 1U << (index - midichopper::plugin::kParameterFinalize);
             pendingCommands_.fetch_or(bit, std::memory_order_release);
+            parameters_[index].store(0.0f, std::memory_order_relaxed);
+            return;
+        }
+
+        if (index == midichopper::plugin::kParameterCaptureTargetRequest) {
+            const std::uint32_t pad =
+                midichopper::plugin::padFromCaptureTargetRequest(value);
+            if (pad < midichopper::kPadCount)
+                pendingCaptureTarget_.store(pad + 1U, std::memory_order_release);
             parameters_[index].store(0.0f, std::memory_order_relaxed);
             return;
         }
@@ -443,6 +457,10 @@ private:
         if ((commands & 0x1U) != 0U) sampler_.finalizeRecording();
         if ((commands & 0x2U) != 0U) sampler_.undoLastSlice();
         if ((commands & 0x4U) != 0U) sampler_.clearAllPads();
+        const std::uint32_t captureTarget =
+            pendingCaptureTarget_.exchange(0U, std::memory_order_acquire);
+        if (captureTarget != 0U)
+            sampler_.selectCaptureTarget(captureTarget - 1U);
     }
 
     void activateAllBanksMidiBank(const midichopper::MidiEvent* const events,
@@ -548,6 +566,7 @@ private:
     midichopper::SamplerEngine sampler_;
     std::array<std::atomic<float>, midichopper::plugin::kParameterCount> parameters_{};
     std::atomic<std::uint32_t> pendingCommands_{0};
+    std::atomic<std::uint32_t> pendingCaptureTarget_{0};
     std::uint64_t publishedPlaybackTriggerGeneration_ = 0;
     bool playbackPadEventAlternateHalf_ = false;
 

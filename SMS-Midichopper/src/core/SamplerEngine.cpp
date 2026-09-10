@@ -175,6 +175,18 @@ std::uint32_t SamplerEngine::captureTargetPad() const noexcept {
     return !sessionComplete_ && nextPad_ < kPadCount ? nextPad_ : kPadCount;
 }
 
+void SamplerEngine::selectCaptureTarget(const std::uint32_t pad) noexcept {
+    if (!settings_.armed || activePad_ >= 0 || pad >= kPadCount ||
+        bankForPad(pad, settings_.padsPerBank, settings_.midiBankMode) != settings_.activeBank)
+        return;
+    const std::uint32_t localPad =
+        localPadInBank(pad, settings_.padsPerBank, settings_.midiBankMode);
+    if (localPad >= settings_.padsPerBank)
+        return;
+    settings_.startPad = static_cast<std::uint8_t>(localPad);
+    resetCaptureTarget(false);
+}
+
 std::uint32_t SamplerEngine::followingCapturePad(const std::uint32_t pad) const noexcept {
     if (pad >= kPadCount) return kPadCount;
     if (captureMidiBankMode_ == MidiBankMode::AllBanks) {

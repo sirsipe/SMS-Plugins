@@ -31,6 +31,7 @@ enum Parameter : std::uint32_t {
     kParameterMidiBankMode,
     kParameterPlaybackPadEvent,
     kParameterCaptureTargetPad,
+    kParameterCaptureTargetRequest,
     kParameterCount,
 };
 
@@ -67,6 +68,8 @@ inline constexpr ParameterRange playbackPadEvent{
     0.0f, 0.0f, static_cast<float>(kPadCount * 2U)};
 inline constexpr ParameterRange captureTargetPad{
     0.0f, 0.0f, static_cast<float>(kPadCount)};
+inline constexpr ParameterRange captureTargetRequest{
+    0.0f, 0.0f, static_cast<float>(kPadCount * 2U)};
 } // namespace parameterRanges
 
 /**
@@ -127,8 +130,28 @@ private:
     case kParameterMidiBankMode: return parameterRanges::midiBankMode;
     case kParameterPlaybackPadEvent: return parameterRanges::playbackPadEvent;
     case kParameterCaptureTargetPad: return parameterRanges::captureTargetPad;
+    case kParameterCaptureTargetRequest: return parameterRanges::captureTargetRequest;
     default: return parameterRanges::toggle;
     }
+}
+
+/** Encode a global pad request into alternating halves so repeated clicks stay observable. */
+[[nodiscard]] inline constexpr float captureTargetRequestValue(
+    const std::uint32_t pad, const bool alternateHalf) noexcept
+{
+    return pad < kPadCount
+        ? static_cast<float>(pad + 1U + (alternateHalf ? kPadCount : 0U))
+        : 0.0f;
+}
+
+[[nodiscard]] inline std::uint32_t padFromCaptureTargetRequest(const float value) noexcept
+{
+    if (!std::isfinite(value) || value < 0.5f ||
+        value > static_cast<float>(kPadCount * 2U) + 0.5f)
+        return kPadCount;
+    const auto encoded = static_cast<std::uint32_t>(std::lround(value));
+    return encoded >= 1U && encoded <= kPadCount * 2U
+        ? (encoded - 1U) % kPadCount : kPadCount;
 }
 
 } // namespace midichopper::plugin
