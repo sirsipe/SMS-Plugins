@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(SMSMidichopper VERSION 0.0.4 LANGUAGES C CXX)
+project(SMSMidichopper VERSION 0.0.5 LANGUAGES C CXX)
 
 include(CTest)
 include(GNUInstallDirs)
