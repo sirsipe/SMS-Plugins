@@ -70,6 +70,9 @@ void levelMeterGeometry()
           "meter counts clamp overloads and reject non-finite values");
     check(std::abs(meter::amplitudeToDb(0.1f) + 20.0f) < 1.0e-5f,
           "meter uses logarithmic decibel mapping");
+    check(!meter::visibleLevelChanged(0.40f, 0.41f) &&
+          meter::visibleLevelChanged(0.40f, 0.80f),
+          "meter repaints only when a visible LED boundary changes");
 
     const meter::StereoGeometry narrow({2.0f, 10.0f, 24.0f, 510.0f});
     const auto narrowLeft = narrow.channel(0U);

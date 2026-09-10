@@ -41,6 +41,14 @@ enum class Zone : std::uint8_t { green, yellow, red };
         std::ceil(normalizedLevel(amplitude) * static_cast<float>(segments))));
 }
 
+[[nodiscard]] inline bool visibleLevelChanged(
+    const float previousAmplitude, const float nextAmplitude,
+    const std::uint32_t segments = defaultSegmentCount) noexcept
+{
+    return activeSegmentCount(previousAmplitude, segments) !=
+           activeSegmentCount(nextAmplitude, segments);
+}
+
 [[nodiscard]] inline Zone segmentZone(
     const std::uint32_t segment, const std::uint32_t segments = defaultSegmentCount) noexcept
 {

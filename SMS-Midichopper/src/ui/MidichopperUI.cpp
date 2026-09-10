@@ -26,6 +26,7 @@
 #include "DPF/NanoUI.hpp"
 #include "DPF/Theme.hpp"
 #include "DSP/SamplePlaybackSettings.hpp"
+#include "LevelMeter.hpp"
 #include "State/SamplePlaybackSettingsCodec.hpp"
 #include "UI/Geometry.hpp"
 #include "PadLayout.hpp"
@@ -52,6 +53,7 @@ namespace uiLayout = midichopper::ui::layout;
 using WaveformEditTarget = sms::ui::waveform::EditTarget;
 
 inline constexpr auto kClearConfirmationTimeout = std::chrono::seconds(2);
+inline constexpr auto kMeterFrameInterval = std::chrono::milliseconds(33);
 
 std::array<std::string, midichopper::kPadCount> makePadEditStateKeys()
 {
@@ -124,10 +126,11 @@ protected:
                 (index - kParameterInputLevelLeft) % 2U);
             const float level = std::isfinite(value)
                 ? std::clamp(value, 0.0f, 1.0f) : 0.0f;
-            if (levels[channel] == level)
-                return;
+            const bool visibleChange =
+                sms::ui::meter::visibleLevelChanged(levels[channel], level);
             levels[channel] = level;
-            requestRepaint();
+            if (visibleChange)
+                fMeterRepaintPending = true;
             return;
         }
         if (index >= kFirstPadStatusParameter && index < kFirstPadActivityParameter)
@@ -380,14 +383,25 @@ protected:
 
     void onUiIdle() override
     {
-        if (fClearArmed && std::chrono::steady_clock::now() >= fClearDeadline) {
+        const auto now = std::chrono::steady_clock::now();
+        if (fClearArmed && now >= fClearDeadline) {
             fClearArmed = false;
+            requestRepaint();
+        }
+        if (fMeterRepaintPending && now >= fNextMeterRepaint) {
+            fMeterRepaintPending = false;
+            fNextMeterRepaint = now + kMeterFrameInterval;
             requestRepaint();
         }
     }
 
     void onNanoDisplay() override
     {
+        // Any full redraw presents the latest levels, even when another control
+        // caused it, so do not schedule a redundant meter-only frame.
+        fMeterRepaintPending = false;
+        fNextMeterRepaint = std::chrono::steady_clock::now() + kMeterFrameInterval;
+
         const float w = static_cast<float>(getWidth());
         const float h = static_cast<float>(getHeight());
 
@@ -724,6 +738,8 @@ private:
     bool fHasWaveform;
     std::array<float, 2> fInputLevels{};
     std::array<float, 2> fOutputLevels{};
+    bool fMeterRepaintPending = false;
+    std::chrono::steady_clock::time_point fNextMeterRepaint{};
     bool fCaptureTargetRequestAlternateHalf;
     PlaybackPadEventTracker fPlaybackPadEvents;
     std::array<char, midichopper::kPadsPerBank> fPadState;

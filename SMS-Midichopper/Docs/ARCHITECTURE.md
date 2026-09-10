@@ -83,11 +83,10 @@ Configuration and pad import must not run concurrently with `process()`; see
 `SamplerEngine.hpp`. Keep large state operations outside the audio callback and
 verify the wrapper's scheduling when changing state transport.
 
-Four hidden outputs carry allocation-free sample peaks
-from raw input before processing and final output after monitoring, voices,
-envelopes, and gain. Input therefore ignores plug-in settings; output matches
-samples written by the plug-in. Host hard bypass that skips DSP cannot be
-metered.
+Four hidden outputs carry allocation-free raw-input and final-output peaks.
+Meter redraws are 30-FPS capped, change only at LED boundaries, and batch
+colors. Input ignores settings; output follows monitoring,
+voices, envelopes, and gain. Host hard bypass that skips DSP cannot be metered.
 
 ## Project state
 

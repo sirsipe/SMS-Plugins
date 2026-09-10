@@ -29,19 +29,36 @@ inline void drawStereoLedMeter(DGL_NAMESPACE::NanoVG& canvas, const ui::Rect bou
         meter::activeSegmentCount(left, segmentCount),
         meter::activeSegmentCount(right, segmentCount),
     };
-    for (std::uint32_t channel = 0; channel < 2U; ++channel) {
-        for (std::uint32_t segment = 0; segment < segmentCount; ++segment) {
-            DGL_NAMESPACE::Color color;
-            switch (meter::segmentZone(segment, segmentCount)) {
-            case meter::Zone::green: color = colors.meterGreen; break;
-            case meter::Zone::yellow: color = colors.meterYellow; break;
-            case meter::Zone::red: color = colors.meterRed; break;
-            }
-            const ui::Rect led = geometry.segment(channel, segment);
+
+    constexpr std::array zones{
+        meter::Zone::green, meter::Zone::yellow, meter::Zone::red,
+    };
+    constexpr std::array illuminationStates{false, true};
+    for (const bool illuminated : illuminationStates) {
+        for (const meter::Zone zone : zones) {
             canvas.beginPath();
-            canvas.roundedRect(led.x, led.y, led.width, led.height,
-                               std::min(1.5f, led.height * 0.3f));
-            canvas.fillColor(color.withAlpha(segment < active[channel] ? 0.95f : 0.12f));
+            bool hasSegments = false;
+            for (std::uint32_t channel = 0; channel < 2U; ++channel) {
+                for (std::uint32_t segment = 0; segment < segmentCount; ++segment) {
+                    if ((segment < active[channel]) != illuminated ||
+                        meter::segmentZone(segment, segmentCount) != zone)
+                        continue;
+                    const ui::Rect led = geometry.segment(channel, segment);
+                    canvas.roundedRect(led.x, led.y, led.width, led.height,
+                                       std::min(1.5f, led.height * 0.3f));
+                    hasSegments = true;
+                }
+            }
+            if (!hasSegments)
+                continue;
+            switch (zone) {
+            case meter::Zone::green: canvas.fillColor(colors.meterGreen.withAlpha(
+                illuminated ? 0.95f : 0.12f)); break;
+            case meter::Zone::yellow: canvas.fillColor(colors.meterYellow.withAlpha(
+                illuminated ? 0.95f : 0.12f)); break;
+            case meter::Zone::red: canvas.fillColor(colors.meterRed.withAlpha(
+                illuminated ? 0.95f : 0.12f)); break;
+            }
             canvas.fill();
         }
     }
