@@ -79,7 +79,7 @@ that session. No host D-Bus socket is mounted.
 
 `desktop-health` proves that `pkg-config` finds `dbus-1`, the session bus works,
 and `org.freedesktop.portal.Desktop` activates with FileChooser.
-`desktop-health --dialogs` opens and cancels real Open and Save dialogs on VNC;
+`desktop-health --dialogs` opens and dismisses real Open and Save dialogs on VNC;
 `make dev-ready` runs this stronger check. Launch a host with `env -u
 DBUS_SESSION_BUS_ADDRESS` to test the portal-absent fallback without disrupting
 the shared bus. Complete these checks before enabling DPF file browsing.

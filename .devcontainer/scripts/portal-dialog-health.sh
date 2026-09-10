@@ -3,6 +3,7 @@ set -Eeuo pipefail
 
 display="${DISPLAY:-:1}"
 state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/sms-plugins-devcontainer"
+dialog_helper="${PORTAL_DIALOG_HELPER:-/usr/local/libexec/portal-dialog-health}"
 mkdir -p "$state_dir"
 
 if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
@@ -26,13 +27,15 @@ run_dialog() {
     local log_file="$state_dir/portal-${kind}-health.log"
     local window_id=''
 
-    DISPLAY="$display" /usr/local/libexec/portal-dialog-health \
+    DISPLAY="$display" "$dialog_helper" \
         "$kind" "$title" >"$log_file" 2>&1 &
     dialog_pid="$!"
 
     for readiness_attempt in $(seq 1 100); do
-        window_id="$(DISPLAY="$display" xdotool search --onlyvisible \
-            --name "$title" 2>/dev/null | head -n 1 || true)"
+        if grep -q '^listening=' "$log_file" 2>/dev/null; then
+            window_id="$(DISPLAY="$display" xdotool search --onlyvisible \
+                --name "$title" 2>/dev/null | head -n 1 || true)"
+        fi
         if [ -n "$window_id" ]; then
             break
         fi
@@ -49,7 +52,7 @@ run_dialog() {
     done
 
     DISPLAY="$display" xdotool windowactivate --sync "$window_id"
-    DISPLAY="$display" xdotool key --window "$window_id" Escape
+    DISPLAY="$display" xdotool key Escape
     if ! wait "$dialog_pid"; then
         dialog_pid=''
         echo "Portal $kind dialog did not complete cleanly. See $log_file" >&2
@@ -60,4 +63,4 @@ run_dialog() {
 
 run_dialog open 'SMS portal Open health check'
 run_dialog save 'SMS portal Save health check'
-echo "portal-dialogs=healthy display=$display open=cancelled save=cancelled"
+echo "portal-dialogs=healthy display=$display open=dismissed save=dismissed"

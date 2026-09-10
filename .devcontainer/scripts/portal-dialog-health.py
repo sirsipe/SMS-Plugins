@@ -29,7 +29,6 @@ def main() -> int:
         {"handle_token": dbus.String(token, variant_level=1)}, signature="sv"
     )
     request_path = method("", sys.argv[2], options)
-    print(f"request={request_path}", flush=True)
 
     result = {"response": None}
     loop = GLib.MainLoop()
@@ -42,6 +41,7 @@ def main() -> int:
     request.connect_to_signal(
         "Response", on_response, dbus_interface=REQUEST_INTERFACE
     )
+    print(f"listening={request_path}", flush=True)
 
     def on_timeout():
         loop.quit()
@@ -49,9 +49,12 @@ def main() -> int:
 
     GLib.timeout_add_seconds(15, on_timeout)
     loop.run()
-    if result["response"] != 1:
+    # GTK reports an Escape dismissal as either cancelled (1) or other (2),
+    # depending on the dialog path. The shell helper has already proved that a
+    # real window appeared before sending Escape.
+    if result["response"] not in {1, 2}:
         print(
-            f"portal request did not report user cancellation: {result['response']}",
+            f"portal request did not report dismissal: {result['response']}",
             file=sys.stderr,
         )
         return 1
