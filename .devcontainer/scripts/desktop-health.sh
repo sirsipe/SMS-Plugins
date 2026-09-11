@@ -4,6 +4,16 @@ set -euo pipefail
 display="${DISPLAY:-:1}"
 vnc_port="${VNC_PORT:-5901}"
 novnc_port="${NOVNC_PORT:-6080}"
+check_portal_dialogs=false
+
+if [ "${1:-}" = "--dialogs" ]; then
+    check_portal_dialogs=true
+    shift
+fi
+if [ "$#" -ne 0 ]; then
+    echo "usage: desktop-health [--dialogs]" >&2
+    exit 2
+fi
 
 if [ "$(cat /proc/1/comm)" != tini ]; then
     echo "PID 1 is not tini." >&2
@@ -12,6 +22,21 @@ fi
 
 DISPLAY="$display" xdpyinfo >/dev/null
 
+pkg-config --exists dbus-1
+if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
+    echo "DBUS_SESSION_BUS_ADDRESS is not set." >&2
+    exit 1
+fi
+dbus-send --session --dest=org.freedesktop.DBus --type=method_call \
+    --print-reply /org/freedesktop/DBus org.freedesktop.DBus.ListNames >/dev/null
+portal_introspection="$(dbus-send --session \
+    --dest=org.freedesktop.portal.Desktop --type=method_call --print-reply \
+    /org/freedesktop/portal/desktop \
+    org.freedesktop.DBus.Introspectable.Introspect)"
+if ! grep -q 'org.freedesktop.portal.FileChooser' <<<"$portal_introspection"; then
+    echo "The desktop portal does not expose FileChooser." >&2
+    exit 1
+fi
 pointer_state="$(DISPLAY="$display" xdotool getmouselocation --shell)"
 pointer_x="$(printf '%s\n' "$pointer_state" | sed -n 's/^X=//p')"
 pointer_y="$(printf '%s\n' "$pointer_state" | sed -n 's/^Y=//p')"
@@ -60,6 +85,10 @@ if [ ! -d "$workspace" ] || [ ! -w "$workspace" ]; then
     exit 1
 fi
 
-printf 'desktop=healthy display=%s jack=%sHz/%sframes novnc=%s vnc=%s renderer=%s\n' \
+if [ "$check_portal_dialogs" = true ]; then
+    portal-dialog-health
+fi
+
+printf 'desktop=healthy display=%s dbus=session portal=FileChooser jack=%sHz/%sframes novnc=%s vnc=%s renderer=%s\n' \
     "$display" "$jack_rate" "$jack_buffer" "$novnc_port" "$vnc_port" \
     "$renderer"

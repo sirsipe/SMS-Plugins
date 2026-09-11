@@ -42,11 +42,26 @@ workspace mount is `/workspaces/SMS-Plugins`.
 
 The image starts its supervised desktop automatically. It drops all Linux
 capabilities and enables `no-new-privileges`; it does not mount host service
-sockets or directories beyond the current checkout. The Codex standalone CLI
-is installed using the official Linux installer. Set Docker build argument
-`INSTALL_CODEX_CLI=0` when a CLI-free image is required. Authentication is not
-baked into the image and persists only in the labeled
+sockets or directories beyond the current checkout. Its isolated D-Bus session
+and GTK desktop portal exercise Linux Open and Save dialogs; no host D-Bus
+socket is mounted. The Codex standalone CLI is installed using the official
+Linux installer. Set `INSTALL_CODEX_CLI=0` for a CLI-free image. Authentication
+is not baked in and persists only in the labeled
 `sms-plugins-devcontainer-codex` volume.
+
+After changing `.devcontainer`, use **Dev Containers: Rebuild and Reopen in
+Container** from the VS Code Command Palette, then run `desktop-health
+--dialogs`. From a host shell, the equivalent maintained workflow is:
+
+```bash
+make dev-build dev-run dev-ready
+```
+
+To exercise the Linux fallback without a session bus, give only the tested host
+an invalid address, for example
+`DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/sms-no-session-bus ...`; never stop or
+reuse the container's bus. Unsetting it can rediscover the active session
+through X11.
 
 Dev Containers is authoritative. Root Make targets provide a matching manual
 Docker workflow for diagnostics: `make dev-build dev-run dev-ready`. Ports are

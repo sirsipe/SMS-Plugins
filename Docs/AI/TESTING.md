@@ -15,11 +15,12 @@ For focused iteration, use `ctest --test-dir build --output-on-failure -R NAME`:
 
 | CTest name | Coverage |
 | --- | --- |
-| `sampler-core` | Capture boundaries/pre-roll, banks/layouts, storage, voices, regions/ADSR, resampling, lifecycle |
+| `sampler-core` | Capture, banks/layouts, storage, voices, regions/ADSR, resampling, clipboard snapshots, lifecycle |
 | `state-codec` | Audio and editor-state round trips, malformed/corrupt state |
 | `ui-geometry` | Pad mapping, waveform geometry, hit testing and editing |
+| `wav-codec` | WAV formats, validation, file actions, offline render, real-time access gate |
 
-Rebuild affected targets before testing. Run all three before handing off code
+Rebuild affected targets before testing. Run all four before handing off code
 changes; they are small. For docs-only changes, run the doc checks and verify
 changed commands against CMake/tool help; no audio rebuild is required.
 These tests do not load a real host or render the plugin UI.
@@ -81,6 +82,9 @@ Choose checks matching the change:
   voice limits, and stereo output.
 - UI/editor: verify drawing/resizing and input mapping; select pads, adjust
   region/ADSR, retrigger, and check that both waveform and sound match.
+- Pad clipboard: Copy an edited occupied pad, then alter or clear its source and
+  Paste to empty and occupied targets. Confirm stereo audio, cut points, and ADSR
+  match the copy-time snapshot, and that an empty clipboard disables Paste.
 - State: save populated pads and editor settings using the host's state-saving
   facility, close, reload that state, and compare playback/settings. Inspect the
   installed host's help for saving. Also check DAW project restoration when the
@@ -92,9 +96,11 @@ The [Dev Container](../../.devcontainer/devcontainer.json) provides fixed X11
 display `:1` through TigerVNC, Openbox, noVNC, dummy JACK, software Mesa,
 `xdotool`, `wmctrl`, `xwininfo`, and ImageMagick. Desktop services start with the
 container. Run `desktop-health` to check tini supervision, zombies, X11 pointer
-movement, native VNC, noVNC, JACK, and the OpenGL renderer. View the same pointer
-that automation controls through forwarded noVNC port 6080; do not use the VNC
-mouse during an automated sequence.
+movement, native VNC, noVNC, JACK, software OpenGL, the isolated session bus,
+and the portal FileChooser interface. Run `desktop-health --dialogs` after an
+image rebuild or portal change; it opens and dismisses real Open and Save dialogs
+on `:1`. View the same pointer that automation controls through forwarded noVNC
+port 6080; do not use the VNC mouse during an automated sequence.
 
 From `/workspaces/SMS-Plugins`, `test-plugin` runs the release VST3/LV2 build,
 CTest, `lv2info`, launches the built LV2 directly in Carla, resolves its visible

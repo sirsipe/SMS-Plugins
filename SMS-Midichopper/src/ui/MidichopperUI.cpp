@@ -9,6 +9,10 @@
  *   pad_edit_01..64  compact non-destructive cut-point and ADSR settings
  *   waveform_request selected pad index sent from UI to DSP
  *   waveform_data    compact 128-bin min/max summary returned by DSP
+ *   pad_clear_request one-based pad command consumed at an audio block boundary
+ *   pad_file_request action, pad, and UTF-8 path sent from UI to DSP
+ *   pad_file_busy/status small progress and result messages returned to the UI
+ *   pad_clipboard_request internal per-instance Copy or Paste command
  *
  * The UI sends C1 + pad as MIDI note-on/off in PLAY mode only. In ARM mode a
  * clicked pad selects the first destination and the next incoming MIDI note is
@@ -23,16 +27,20 @@
 
 #include "Audio/WaveformSummary.hpp"
 #include "Configuration.hpp"
+#include "ContextMenu.hpp"
 #include "DPF/NanoUI.hpp"
 #include "DPF/Theme.hpp"
 #include "DSP/SamplePlaybackSettings.hpp"
 #include "LevelMeter.hpp"
 #include "State/SamplePlaybackSettingsCodec.hpp"
 #include "UI/Geometry.hpp"
+#include "Interaction.hpp"
 #include "PadLayout.hpp"
 #include "WaveformEditor.hpp"
 #include "MidichopperLayout.hpp"
 #include "MidichopperView.hpp"
+#include "PadClipboardProtocol.hpp"
+#include "PadFileActionProtocol.hpp"
 #include "Parameters.hpp"
 
 #include <algorithm>
@@ -43,6 +51,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <string_view>
 
 START_NAMESPACE_DISTRHO
 
@@ -54,6 +63,23 @@ using WaveformEditTarget = sms::ui::waveform::EditTarget;
 
 inline constexpr auto kClearConfirmationTimeout = std::chrono::seconds(2);
 inline constexpr auto kMeterFrameInterval = std::chrono::milliseconds(33);
+
+enum class PadMenuAction : int {
+    copy = 0,
+    paste,
+    exportRaw,
+    exportProcessed,
+    import,
+    clear,
+    count,
+};
+
+enum class PendingFileDialog : std::uint8_t {
+    none,
+    exportRaw,
+    exportProcessed,
+    import,
+};
 
 std::array<std::string, midichopper::kPadCount> makePadEditStateKeys()
 {
@@ -99,6 +125,10 @@ public:
           fPressedActionParameter(-1),
           fClearArmed(false),
           fMenuOpen(false),
+          fPadContextMenuOpen(false),
+          fPadContextTarget(-1),
+          fPadContextClearArmed(false),
+          fPadContextPointerCaptured(false),
           fEditorMode(false),
           fDragTarget(WaveformEditTarget::none),
           fDragStartX(0.0f),
@@ -133,6 +163,71 @@ protected:
                 fMeterRepaintPending = true;
             return;
         }
+        if (index == kParameterPadFileResultEvent)
+        {
+            const auto result = fPadFileResultEvents.consume(value);
+            if (result == midichopper::plugin::PadFileResultCode::none)
+                return;
+            const bool wasImport = fActiveFileAction == PendingFileDialog::import;
+            const int completedPad = fActiveFilePad;
+            if (fActiveFileAction != PendingFileDialog::none)
+            {
+                if (result == midichopper::plugin::PadFileResultCode::failed)
+                    copyString(fStatus, "WAV action failed");
+                else if (result == midichopper::plugin::PadFileResultCode::importSucceeded)
+                    copyString(fStatus, "WAV imported");
+                else if (result == midichopper::plugin::PadFileResultCode::processedExportSucceeded)
+                    copyString(fStatus, "Processed WAV exported");
+                else
+                    copyString(fStatus, "WAV exported");
+            }
+            fPadFileBusy = false;
+            fActiveFileAction = PendingFileDialog::none;
+            fActiveFilePad = -1;
+            if (wasImport && result == midichopper::plugin::PadFileResultCode::importSucceeded &&
+                completedPad == fSelectedPad) {
+                fEditorSettings = {};
+                fEditorSettingsPad = completedPad;
+                refreshSelectedWaveform();
+            }
+            requestRepaint();
+            return;
+        }
+        if (index == kParameterPadClipboardAvailable)
+        {
+            const bool available = value >= 0.5f;
+            if (available != fPadClipboardAvailable) {
+                fPadClipboardAvailable = available;
+                requestRepaint();
+            }
+            return;
+        }
+        if (index == kParameterPadClipboardResultEvent)
+        {
+            const auto result = fPadClipboardResultEvents.consume(value);
+            if (result == midichopper::plugin::PadClipboardResultCode::none)
+                return;
+            const int completedPad = fActivePadClipboardPad;
+            const auto completedAction = fActivePadClipboardAction;
+            if (result == midichopper::plugin::PadClipboardResultCode::copied)
+                copyString(fStatus, "Pad copied");
+            else if (result == midichopper::plugin::PadClipboardResultCode::pasted)
+                copyString(fStatus, "Pad pasted");
+            else
+                copyString(fStatus, completedAction == PadClipboardAction::paste
+                    ? "Could not paste pad" : "Could not copy pad");
+            fPadClipboardBusy = false;
+            fActivePadClipboardAction = PadClipboardAction::copy;
+            fActivePadClipboardPad = -1;
+            if (result == midichopper::plugin::PadClipboardResultCode::pasted &&
+                completedPad == fSelectedPad) {
+                fEditorSettings = {};
+                fEditorSettingsPad = -1;
+                refreshSelectedWaveform();
+            }
+            requestRepaint();
+            return;
+        }
         if (index >= kFirstPadStatusParameter && index < kFirstPadActivityParameter)
         {
             const auto localPad = static_cast<std::size_t>(index - kFirstPadStatusParameter);
@@ -142,6 +237,8 @@ protected:
             if (wasOccupied == isOccupied)
                 return;
             fPadState[localPad] = isOccupied ? '1' : '0';
+            if (pad == fPadContextTarget)
+                closePadContextMenu();
             if (pad == fSelectedPad)
                 refreshSelectedWaveform();
             requestRepaint();
@@ -166,6 +263,7 @@ protected:
             changed = fArm != armed;
             if (!changed)
                 break;
+            closePadContextMenu();
             fArm = armed;
             fStatus[0] = '\0';
             fSelectedPad = -1;
@@ -218,6 +316,7 @@ protected:
             changed = fMidiBankMode != mode;
             fMidiBankMode = mode;
             if (changed) {
+                closePadContextMenu();
                 if (fEditorMode && localPad >= 0)
                     selectEditorPad(globalPad(std::clamp(localPad, 0, visiblePadCount() - 1)));
                 else {
@@ -246,6 +345,7 @@ protected:
             changed = fBank != bank;
             if (!changed)
                 break;
+            closePadContextMenu();
             const int localPad = hasSelectedPad()
                 ? std::clamp(localPadForGlobalPad(fSelectedPad), 0, visiblePadCount() - 1)
                 : 0;
@@ -266,6 +366,7 @@ protected:
             changed = fLayout != layout;
             if (!changed)
                 break;
+            closePadContextMenu();
             fLayout = layout;
             if (fStartPad >= visiblePadCount())
                 fStartPad = 0;
@@ -299,11 +400,16 @@ protected:
             changed = !fArm && pad < midichopper::kPadCount;
             if (!changed)
                 break;
+            closePadContextMenu();
             fLastPlayedPad = static_cast<int>(pad);
             fBank = bankForGlobalPad(fLastPlayedPad);
             if (fEditorMode)
                 selectEditorPad(fLastPlayedPad);
             else {
+                if (fSelectedPad != fLastPlayedPad) {
+                    fEditorSettings = {};
+                    fEditorSettingsPad = -1;
+                }
                 fSelectedPad = fLastPlayedPad;
                 refreshSelectedWaveform();
             }
@@ -344,8 +450,10 @@ protected:
         if (key == nullptr || value == nullptr)
             return;
 
-        if (std::strcmp(key, "pad_mask") == 0)
+        if (std::strcmp(key, "pad_mask") == 0) {
             parsePadMask(value, fPadState);
+            closePadContextMenu();
+        }
         else if (std::strcmp(key, "pad_status") == 0)
             copyChars(fPadStatus, value);
         else if (std::strcmp(key, "current_pad") == 0)
@@ -356,7 +464,12 @@ protected:
         }
         else if (std::strcmp(key, "selected_pad") == 0)
         {
-            fSelectedPad = clampPad(std::strtof(value, nullptr));
+            const int selectedPad = clampPad(std::strtof(value, nullptr));
+            if (selectedPad != fSelectedPad) {
+                fEditorSettings = {};
+                fEditorSettingsPad = -1;
+            }
+            fSelectedPad = selectedPad;
             fBank = std::clamp(bankForGlobalPad(fSelectedPad), 0,
                                static_cast<int>(midichopper::kBankCount - 1));
         }
@@ -372,6 +485,21 @@ protected:
                 fHasWaveform = summary.frames != 0U;
             }
         }
+        else if (std::strcmp(key, "pad_file_busy") == 0)
+            fPadFileBusy = value[0] != '0' && value[0] != '\0';
+        else if (std::strcmp(key, "pad_file_status") == 0)
+        {
+            fPadFileBusy = false;
+            copyString(fStatus, value);
+            if (fActiveFileAction == PendingFileDialog::import &&
+                fActiveFilePad == fSelectedPad && std::strcmp(value, "WAV imported") == 0) {
+                fEditorSettings = {};
+                fEditorSettingsPad = fSelectedPad;
+                refreshSelectedWaveform();
+            }
+            fActiveFileAction = PendingFileDialog::none;
+            fActiveFilePad = -1;
+        }
         else if (parseEditorState(key, value))
         {
         }
@@ -386,6 +514,10 @@ protected:
         const auto now = std::chrono::steady_clock::now();
         if (fClearArmed && now >= fClearDeadline) {
             fClearArmed = false;
+            requestRepaint();
+        }
+        if (fPadContextClearArmed && now >= fPadContextClearDeadline) {
+            fPadContextClearArmed = false;
             requestRepaint();
         }
         if (fMeterRepaintPending && now >= fNextMeterRepaint) {
@@ -411,10 +543,28 @@ protected:
         fill();
 
         beginLogicalDisplay();
+        const std::array contextMenuItems{
+            sms::ui::ContextMenuItemView{
+                "COPY PAD", padCopyEnabled(), false},
+            sms::ui::ContextMenuItemView{
+                "PASTE PAD", padPasteEnabled(), false},
+            sms::ui::ContextMenuItemView{
+                "EXPORT WAV...", padExportEnabled(), false},
+            sms::ui::ContextMenuItemView{
+                "EXPORT PROCESSED...", padProcessedExportEnabled(), false},
+            sms::ui::ContextMenuItemView{
+                "IMPORT WAV...", !padActionBusy(), false},
+            sms::ui::ContextMenuItemView{
+                fPadContextClearArmed ? "CONFIRM CLEAR" : "CLEAR PAD",
+                !padActionBusy() && padContextTargetOccupied(), true},
+        };
         const midichopper::ui::ViewState view{
             fArm, fRecordMode, fFixedLength, fPlaybackMode, fMonitor,
             fStartPad, fPreRoll, fBaseNote, fMidiBankMode, fGain, fMaxVoices, fBank, fLayout,
             fSelectedPad, fCurrentPad, fPressedPad, fClearArmed, fMenuOpen,
+            fPadContextMenuOpen, fPadContextMenu,
+            std::span<const sms::ui::ContextMenuItemView>{contextMenuItems},
+            fPadContextHover.target(),
             fEditorMode, fHasWaveform, fInputLevels, fOutputLevels, fPadState, fPadStatus,
             fEditorSettings, fWaveform, fStatus,
         };
@@ -425,15 +575,68 @@ protected:
 
     bool onMouse(const MouseEvent& ev) override
     {
-        if (ev.button != 1)
-            return false;
-
         const auto position = toLogicalPosition(ev.pos);
         const float x = position.getX() - uiLayout::contentOffsetX;
         const float y = position.getY();
 
+        if (ev.button == 2)
+        {
+            if (!ev.press)
+                return fPadContextMenuOpen;
+            if (fArm)
+                return false;
+
+            const int visualIndex = fEditorMode
+                ? editorPadGrid().hit({x, y}) : mainPadGrid().hit({x, y});
+            const int localPad = localPadFromVisualIndex(visualIndex);
+            if (localPad >= 0)
+            {
+                fMenuOpen = false;
+                const int pad = globalPad(localPad);
+                if (fEditorMode) {
+                    if (fSelectedPad != pad)
+                        selectEditorPad(pad);
+                    else
+                        refreshSelectedWaveform();
+                }
+                else {
+                    if (fSelectedPad != pad) {
+                        fEditorSettings = {};
+                        fEditorSettingsPad = -1;
+                    }
+                    fSelectedPad = pad;
+                    refreshSelectedWaveform();
+                }
+                openPadContextMenu(pad, {x, y});
+                requestRepaint();
+                return true;
+            }
+            if (fPadContextMenuOpen)
+            {
+                closePadContextMenu();
+                requestRepaint();
+                return true;
+            }
+            return false;
+        }
+
+        if (ev.button != 1)
+            return false;
+
         if (ev.press)
         {
+            if (fPadContextMenuOpen)
+            {
+                fPadContextPointerCaptured = true;
+                const int item = fPadContextMenu.hit({x, y});
+                if (item >= 0 && item < static_cast<int>(PadMenuAction::count)) {
+                    invokePadMenuAction(static_cast<PadMenuAction>(item));
+                    return true;
+                }
+                closePadContextMenu();
+                requestRepaint();
+                return true;
+            }
             if (hit(x, y, uiLayout::menuButton))
             {
                 fMenuOpen = !fMenuOpen;
@@ -531,6 +734,7 @@ protected:
                 if (fArm)
                     return true;
                 fEditorMode = true;
+                fStatus[0] = '\0';
                 if (!hasSelectedPad() || bankForGlobalPad(fSelectedPad) != fBank)
                     selectEditorPad(globalPad(0));
                 else
@@ -670,6 +874,11 @@ protected:
                 return true;
             }
         }
+        else if (fPadContextPointerCaptured)
+        {
+            fPadContextPointerCaptured = false;
+            return true;
+        }
         else if (fEditorMode && fDragTarget != WaveformEditTarget::none)
         {
             commitEditorSettings();
@@ -699,14 +908,82 @@ protected:
 
     bool onMotion(const MotionEvent& ev) override
     {
-        if (!fEditorMode || fDragTarget == WaveformEditTarget::none)
-            return false;
         const auto position = toLogicalPosition(ev.pos);
         const float x = position.getX() - uiLayout::contentOffsetX;
         const float y = position.getY();
+        if (fPadContextMenuOpen)
+        {
+            int item = fPadContextMenu.hit({x, y});
+            const bool enabled = item >= 0 && item < static_cast<int>(PadMenuAction::count) &&
+                padMenuActionEnabled(static_cast<PadMenuAction>(item));
+            if (!enabled)
+                item = sms::ui::kNoInteractiveTarget;
+            if (fPadContextHover.update(item))
+                requestRepaint();
+            return true;
+        }
+        if (!fEditorMode || fDragTarget == WaveformEditTarget::none)
+            return false;
         updateEditorDrag(x, y);
         return true;
     }
+
+    bool onKeyboard(const KeyboardEvent& ev) override
+    {
+        if (!ev.press || ev.key != DGL_NAMESPACE::kKeyEscape ||
+            !fPadContextMenuOpen)
+            return false;
+        closePadContextMenu();
+        requestRepaint();
+        return true;
+    }
+
+#if DISTRHO_UI_FILE_BROWSER
+    void uiFileBrowserSelected(const char* const filename) override
+    {
+        const PendingFileDialog action = fPendingFileDialog;
+        const int pad = fPendingFilePad;
+        fPendingFileDialog = PendingFileDialog::none;
+        fPendingFilePad = -1;
+        if (filename == nullptr || filename[0] == '\0') {
+            requestRepaint();
+            return;
+        }
+
+        std::string path(filename);
+        const bool exporting = action == PendingFileDialog::exportRaw ||
+                               action == PendingFileDialog::exportProcessed;
+        if (exporting) {
+            if (!hasAnyFileExtension(path))
+                path += ".wav";
+            else if (!hasWavFileExtension(path)) {
+                setLocalStatus("Export filename must use the .wav extension");
+                return;
+            }
+        }
+        if (pad < 0 || pad >= static_cast<int>(midichopper::kPadCount) ||
+            action == PendingFileDialog::none)
+            return;
+
+        midichopper::plugin::PadFileAction fileAction =
+            midichopper::plugin::PadFileAction::import;
+        if (action == PendingFileDialog::exportRaw)
+            fileAction = midichopper::plugin::PadFileAction::exportRaw;
+        else if (action == PendingFileDialog::exportProcessed)
+            fileAction = midichopper::plugin::PadFileAction::exportProcessed;
+
+        fPadFileBusy = true;
+        fActiveFileAction = action;
+        fActiveFilePad = pad;
+        setLocalStatus(exporting ? "Exporting WAV..." : "Importing WAV...");
+#if DISTRHO_PLUGIN_WANT_STATE
+        const std::string request = midichopper::plugin::encodePadFileRequest(
+            fileAction, static_cast<std::uint32_t>(pad), path);
+        setState("pad_file_request", request.c_str());
+#endif
+        requestRepaint();
+    }
+#endif
 
 private:
     bool fArm;
@@ -731,6 +1008,23 @@ private:
     bool fClearArmed;
     std::chrono::steady_clock::time_point fClearDeadline{};
     bool fMenuOpen;
+    bool fPadContextMenuOpen;
+    int fPadContextTarget;
+    sms::ui::ContextMenuGeometry fPadContextMenu;
+    sms::ui::HoverState fPadContextHover;
+    bool fPadContextClearArmed;
+    std::chrono::steady_clock::time_point fPadContextClearDeadline{};
+    bool fPadContextPointerCaptured;
+    bool fPadFileBusy = false;
+    bool fPadClipboardAvailable = false;
+    bool fPadClipboardBusy = false;
+    PadClipboardAction fActivePadClipboardAction = PadClipboardAction::copy;
+    int fActivePadClipboardPad = -1;
+    bool fSaveDialogAvailable = true;
+    PendingFileDialog fPendingFileDialog = PendingFileDialog::none;
+    int fPendingFilePad = -1;
+    PendingFileDialog fActiveFileAction = PendingFileDialog::none;
+    int fActiveFilePad = -1;
     bool fEditorMode;
     WaveformEditTarget fDragTarget;
     float fDragStartX;
@@ -742,9 +1036,12 @@ private:
     std::chrono::steady_clock::time_point fNextMeterRepaint{};
     bool fCaptureTargetRequestAlternateHalf;
     PlaybackPadEventTracker fPlaybackPadEvents;
+    midichopper::plugin::PadFileResultEventTracker fPadFileResultEvents;
+    midichopper::plugin::PadClipboardResultEventTracker fPadClipboardResultEvents;
     std::array<char, midichopper::kPadsPerBank> fPadState;
     std::array<char, midichopper::kPadsPerBank> fPadStatus;
     sms::dsp::SamplePlaybackSettings fEditorSettings{};
+    int fEditorSettingsPad = -1;
     sms::dsp::SamplePlaybackSettings fDragStartSettings{};
     sms::audio::WaveformSummary fWaveform{};
     char fStatus[160];
@@ -757,6 +1054,207 @@ private:
     static float normalizedX(const float x, const sms::ui::Rect bounds) noexcept
     {
         return std::clamp((x - bounds.x) / bounds.width, 0.0f, 1.0f);
+    }
+
+    void openPadContextMenu(const int pad, const sms::ui::Point anchor)
+    {
+        fPadContextTarget = pad;
+        fPadContextMenu = sms::ui::ContextMenuGeometry(
+            anchor, static_cast<int>(PadMenuAction::count), uiLayout::contentBounds);
+        static_cast<void>(fPadContextHover.clear());
+        fPadContextClearArmed = false;
+        fPadContextMenuOpen = true;
+    }
+
+    void closePadContextMenu() noexcept
+    {
+        fPadContextMenuOpen = false;
+        fPadContextTarget = -1;
+        static_cast<void>(fPadContextHover.clear());
+        fPadContextClearArmed = false;
+    }
+
+    [[nodiscard]] bool padContextTargetOccupied() const noexcept
+    {
+        if (!fPadContextMenuOpen || fPadContextTarget < 0 ||
+            bankForGlobalPad(fPadContextTarget) != fBank)
+            return false;
+        const int localPad = localPadForGlobalPad(fPadContextTarget);
+        if (localPad < 0 || localPad >= visiblePadCount())
+            return false;
+        const char state = fPadState[static_cast<std::size_t>(localPad)];
+        return state != '0' && state != '.';
+    }
+
+    [[nodiscard]] bool padExportEnabled() const noexcept
+    {
+        return fSaveDialogAvailable && !padActionBusy() && padContextTargetOccupied();
+    }
+
+    [[nodiscard]] bool padActionBusy() const noexcept
+    {
+        return fPadFileBusy || fPadClipboardBusy;
+    }
+
+    [[nodiscard]] bool padCopyEnabled() const noexcept
+    {
+        return !padActionBusy() && padContextTargetOccupied();
+    }
+
+    [[nodiscard]] bool padPasteEnabled() const noexcept
+    {
+        return !padActionBusy() && fPadClipboardAvailable &&
+               fPadContextMenuOpen && fPadContextTarget >= 0;
+    }
+
+    [[nodiscard]] bool padProcessedExportEnabled() const noexcept
+    {
+        if (!padExportEnabled())
+            return false;
+        if (fEditorSettingsPad != fPadContextTarget)
+            return false;
+        const auto settings = sms::dsp::sanitize(fEditorSettings);
+        return settings.start != 0.0f || settings.end != 1.0f ||
+               settings.attackSeconds != 0.0f || settings.decaySeconds != 0.0f ||
+               settings.sustainLevel != 1.0f || settings.releaseSeconds != 0.0f;
+    }
+
+    [[nodiscard]] bool padMenuActionEnabled(const PadMenuAction action) const noexcept
+    {
+        switch (action) {
+        case PadMenuAction::copy: return padCopyEnabled();
+        case PadMenuAction::paste: return padPasteEnabled();
+        case PadMenuAction::exportRaw: return padExportEnabled();
+        case PadMenuAction::exportProcessed: return padProcessedExportEnabled();
+        case PadMenuAction::import: return !padActionBusy();
+        case PadMenuAction::clear:
+            return !padActionBusy() && padContextTargetOccupied();
+        case PadMenuAction::count: return false;
+        }
+        return false;
+    }
+
+    void invokePadMenuAction(const PadMenuAction action)
+    {
+        if (!padMenuActionEnabled(action))
+            return;
+        switch (action) {
+        case PadMenuAction::copy:
+            requestPadClipboard(PadClipboardAction::copy);
+            return;
+        case PadMenuAction::paste:
+            requestPadClipboard(PadClipboardAction::paste);
+            return;
+        case PadMenuAction::exportRaw:
+            openPadFileDialog(PendingFileDialog::exportRaw);
+            return;
+        case PadMenuAction::exportProcessed:
+            openPadFileDialog(PendingFileDialog::exportProcessed);
+            return;
+        case PadMenuAction::import:
+            openPadFileDialog(PendingFileDialog::import);
+            return;
+        case PadMenuAction::clear:
+            if (!fPadContextClearArmed) {
+                fPadContextClearArmed = true;
+                fPadContextClearDeadline = std::chrono::steady_clock::now() +
+                                           kClearConfirmationTimeout;
+                setLocalStatus("Click CLEAR PAD again to confirm");
+            } else {
+                requestPadClear();
+                closePadContextMenu();
+                setLocalStatus("Pad cleared");
+            }
+            requestRepaint();
+            return;
+        case PadMenuAction::count:
+            return;
+        }
+    }
+
+    void openPadFileDialog(const PendingFileDialog action)
+    {
+#if DISTRHO_UI_FILE_BROWSER
+        if (fPadContextTarget < 0 || padActionBusy())
+            return;
+        FileBrowserOptions options;
+        const bool saving = action == PendingFileDialog::exportRaw ||
+                            action == PendingFileDialog::exportProcessed;
+        options.saving = saving;
+        char defaultName[32];
+        std::snprintf(defaultName, sizeof(defaultName), "midichopper-pad-%02d.wav",
+                      localPadForGlobalPad(fPadContextTarget) + 1);
+        options.defaultName = saving ? defaultName : nullptr;
+        options.title = saving ? "Export pad as WAV" : "Import WAV into pad";
+
+        fPendingFileDialog = action;
+        fPendingFilePad = fPadContextTarget;
+        closePadContextMenu();
+        if (!openFileBrowser(options)) {
+            fPendingFileDialog = PendingFileDialog::none;
+            fPendingFilePad = -1;
+            if (saving) {
+                fSaveDialogAvailable = false;
+                setLocalStatus("Save dialog unavailable; Linux Export requires a desktop portal");
+            } else {
+                setLocalStatus("Open dialog unavailable");
+            }
+        }
+        requestRepaint();
+#else
+        static_cast<void>(action);
+#endif
+    }
+
+    void requestPadClipboard(const PadClipboardAction action)
+    {
+#if DISTRHO_PLUGIN_WANT_STATE
+        if (fPadContextTarget < 0 || padActionBusy())
+            return;
+        const int pad = fPadContextTarget;
+        fPadClipboardBusy = true;
+        fActivePadClipboardAction = action;
+        fActivePadClipboardPad = pad;
+        closePadContextMenu();
+        setLocalStatus(action == PadClipboardAction::copy
+            ? "Copying pad..." : "Pasting pad...");
+        const std::string request = midichopper::plugin::encodePadClipboardRequest(
+            action, static_cast<std::uint32_t>(pad));
+        setState("pad_clipboard_request", request.c_str());
+        requestRepaint();
+#else
+        static_cast<void>(action);
+#endif
+    }
+
+    [[nodiscard]] static bool hasWavFileExtension(const std::string_view path) noexcept
+    {
+        if (path.size() < 4U)
+            return false;
+        const auto extension = path.substr(path.size() - 4U);
+        return extension[0] == '.' && (extension[1] == 'w' || extension[1] == 'W') &&
+               (extension[2] == 'a' || extension[2] == 'A') &&
+               (extension[3] == 'v' || extension[3] == 'V');
+    }
+
+    [[nodiscard]] static bool hasAnyFileExtension(const std::string_view path) noexcept
+    {
+        const auto slash = path.find_last_of("/\\");
+        const auto dot = path.find_last_of('.');
+        return dot != std::string_view::npos && dot + 1U < path.size() &&
+               (slash == std::string_view::npos || dot > slash + 1U);
+    }
+
+    void requestPadClear()
+    {
+#if DISTRHO_PLUGIN_WANT_STATE
+        if (fPadContextTarget < 0 || fPadContextTarget >= static_cast<int>(midichopper::kPadCount))
+            return;
+        char pad[4];
+        std::snprintf(pad, sizeof(pad), "%u",
+                      static_cast<unsigned int>(fPadContextTarget + 1));
+        setState("pad_clear_request", pad);
+#endif
     }
 
     static int clampPad(float value)
@@ -941,6 +1439,7 @@ private:
     {
         fSelectedPad = clampPad(static_cast<float>(pad));
         fEditorSettings = {};
+        fEditorSettingsPad = -1;
         fHasWaveform = false;
         requestWaveform();
         requestRepaint();
@@ -998,6 +1497,7 @@ private:
 
     void commitEditorSettings()
     {
+        fEditorSettingsPad = fSelectedPad;
 #if DISTRHO_PLUGIN_WANT_STATE
         const std::string encoded = sms::state::encodeSamplePlaybackSettings(fEditorSettings);
         setState(kPadEditStateKeys[static_cast<std::size_t>(fSelectedPad)].c_str(), encoded.c_str());
@@ -1012,8 +1512,10 @@ private:
                 continue;
             sms::dsp::SamplePlaybackSettings decoded;
             if (sms::state::decodeSamplePlaybackSettings(value, decoded) &&
-                pad == static_cast<std::size_t>(fSelectedPad))
+                pad == static_cast<std::size_t>(fSelectedPad)) {
                 fEditorSettings = decoded;
+                fEditorSettingsPad = static_cast<int>(pad);
+            }
             return true;
         }
         return false;

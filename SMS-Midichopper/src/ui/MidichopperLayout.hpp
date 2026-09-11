@@ -9,6 +9,9 @@ inline constexpr unsigned int canvasHeight = 680U;
 inline constexpr unsigned int minimumWidth = 765U;
 inline constexpr unsigned int minimumHeight = 500U;
 inline constexpr float contentOffsetX = 40.0f;
+inline constexpr sms::ui::Rect contentBounds{
+    0.0f, 0.0f, static_cast<float>(canvasWidth) - contentOffsetX * 2.0f,
+    static_cast<float>(canvasHeight)};
 
 inline constexpr sms::ui::Rect inputMeter{8.0f, 96.0f, 24.0f, 510.0f};
 inline constexpr sms::ui::Rect outputMeter{1008.0f, 96.0f, 24.0f, 510.0f};

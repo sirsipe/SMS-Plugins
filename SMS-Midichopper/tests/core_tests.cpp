@@ -1,4 +1,5 @@
 #include "../src/core/SamplerEngine.hpp"
+#include "../src/core/PadClipboard.hpp"
 #include "../src/plugin/Parameters.hpp"
 #include "DSP/PeakMeter.hpp"
 
@@ -49,7 +50,8 @@ void live_peak_meter() {
 
     using namespace midichopper::plugin;
     check(kParameterInputLevelLeft == kParameterCaptureTargetRequest + 1U &&
-          kParameterOutputLevelRight + 1U == kParameterCount,
+          kParameterPadClipboardAvailable == kParameterPadFileResultEvent + 1U &&
+          kParameterPadClipboardResultEvent + 1U == kParameterCount,
           "meter outputs remain appended after released parameters");
 }
 
@@ -590,6 +592,53 @@ void pad_replacement_hardening() {
     check(!e.importPad(0, invalid), "non-finite source sample is rejected");
 }
 
+void pad_clipboard_snapshot() {
+    midichopper::SamplerEngine engine(1000.0, 1.0);
+    midichopper::PadData source;
+    source.sampleRate = 1000.0;
+    source.frames = 4;
+    source.stereo = {-1.0f, -0.5f, -0.25f, 0.0f,
+                     0.25f, 0.5f, 0.75f, 1.0f};
+    source.peak = 1.0f;
+    source.rms = 0.6f;
+    check(engine.importPad(0, source), "clipboard source imports");
+
+    sms::dsp::SamplePlaybackSettings settings;
+    settings.start = 0.25f;
+    settings.end = 0.75f;
+    settings.attackSeconds = 0.01f;
+    settings.decaySeconds = 0.02f;
+    settings.sustainLevel = 0.6f;
+    settings.releaseSeconds = 0.03f;
+    engine.setPadPlaybackSettings(0, settings);
+
+    midichopper::PadClipboard clipboard;
+    check(!clipboard.pasteTo(engine, 17),
+          "paste fails while the clipboard is empty");
+    check(!clipboard.hasSample() && clipboard.copyFrom(engine, 0) && clipboard.hasSample(),
+          "copy captures an occupied pad");
+    engine.clearPad(0);
+    check(!clipboard.copyFrom(engine, 0),
+          "copying an empty pad fails without replacing the clipboard");
+
+    midichopper::PadData oldTarget = source;
+    oldTarget.stereo.assign(oldTarget.stereo.size(), 0.1f);
+    check(engine.importPad(17, oldTarget) && clipboard.pasteTo(engine, 17),
+          "paste replaces an occupied target after the source is cleared");
+
+    midichopper::PadData pasted;
+    check(engine.exportPad(17, pasted) && pasted.frames == source.frames &&
+          pasted.sampleRate == source.sampleRate && pasted.stereo == source.stereo,
+          "paste restores the copied audio exactly");
+    const auto pastedSettings = engine.padPlaybackSettings(17);
+    close(pastedSettings.start, settings.start, "paste restores region start");
+    close(pastedSettings.end, settings.end, "paste restores region end");
+    close(pastedSettings.attackSeconds, settings.attackSeconds, "paste restores attack");
+    close(pastedSettings.decaySeconds, settings.decaySeconds, "paste restores decay");
+    close(pastedSettings.sustainLevel, settings.sustainLevel, "paste restores sustain");
+    close(pastedSettings.releaseSeconds, settings.releaseSeconds, "paste restores release");
+}
+
 void fixed_duration() {
     midichopper::SamplerEngine e(1000.0, 1.0);
     auto s = e.settings(); s.armed = true; s.captureMode = midichopper::CaptureMode::FixedDuration;
@@ -640,6 +689,7 @@ int main() {
     maximum_voice_limit();
     sample_region_and_adsr();
     pad_replacement_hardening();
+    pad_clipboard_snapshot();
     fixed_duration();
     disarm_note_off_gain_and_rate_change();
     std::cout << "core tests passed\n";

@@ -20,6 +20,11 @@ if(NOT EXISTS "${SMS_DPF_ROOT}/CMakeLists.txt")
     "DPF is missing. Run: git submodule update --init --recursive")
 endif()
 
+if(UNIX AND NOT APPLE)
+  find_package(PkgConfig REQUIRED)
+  pkg_check_modules(MIDICHOPPER_DBUS REQUIRED dbus-1)
+endif()
+
 set(DPF_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(DPF_LIBRARIES OFF CACHE BOOL "" FORCE)
 add_subdirectory("${SMS_DPF_ROOT}" "${CMAKE_CURRENT_BINARY_DIR}/third_party/DPF"
@@ -28,6 +33,7 @@ add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../Common-UI"
   "${CMAKE_CURRENT_BINARY_DIR}/Common-UI" EXCLUDE_FROM_ALL)
 
 add_library(midichopper_core STATIC
+  src/core/PadClipboard.cpp
   src/core/SamplerEngine.cpp)
 
 target_include_directories(midichopper_core
@@ -55,20 +61,23 @@ endif()
 dpf_add_plugin(SMS-Midichopper
   TARGETS ${MIDICHOPPER_PLUGIN_FORMATS}
   UI_TYPE opengl
+  USE_FILE_BROWSER
   FILES_DSP
+    ../Common-Src/Audio/WavCodec.cpp
     src/plugin/MidichopperPlugin.cpp
+    src/plugin/PadFileActions.cpp
     src/plugin/StateCodec.cpp
   FILES_UI
     src/ui/MidichopperUI.cpp
     src/ui/MidichopperView.cpp)
 
 # DPF currently passes disabled optional DGL features through generator
-# expressions.  CMake 4 evaluates those expressions as true while configuring
-# the DGL target, so explicitly remove features this UI does not use.
+# expressions. CMake 4 evaluates those expressions as true while configuring
+# the DGL target, so explicitly remove the web view this UI does not use.
 foreach(property COMPILE_DEFINITIONS INTERFACE_COMPILE_DEFINITIONS)
   get_target_property(dgl_definitions dgl-opengl "${property}")
   if(dgl_definitions)
-    list(REMOVE_ITEM dgl_definitions DGL_USE_FILE_BROWSER DGL_USE_WEB_VIEW)
+    list(REMOVE_ITEM dgl_definitions DGL_USE_WEB_VIEW)
     set_target_properties(dgl-opengl PROPERTIES "${property}" "${dgl_definitions}")
   endif()
 endforeach()
@@ -87,6 +96,8 @@ target_compile_definitions(SMS-Midichopper-dsp PRIVATE
   MIDICHOPPER_VERSION_PATCH=${PROJECT_VERSION_PATCH})
 
 if(BUILD_TESTING)
+  find_package(Threads REQUIRED)
+
   add_executable(midichopper_core_tests tests/core_tests.cpp)
   target_link_libraries(midichopper_core_tests PRIVATE midichopper_core)
   add_test(NAME sampler-core COMMAND midichopper_core_tests)
@@ -105,6 +116,17 @@ if(BUILD_TESTING)
     "${CMAKE_CURRENT_SOURCE_DIR}/src/ui")
   target_link_libraries(midichopper_ui_geometry_tests PRIVATE sms_common_ui)
   add_test(NAME ui-geometry COMMAND midichopper_ui_geometry_tests)
+
+  add_executable(midichopper_wav_codec_tests
+    tests/wav_codec_tests.cpp
+    ../Common-Src/Audio/WavCodec.cpp
+    src/plugin/PadFileActions.cpp)
+  target_include_directories(midichopper_wav_codec_tests PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/../Common-Src"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/plugin")
+  target_link_libraries(midichopper_wav_codec_tests PRIVATE Threads::Threads)
+  add_test(NAME wav-codec COMMAND midichopper_wav_codec_tests)
 endif()
 
 install(

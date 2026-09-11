@@ -2,6 +2,7 @@
 
 #include "Configuration.hpp"
 #include "DPF/Controls.hpp"
+#include "DPF/ContextMenu.hpp"
 #include "DPF/LevelMeter.hpp"
 #include "DPF/Theme.hpp"
 #include "DPF/WaveformRenderer.hpp"
@@ -43,6 +44,9 @@ public:
         drawFooter();
         if (state_.menuOpen)
             drawMenuOverlay();
+        if (state_.padContextMenuOpen)
+            sms::ui::dpf::drawContextMenu(canvas_, state_.padContextMenu,
+                state_.padContextMenuItems, state_.hoveredContextMenuItem);
         canvas_.restore();
     }
 
@@ -459,7 +463,9 @@ private:
         const auto& colors = sms::ui::dpf::theme();
         char liveStatus[96];
         const char* status = nullptr;
-        if (state_.editorMode) {
+        if (state_.editorMode && state_.status[0] != '\0') {
+            status = state_.status;
+        } else if (state_.editorMode) {
             std::snprintf(liveStatus, sizeof(liveStatus),
                           "Editing Bank %c Pad %02d — drag cut handles or envelope controls",
                           'A' + bankForGlobalPad(state_.selectedPad),
