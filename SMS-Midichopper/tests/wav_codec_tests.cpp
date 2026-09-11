@@ -259,38 +259,66 @@ void fileActionsAndProtocol()
 void realtimeAccessGate()
 {
     sms::audio::RealtimeAccessGate gate;
-    bool inactiveCallbackRan = false;
-    check(gate.withPaused([&] { inactiveCallbackRan = true; }) && inactiveCallbackRan,
-          "inactive audio grants control access immediately");
+    bool suspendedCallbackRan = false;
+    check(gate.withPaused([&] { suspendedCallbackRan = true; },
+                          std::chrono::milliseconds(20)) && suspendedCallbackRan,
+          "control access is immediate when no audio callback is running");
 
-    gate.activate();
-    bool timedOutCallbackRan = false;
-    check(!gate.withPaused([&] { timedOutCallbackRan = true; },
-                           std::chrono::milliseconds(2)) &&
-          !timedOutCallbackRan && !gate.audioShouldYield(),
-          "timed-out access request restores the idle audio state");
+    std::atomic<bool> timedOutCallbackRan{false};
+    std::atomic<bool> timedOutRequestSucceeded{true};
+    {
+        const auto audioAccess = gate.audioAccess();
+        std::thread requester([&] {
+            timedOutRequestSucceeded.store(gate.withPaused([&] {
+                timedOutCallbackRan.store(true, std::memory_order_release);
+            }, std::chrono::milliseconds(2)), std::memory_order_release);
+        });
+        requester.join();
+        check(!timedOutRequestSucceeded.load(std::memory_order_acquire) &&
+              !audioAccess.shouldYield() &&
+              !timedOutCallbackRan.load(std::memory_order_acquire),
+              "timed-out request does not race the current audio callback");
+    }
+    check(!gate.audioAccess().shouldYield(),
+          "timed-out control request restores idle state after audio completes");
 
     std::atomic<bool> activeCallbackRan{false};
     std::atomic<bool> activeRequestSucceeded{false};
-    std::thread requester([&] {
-        activeRequestSucceeded.store(gate.withPaused([&] {
-            activeCallbackRan.store(true, std::memory_order_release);
-        }), std::memory_order_release);
-    });
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(1);
-    bool yielded = false;
-    while (std::chrono::steady_clock::now() < deadline) {
-        if (gate.audioShouldYield()) {
-            yielded = true;
-            break;
-        }
-        std::this_thread::yield();
+    std::thread requester;
+    {
+        const auto audioAccess = gate.audioAccess();
+        requester = std::thread([&] {
+            activeRequestSucceeded.store(gate.withPaused([&] {
+                activeCallbackRan.store(true, std::memory_order_release);
+            }), std::memory_order_release);
+        });
+        check(!audioAccess.shouldYield() && !activeCallbackRan.load(std::memory_order_acquire),
+              "control request waits for the current audio callback to finish");
     }
     requester.join();
-    check(yielded && activeRequestSucceeded.load(std::memory_order_acquire) &&
-          activeCallbackRan.load(std::memory_order_acquire) && !gate.audioShouldYield(),
-          "active audio yields at a callback boundary and resumes after control access");
-    gate.deactivate();
+    check(activeRequestSucceeded.load(std::memory_order_acquire) &&
+          activeCallbackRan.load(std::memory_order_acquire),
+          "audio completion hands protected state to the waiting control request");
+
+    std::atomic<bool> controlAccessStarted{false};
+    std::atomic<bool> releaseControlAccess{false};
+    std::thread controller([&] {
+        static_cast<void>(gate.withPaused([&] {
+            controlAccessStarted.store(true, std::memory_order_release);
+            while (!releaseControlAccess.load(std::memory_order_acquire))
+                std::this_thread::yield();
+        }));
+    });
+    const auto controlDeadline =
+        std::chrono::steady_clock::now() + std::chrono::seconds(1);
+    while (!controlAccessStarted.load(std::memory_order_acquire) &&
+           std::chrono::steady_clock::now() < controlDeadline)
+        std::this_thread::yield();
+    check(controlAccessStarted.load(std::memory_order_acquire) &&
+          gate.audioAccess().shouldYield(),
+          "audio callback yields while the control thread owns protected state");
+    releaseControlAccess.store(true, std::memory_order_release);
+    controller.join();
 }
 
 } // namespace

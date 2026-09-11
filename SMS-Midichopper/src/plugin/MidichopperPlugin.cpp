@@ -481,20 +481,11 @@ protected:
         }
     }
 
-    void activate() override
-    {
-        samplerAccess_.activate();
-    }
-
-    void deactivate() override
-    {
-        samplerAccess_.deactivate();
-    }
-
     void run(const float** const inputs, float** const outputs, const uint32_t frames,
              const MidiEvent* const midiEvents, const uint32_t midiEventCount) override
     {
-        if (samplerAccess_.audioShouldYield()) {
+        const auto samplerAccess = samplerAccess_.audioAccess();
+        if (samplerAccess.shouldYield()) {
             inputMeter_.process(inputs[0], inputs[1], frames, getSampleRate());
             std::fill_n(outputs[0], frames, 0.0f);
             std::fill_n(outputs[1], frames, 0.0f);

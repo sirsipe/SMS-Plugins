@@ -15,8 +15,9 @@ host, or a specific plug-in's state model.
   DSP-to-UI transport.
 - `Audio/WavCodec.*`: bounded RIFF/WAVE decoding, stereo PCM16 encoding, and
   offline region/ADSR rendering without third-party audio-file dependencies.
-- `Audio/RealtimeAccessGate.hpp`: lock-free audio-side handoff that lets a
-  control thread snapshot or replace callback-owned state at a block boundary.
+- `Audio/RealtimeAccessGate.hpp`: lock-free audio-side ownership and handoff
+  that lets a control thread access callback-owned state immediately while the
+  callback is idle, or at a block boundary while it is running.
 - `State/SamplePlaybackSettingsCodec.hpp`: versioned settings serialization.
 - `UI/Geometry.hpp`: renderer-independent rectangles and reusable pad-grid
   layout/hit testing.

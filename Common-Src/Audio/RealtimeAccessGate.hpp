@@ -15,31 +15,37 @@ namespace sms::audio {
  */
 class RealtimeAccessGate {
 public:
-    void activate() noexcept
-    {
-        active_.store(true, std::memory_order_release);
-    }
+    class AudioAccess {
+    public:
+        AudioAccess(const AudioAccess&) = delete;
+        AudioAccess& operator=(const AudioAccess&) = delete;
 
-    void deactivate() noexcept
-    {
-        active_.store(false, std::memory_order_release);
-        State expected = State::requested;
-        static_cast<void>(state_.compare_exchange_strong(
-            expected, State::paused, std::memory_order_acq_rel));
-    }
-
-    /** Call once at the start of the audio callback; true means skip protected state. */
-    [[nodiscard]] bool audioShouldYield() noexcept
-    {
-        State state = state_.load(std::memory_order_acquire);
-        if (state == State::idle)
-            return false;
-        if (state == State::requested) {
-            if (state_.compare_exchange_strong(
-                    state, State::paused, std::memory_order_acq_rel))
-                return true;
+        ~AudioAccess()
+        {
+            if (ownsState_)
+                gate_.finishAudioAccess();
         }
-        return state == State::paused;
+
+        /** True means another thread owns or is waiting for the protected state. */
+        [[nodiscard]] bool shouldYield() const noexcept { return !ownsState_; }
+
+    private:
+        friend class RealtimeAccessGate;
+
+        explicit AudioAccess(RealtimeAccessGate& gate, const bool ownsState) noexcept
+            : gate_(gate), ownsState_(ownsState) {}
+
+        RealtimeAccessGate& gate_;
+        const bool ownsState_;
+    };
+
+    /** Hold for the complete audio callback while touching protected state. */
+    [[nodiscard]] AudioAccess audioAccess() noexcept
+    {
+        State expected = State::idle;
+        const bool acquired = state_.compare_exchange_strong(
+            expected, State::audioActive, std::memory_order_acq_rel);
+        return AudioAccess(*this, acquired);
     }
 
     /** Run a control-thread callback while the audio side is yielding. */
@@ -49,21 +55,31 @@ public:
                                       std::chrono::milliseconds(500)) const
     {
         const std::lock_guard lock(controlMutex_);
-        state_.store(State::requested, std::memory_order_release);
-        if (!active_.load(std::memory_order_acquire)) {
-            State expected = State::requested;
-            static_cast<void>(state_.compare_exchange_strong(
-                expected, State::paused, std::memory_order_acq_rel));
+        State state = state_.load(std::memory_order_acquire);
+        for (;;) {
+            if (state == State::idle) {
+                if (state_.compare_exchange_weak(
+                        state, State::controlActive, std::memory_order_acq_rel))
+                    break;
+                continue;
+            }
+            if (state == State::audioActive) {
+                if (state_.compare_exchange_weak(
+                        state, State::pauseRequested, std::memory_order_acq_rel))
+                    break;
+                continue;
+            }
+            break;
         }
 
         const auto deadline = std::chrono::steady_clock::now() + timeout;
-        while (state_.load(std::memory_order_acquire) != State::paused) {
+        while (state_.load(std::memory_order_acquire) != State::controlActive) {
             if (std::chrono::steady_clock::now() >= deadline) {
-                State expected = State::requested;
+                State expected = State::pauseRequested;
                 if (state_.compare_exchange_strong(
-                        expected, State::idle, std::memory_order_acq_rel))
+                        expected, State::audioActive, std::memory_order_acq_rel))
                     return false;
-                if (expected == State::paused)
+                if (expected == State::controlActive)
                     break;
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -80,13 +96,32 @@ public:
     }
 
 private:
-    enum class State : std::uint8_t { idle, requested, paused };
+    enum class State : std::uint8_t { idle, audioActive, pauseRequested, controlActive };
     static_assert(std::atomic<State>::is_always_lock_free,
                   "the audio-side access gate must be lock-free");
 
+    void finishAudioAccess() noexcept
+    {
+        State state = state_.load(std::memory_order_acquire);
+        for (;;) {
+            if (state == State::audioActive) {
+                if (state_.compare_exchange_weak(
+                        state, State::idle, std::memory_order_acq_rel))
+                    return;
+                continue;
+            }
+            if (state == State::pauseRequested) {
+                if (state_.compare_exchange_weak(
+                        state, State::controlActive, std::memory_order_acq_rel))
+                    return;
+                continue;
+            }
+            return;
+        }
+    }
+
     mutable std::mutex controlMutex_;
     mutable std::atomic<State> state_{State::idle};
-    std::atomic<bool> active_{false};
 };
 
 } // namespace sms::audio
