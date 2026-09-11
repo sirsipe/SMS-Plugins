@@ -16,6 +16,12 @@ and AU. Therefore the existing per-pad sample state should be reusable, but
 large-state restoration must be tested in native hosts rather than inferred
 from codec tests.
 
+The pinned VST3 wrapper has two relevant limits: DSP-generated transient state
+does not return to the UI, and DPF audio-port topology is compile-time fixed
+even though native VST3 can notify hosts of bus-count changes. See
+[DPF VST3 constraints](DPF-VST3-CONSTRAINTS.md) before changing VST3 state or
+planning multi-output routing.
+
 [Plugin metadata](../../SMS-Midichopper/src/plugin/DistrhoPluginInfo.h) already
 defines four-character brand `SMSM` and plugin `MdCh` identifiers. With stereo
 input/output and MIDI input, DPF automatically classifies the AU as `aumf`, a

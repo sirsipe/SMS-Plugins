@@ -15,6 +15,7 @@ the row needed for the task. Paths in commands are relative to the repo root.
 | Feature scope and direction | [Vision](../../SMS-Midichopper/Docs/VISION.md) | Intended scope; not an implementation checklist |
 | Pad context menu and actions | [Context-menu design](PAD-CONTEXT-MENU.md) | Implemented Clear Pad and future action contract |
 | Pad WAV import/export | [WAV I/O design](PAD-WAV-IO.md) | Formats, real-time boundary, dialogs, support notes |
+| VST3 state and outputs | [DPF VST3 constraints](DPF-VST3-CONSTRAINTS.md) | UI synchronization and fixed/dynamic bus boundaries |
 | User-visible behavior | [Plugin guide](../../SMS-Midichopper/README.md) | Verify against affected source/tests |
 | User WAV workflow | [WAV file guide](../../SMS-Midichopper/Docs/WAV-FILES.md) | Current formats and Linux requirements |
 | Project overview | [Project README](../../README.md) | Human entry point |

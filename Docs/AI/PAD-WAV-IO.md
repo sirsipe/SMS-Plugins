@@ -100,9 +100,10 @@ Windows Save flags and validate `NSSavePanel` on macOS. Do not invoke `zenity`,
 `kdialog`, or similar external fallbacks.
 
 The pinned Linux VST3 wrapper reports file completion through the hidden output
-event, but does not return DSP-generated waveform/editor state to its UI. An
-imported pad still plays and exports; its refreshed overview waveform is an
-existing DPF transport limitation. LV2 returns the complete state exchange.
+event, but cannot return DSP-generated waveform/editor state to its UI. This
+also affects pad reselection and UI reopening; see the authoritative
+[DPF VST3 constraints](DPF-VST3-CONSTRAINTS.md). LV2 returns the complete state
+exchange.
 
 ## Validation and deferred public documentation
 
