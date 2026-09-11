@@ -1,8 +1,7 @@
 # SMS-Midichopper architecture
 
 Audience: agents changing engine, adapter, state, or UI. This describes
-implemented behavior; [VISION.md](VISION.md) describes intended scope. Paths
-below are relative to `SMS-Midichopper/`.
+implemented behavior; [VISION.md](VISION.md) describes intended scope.
 
 SMS-Midichopper separates the sampler from the plug-in format and UI:
 
@@ -14,15 +13,14 @@ SMS-Midichopper separates the sampler from the plug-in format and UI:
   sample serialization, and `DistrhoPluginInfo.h` for plugin identity/ports.
 - `src/ui/MidichopperUI.cpp` owns host communication and interaction state,
   while `MidichopperView.cpp` composes the product-specific drawing.
-- `tests` exercises slice timing, capture lifecycle, playback resampling, and
-  state corruption handling without loading a plug-in host.
+- `tests` exercises engine behavior, state, WAV handling, and UI geometry
+  without a plug-in host.
 - `../Common-Src` contains plug-in-independent sample-region, ADSR, waveform
   summary, state-codec, and UI geometry components intended for reuse by future
   SMS plug-ins.
 - `../Common-UI` contains the shared theme, DPF/NanoVG base, controls,
   context-menu and hover primitives, pad layouts, and waveform editor pieces.
-- `../third_party/DPF` is the single repository-level DPF submodule used by all
-  plug-ins.
+- `../third_party/DPF` is the shared framework submodule.
 
 ## MIDI mapping
 
@@ -76,10 +74,10 @@ points and an allocation-free ADSR voice envelope. Editor values use atomics;
 playback snapshots them on the next note trigger. Preserve that boundary when
 changing live-edit behavior.
 
-Pad import/export and sample-rate reconfiguration are control-thread work.
-Configuration and pad import must not run concurrently with `process()`; see
-`SamplerEngine.hpp`. Keep large state operations outside the audio callback and
-verify the wrapper's scheduling when changing state transport.
+Pad storage mutations are control-thread work. A shared gate makes `run()`
+output silence while control code copies or replaces storage at a block
+boundary; its audio side only checks lock-free atomics. File access, codecs, and
+offline rendering never run in the callback. See `SamplerEngine.hpp`.
 
 Four hidden outputs carry allocation-free raw-input and final-output peaks.
 Meter redraws are 30-FPS capped, change only at LED boundaries, and batch
@@ -88,10 +86,9 @@ voices, envelopes, and gain. Host hard bypass that skips DSP cannot be metered.
 
 ## Project state
 
-Each of the 64 pad slots is stored independently with a magic value, version, channel count,
-source sample rate, frame count, payload length, and CRC-32. Audio is
-interleaved signed PCM16 and Base64 encoded for portable DPF state. Decoding has
-strict size and structural checks. Empty pads use empty state values.
+Each pad slot stores a versioned, CRC-checked header and interleaved signed
+PCM16 audio, Base64 encoded for portable DPF state. Decoding has strict size
+and structural checks. Empty pads use empty state values.
 
 Cut points and ADSR values are stored as compact versioned state per pad. The UI
 never receives the full PCM state: it requests the selected pad and the DSP-side
@@ -99,11 +96,14 @@ worker returns a fixed 128-bin min/max waveform summary. This keeps waveform
 drawing and editor interaction away from the audio callback and avoids sending
 large sample blobs through the UI channel.
 
-The `pad_clear_request` UI state publishes only an atomic command and reads back
-as neutral `0`; the audio callback clears that pad at the next block boundary.
+`pad_clear_request` publishes an atomic command consumed at the next block.
+`pad_file_request` carries an action, pad, and UTF-8 path; LV2 handles it on its
+required worker. Busy/status states contain small messages, while a hidden
+output signals completion where wrapper state callbacks cannot return status
+to the UI. PCM never crosses the UI state channel.
 
-Long recordings make DAW project files correspondingly larger. The current
-limit is 30 seconds per pad.
+Long recordings make DAW project files correspondingly larger. Pads are limited
+to 30 seconds.
 
 ## Build and validation
 

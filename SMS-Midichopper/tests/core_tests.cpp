@@ -49,7 +49,7 @@ void live_peak_meter() {
 
     using namespace midichopper::plugin;
     check(kParameterInputLevelLeft == kParameterCaptureTargetRequest + 1U &&
-          kParameterOutputLevelRight + 1U == kParameterCount,
+          kParameterPadFileResultEvent + 1U == kParameterCount,
           "meter outputs remain appended after released parameters");
 }
 

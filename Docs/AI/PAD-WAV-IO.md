@@ -1,7 +1,7 @@
 # Pad WAV import and export
 
-Audience: agents implementing pad file operations. This approved direction is
-not implemented behavior. These actions consume the reusable
+Audience: agents changing pad file operations. This contract is implemented.
+These actions consume the reusable
 [pad context menu](PAD-CONTEXT-MENU.md) and do not fully resolve
 [issue #10](https://github.com/sirsipe/SMS-Plugins/issues/10).
 
@@ -49,12 +49,12 @@ rather than creating mislabeled data.
 
 ## Responsibilities and real-time safety
 
-`Common-Src` owns the byte-level codec and reusable offline renderer, without
-DPF or dialog policy. `Common-UI` owns only menu/dialog adaptation. Midichopper
-product code owns action policy. The DPF adapter owns cross-process action
-transport, background jobs, status delivery, and safe publication; the engine
-owns pad data and replacement rules. Keep these responsibilities narrow rather
-than combining them in a file-manager or menu-controller class.
+`Common-Src` owns the byte-level codec, offline renderer, and reusable real-time
+access gate, without DPF or dialog policy. `Common-UI` owns menu geometry and
+drawing. Midichopper UI code adapts DPF dialogs; its plug-in adapter owns action
+transport, filesystem policy, status delivery, and safe engine access. The LV2
+wrapper executes UI state commands on its required worker. Keep these
+responsibilities narrow rather than creating a file-manager class.
 
 Never read, write, decode, encode, allocate, lock, or render whole samples in
 the audio callback. Decode off-thread and validate completely before publishing
@@ -80,9 +80,11 @@ that session. No host D-Bus socket is mounted.
 `desktop-health` proves that `pkg-config` finds `dbus-1`, the session bus works,
 and `org.freedesktop.portal.Desktop` activates with FileChooser.
 `desktop-health --dialogs` opens and dismisses real Open and Save dialogs on VNC;
-`make dev-ready` runs this stronger check. Launch a host with `env -u
-DBUS_SESSION_BUS_ADDRESS` to test the portal-absent fallback without disrupting
-the shared bus. Complete these checks before enabling DPF file browsing.
+`make dev-ready` runs this stronger check. Launch a host with
+`DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/sms-no-session-bus` to test the
+portal-absent fallback without disrupting the shared bus. Simply unsetting the
+variable may rediscover the session through X11. Complete these checks before
+changing DPF file browsing.
 
 Linux release builds must deliberately enable D-Bus and fail configuration if
 development files are absent. `libdbus-1` is a runtime requirement. Export
@@ -97,6 +99,11 @@ failed Save attempt and disable export for that UI session. Verify or fix pinned
 Windows Save flags and validate `NSSavePanel` on macOS. Do not invoke `zenity`,
 `kdialog`, or similar external fallbacks.
 
+The pinned Linux VST3 wrapper reports file completion through the hidden output
+event, but does not return DSP-generated waveform/editor state to its UI. An
+imported pad still plays and exports; its refreshed overview waveform is an
+existing DPF transport limitation. LV2 returns the complete state exchange.
+
 ## Validation and deferred public documentation
 
 Unit-test every accepted encoding and extensible subtype, round trips, mono
@@ -107,9 +114,7 @@ project restoration without the source file, and portal-present/absent Linux
 sessions in LV2 and VST3 hosts. Windows/macOS claims require
 [native platform checks](PLATFORM-BUILDS.md).
 
-When user-ready, public docs must explain the right-click workflow, accepted
-WAV encodings, mono conversion, PCM16 export, processed semantics,
-replacement/reset behavior, 30-second limit, embedded project audio,
-`libdbus-1`, the portal/backend requirement for Linux Export, and disabled
-Export troubleshooting. Do not publish these as current behavior before
-implementation and host validation.
+The public [WAV guide](../../SMS-Midichopper/Docs/WAV-FILES.md) covers the
+right-click workflow, encodings, conversion/export semantics, reset behavior,
+duration and project storage, plus Linux requirements and troubleshooting.
+Keep it aligned with this contract and verified behavior.

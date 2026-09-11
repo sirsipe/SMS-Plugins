@@ -1,7 +1,7 @@
 # Pad context menu
 
-Audience: agents implementing pad interactions. The shared menu foundation and
-Clear Pad action are implemented; later actions remain approved direction. It is related to
+Audience: agents changing pad interactions. The shared menu, Clear Pad, and WAV
+actions are implemented; later actions remain approved direction. It is related to
 [issue #10](https://github.com/sirsipe/SMS-Plugins/issues/10), which requests
 copy, delete, MIDI assignment, and optional color. The menu is a general pad
 action surface; WAV operations are one consumer, not its defining purpose.
@@ -45,9 +45,9 @@ assignment, color, separators, and later actions without another menu type or a
 large conditional event handler. Do not add abstractions for hypothetical menu
 features until an action needs them.
 
-## First implementation slice
+## Implemented actions
 
-The first slice provides one **Clear Pad** action using the engine's single-pad
+**Clear Pad** uses the engine's single-pad
 clear behavior. It is enabled only when the clicked pad contains audio. The
 first activation changes the item to **Confirm Clear** for two seconds; the
 second queues the clear for the next audio block. The transient
@@ -56,9 +56,8 @@ content or a host parameter: its readable value is always neutral `0`. This
 preserves released parameter identities and keeps sampler mutation on the audio
 boundary.
 
-Maintain coverage for Clear Pad and the menu lifecycle in both Play and Sample
+WAV Import and Export follow the separate [pad WAV contract](PAD-WAV-IO.md).
+Maintain coverage for every action and the menu lifecycle in both Play and Sample
 Editor. Verify target selection without audition, pad layouts and banks,
 disabled entries, hover transitions, dismissal by mapped MIDI playback and
-other interactions, canvas-edge placement, resizing, and UI scaling. WAV
-actions then follow the separate
-[pad WAV contract](PAD-WAV-IO.md).
+other interactions, canvas-edge placement, resizing, and UI scaling.

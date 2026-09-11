@@ -36,6 +36,7 @@ enum Parameter : std::uint32_t {
     kParameterInputLevelRight,
     kParameterOutputLevelLeft,
     kParameterOutputLevelRight,
+    kParameterPadFileResultEvent,
     kParameterCount,
 };
 
@@ -75,6 +76,7 @@ inline constexpr ParameterRange captureTargetPad{
 inline constexpr ParameterRange captureTargetRequest{
     0.0f, 0.0f, static_cast<float>(kPadCount * 2U)};
 inline constexpr ParameterRange meterLevel{0.0f, 0.0f, 1.0f};
+inline constexpr ParameterRange padFileResultEvent{0.0f, 0.0f, 8.0f};
 } // namespace parameterRanges
 
 /**
@@ -140,6 +142,7 @@ private:
     case kParameterInputLevelRight:
     case kParameterOutputLevelLeft:
     case kParameterOutputLevelRight: return parameterRanges::meterLevel;
+    case kParameterPadFileResultEvent: return parameterRanges::padFileResultEvent;
     default: return parameterRanges::toggle;
     }
 }

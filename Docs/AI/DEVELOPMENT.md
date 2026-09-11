@@ -57,9 +57,11 @@ Container** from the VS Code Command Palette, then run `desktop-health
 make dev-build dev-run dev-ready
 ```
 
-To exercise the Linux fallback without a session bus, launch only the tested
-host command with `env -u DBUS_SESSION_BUS_ADDRESS ...`; never stop or reuse the
-container's bus for that check.
+To exercise the Linux fallback without a session bus, give only the tested host
+an invalid address, for example
+`DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/sms-no-session-bus ...`; never stop or
+reuse the container's bus. Unsetting it can rediscover the active session
+through X11.
 
 Dev Containers is authoritative. Root Make targets provide a matching manual
 Docker workflow for diagnostics: `make dev-build dev-run dev-ready`. Ports are

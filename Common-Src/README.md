@@ -13,6 +13,10 @@ host, or a specific plug-in's state model.
   and release ballistics for live meters.
 - `Audio/WaveformSummary.hpp`: fixed-size stereo min/max reduction and compact
   DSP-to-UI transport.
+- `Audio/WavCodec.*`: bounded RIFF/WAVE decoding, stereo PCM16 encoding, and
+  offline region/ADSR rendering without third-party audio-file dependencies.
+- `Audio/RealtimeAccessGate.hpp`: lock-free audio-side handoff that lets a
+  control thread snapshot or replace callback-owned state at a block boundary.
 - `State/SamplePlaybackSettingsCodec.hpp`: versioned settings serialization.
 - `UI/Geometry.hpp`: renderer-independent rectangles and reusable pad-grid
   layout/hit testing.

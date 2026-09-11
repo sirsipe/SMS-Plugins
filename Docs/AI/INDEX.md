@@ -16,6 +16,7 @@ the row needed for the task. Paths in commands are relative to the repo root.
 | Pad context menu and actions | [Context-menu design](PAD-CONTEXT-MENU.md) | Implemented Clear Pad and future action contract |
 | Pad WAV import/export | [WAV I/O design](PAD-WAV-IO.md) | Formats, real-time boundary, dialogs, support notes |
 | User-visible behavior | [Plugin guide](../../SMS-Midichopper/README.md) | Verify against affected source/tests |
+| User WAV workflow | [WAV file guide](../../SMS-Midichopper/Docs/WAV-FILES.md) | Current formats and Linux requirements |
 | Project overview | [Project README](../../README.md) | Human entry point |
 | Contributions, doc maintenance | [Contributing](../../CONTRIBUTING.md) | [Doc checker](../../scripts/check_docs.py) |
 | CI, release preparation | [Releasing](../RELEASING.md) | [Workflows](../../.github/workflows/) |

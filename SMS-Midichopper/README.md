@@ -22,7 +22,7 @@ Ubuntu/Debian prerequisites:
 ```bash
 sudo apt install build-essential cmake ninja-build pkg-config git \
   lv2-dev libgl1-mesa-dev libx11-dev libxext-dev \
-  libxrandr-dev libxcursor-dev libxinerama-dev
+  libxrandr-dev libxcursor-dev libxinerama-dev libdbus-1-dev
 ```
 
 From the repository root:
@@ -73,11 +73,12 @@ All Banks mode, capture and display instead use contiguous layout-sized pages.
 
 In Play, open **Sample Editor** to edit a pad's region and ADSR non-destructively.
 Side-panel clicks select and load pads without auditioning them. MIDI playback
-also selects and loads populated pads, including active-pad retriggers. The
+selects populated pads, including retriggers. The
 editor is unavailable in Arm so capture controls remain visible.
 
-In Play or Sample Editor, right-click a pad to open its action menu. **Clear
-Pad** is disabled for empty pads and requires a second click to confirm.
+In Play or Sample Editor, right-click a pad to import, export, or clear it. See
+[WAV files](Docs/WAV-FILES.md) for formats and Linux requirements. **Clear Pad**
+requires confirmation.
 
 Max Voices limits simultaneous pads. At the limit, a new trigger stops the
 oldest voice; set it to one for monophonic playback.

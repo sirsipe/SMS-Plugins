@@ -18,8 +18,9 @@ For focused iteration, use `ctest --test-dir build --output-on-failure -R NAME`:
 | `sampler-core` | Capture boundaries/pre-roll, banks/layouts, storage, voices, regions/ADSR, resampling, lifecycle |
 | `state-codec` | Audio and editor-state round trips, malformed/corrupt state |
 | `ui-geometry` | Pad mapping, waveform geometry, hit testing and editing |
+| `wav-codec` | WAV formats, validation, file actions, offline render, real-time access gate |
 
-Rebuild affected targets before testing. Run all three before handing off code
+Rebuild affected targets before testing. Run all four before handing off code
 changes; they are small. For docs-only changes, run the doc checks and verify
 changed commands against CMake/tool help; no audio rebuild is required.
 These tests do not load a real host or render the plugin UI.
