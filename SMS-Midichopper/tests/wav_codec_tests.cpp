@@ -1,6 +1,7 @@
 #include "Audio/WavCodec.hpp"
 #include "Audio/RealtimeAccessGate.hpp"
 #include "PadFileActionProtocol.hpp"
+#include "PadClipboardProtocol.hpp"
 #include "PadFileActions.hpp"
 
 #include <bit>
@@ -210,6 +211,31 @@ void fileActionsAndProtocol()
               midichopper::plugin::PadFileResultCode::importSucceeded, true)) ==
               midichopper::plugin::PadFileResultCode::importSucceeded,
           "pad file result events remain observable across repeated results");
+
+    using midichopper::plugin::PadClipboardAction;
+    midichopper::plugin::PadClipboardRequest clipboardRequest;
+    check(midichopper::plugin::decodePadClipboardRequest(
+              midichopper::plugin::encodePadClipboardRequest(
+                  PadClipboardAction::paste, 63U), clipboardRequest) &&
+          clipboardRequest.action == PadClipboardAction::paste &&
+          clipboardRequest.pad == 63U,
+          "pad clipboard request round trips");
+    check(!midichopper::plugin::decodePadClipboardRequest("2;0", clipboardRequest) &&
+          !midichopper::plugin::decodePadClipboardRequest("0;64", clipboardRequest) &&
+          !midichopper::plugin::decodePadClipboardRequest("0;1;2", clipboardRequest),
+          "pad clipboard request rejects invalid values");
+
+    midichopper::plugin::PadClipboardResultEventTracker clipboardResults;
+    check(clipboardResults.consume(midichopper::plugin::padClipboardResultEventValue(
+              midichopper::plugin::PadClipboardResultCode::pasted, false)) ==
+              midichopper::plugin::PadClipboardResultCode::pasted &&
+          clipboardResults.consume(midichopper::plugin::padClipboardResultEventValue(
+              midichopper::plugin::PadClipboardResultCode::pasted, false)) ==
+              midichopper::plugin::PadClipboardResultCode::none &&
+          clipboardResults.consume(midichopper::plugin::padClipboardResultEventValue(
+              midichopper::plugin::PadClipboardResultCode::pasted, true)) ==
+              midichopper::plugin::PadClipboardResultCode::pasted,
+          "pad clipboard results remain observable across repeated actions");
 
     sms::audio::WavAudio source;
     source.sampleRate = 48000U;

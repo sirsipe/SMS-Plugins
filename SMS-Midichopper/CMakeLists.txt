@@ -33,6 +33,7 @@ add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../Common-UI"
   "${CMAKE_CURRENT_BINARY_DIR}/Common-UI" EXCLUDE_FROM_ALL)
 
 add_library(midichopper_core STATIC
+  src/core/PadClipboard.cpp
   src/core/SamplerEngine.cpp)
 
 target_include_directories(midichopper_core

@@ -4,6 +4,8 @@
 #include "Audio/RealtimeAccessGate.hpp"
 #include "Audio/WavCodec.hpp"
 #include "DSP/PeakMeter.hpp"
+#include "PadClipboard.hpp"
+#include "PadClipboardProtocol.hpp"
 #include "PadFileActionProtocol.hpp"
 #include "PadFileActions.hpp"
 #include "Parameters.hpp"
@@ -49,13 +51,15 @@ constexpr std::uint32_t kPadClearRequestState = kWaveformDataState + 1U;
 constexpr std::uint32_t kPadFileRequestState = kPadClearRequestState + 1U;
 constexpr std::uint32_t kPadFileBusyState = kPadFileRequestState + 1U;
 constexpr std::uint32_t kPadFileStatusState = kPadFileBusyState + 1U;
-constexpr std::uint32_t kStateCount = kPadFileStatusState + 1U;
+constexpr std::uint32_t kPadClipboardRequestState = kPadFileStatusState + 1U;
+constexpr std::uint32_t kStateCount = kPadClipboardRequestState + 1U;
 constexpr const char* kWaveformRequestKey = "waveform_request";
 constexpr const char* kWaveformDataKey = "waveform_data";
 constexpr const char* kPadClearRequestKey = "pad_clear_request";
 constexpr const char* kPadFileRequestKey = "pad_file_request";
 constexpr const char* kPadFileBusyKey = "pad_file_busy";
 constexpr const char* kPadFileStatusKey = "pad_file_status";
+constexpr const char* kPadClipboardRequestKey = "pad_clipboard_request";
 static_assert(midichopper::kPadCount <= 64U,
               "pending clear requests use one bit per pad");
 
@@ -257,6 +261,18 @@ protected:
                            kParameterIsOutput | kParameterIsInteger | kParameterIsHidden,
                            "Internal UI notification that a pad file action completed.");
             break;
+        case kParameterPadClipboardAvailable:
+            setupParameter(index, parameter, "Pad Clipboard Available", "pad_clipboard_available", "",
+                           kParameterIsOutput | kParameterIsBoolean | kParameterIsInteger |
+                               kParameterIsHidden,
+                           "Whether the internal pad clipboard contains a sample.");
+            break;
+        case kParameterPadClipboardResultEvent:
+            setupParameter(index, parameter, "Pad Clipboard Result Event",
+                           "pad_clipboard_result_event", "",
+                           kParameterIsOutput | kParameterIsInteger | kParameterIsHidden,
+                           "Internal UI notification that a pad Copy or Paste completed.");
+            break;
         default:
             if (index >= kFirstPadStatusParameter && index < kFirstPadActivityParameter) {
                 const std::uint32_t pad = index - kFirstPadStatusParameter;
@@ -318,11 +334,16 @@ protected:
             state.label = "Pad File Busy";
             state.defaultValue = "0";
             state.hints = kStateIsOnlyForUI;
-        } else {
+        } else if (index == kPadFileStatusState) {
             state.key = kPadFileStatusKey;
             state.label = "Pad File Status";
             state.defaultValue = "";
             state.hints = kStateIsOnlyForUI;
+        } else {
+            state.key = kPadClipboardRequestKey;
+            state.label = "Pad Clipboard Request";
+            state.defaultValue = "";
+            state.hints = kStateIsOnlyForDSP;
         }
     }
 
@@ -390,6 +411,8 @@ protected:
             return String();
         if (std::strcmp(key, kPadFileBusyKey) == 0)
             return String("0");
+        if (std::strcmp(key, kPadClipboardRequestKey) == 0)
+            return String();
         return String();
     }
 
@@ -452,6 +475,10 @@ protected:
         if (std::strcmp(key, kPadFileBusyKey) == 0 ||
             std::strcmp(key, kPadFileStatusKey) == 0)
             return;
+        if (std::strcmp(key, kPadClipboardRequestKey) == 0) {
+            handlePadClipboardRequest(value != nullptr ? value : "");
+            return;
+        }
     }
 
     void activate() override
@@ -550,6 +577,59 @@ private:
         parameters_[midichopper::plugin::kParameterPadFileResultEvent].store(
             midichopper::plugin::padFileResultEventValue(
                 result, padFileResultAlternateHalf_), std::memory_order_relaxed);
+    }
+
+    void publishClipboardResult(
+        const midichopper::plugin::PadClipboardResultCode result) noexcept
+    {
+        padClipboardResultAlternateHalf_ = !padClipboardResultAlternateHalf_;
+        parameters_[midichopper::plugin::kParameterPadClipboardResultEvent].store(
+            midichopper::plugin::padClipboardResultEventValue(
+                result, padClipboardResultAlternateHalf_), std::memory_order_relaxed);
+    }
+
+    void handlePadClipboardRequest(const std::string_view encoded)
+    {
+        try {
+            handlePadClipboardRequestImpl(encoded);
+        } catch (...) {
+            publishClipboardResult(midichopper::plugin::PadClipboardResultCode::failed);
+        }
+    }
+
+    void handlePadClipboardRequestImpl(const std::string_view encoded)
+    {
+        using midichopper::plugin::PadClipboardAction;
+        midichopper::plugin::PadClipboardRequest request;
+        if (!midichopper::plugin::decodePadClipboardRequest(encoded, request)) {
+            publishClipboardResult(midichopper::plugin::PadClipboardResultCode::failed);
+            return;
+        }
+
+        bool succeeded = false;
+        const bool accessed = withSamplerPaused([&] {
+            succeeded = request.action == PadClipboardAction::copy
+                ? padClipboard_.copyFrom(sampler_, request.pad)
+                : padClipboard_.pasteTo(sampler_, request.pad);
+        });
+        const auto result = !accessed || !succeeded
+            ? midichopper::plugin::PadClipboardResultCode::failed
+            : request.action == PadClipboardAction::copy
+                ? midichopper::plugin::PadClipboardResultCode::copied
+                : midichopper::plugin::PadClipboardResultCode::pasted;
+
+        if (result == midichopper::plugin::PadClipboardResultCode::copied)
+            parameters_[midichopper::plugin::kParameterPadClipboardAvailable].store(
+                1.0f, std::memory_order_relaxed);
+        if (result == midichopper::plugin::PadClipboardResultCode::pasted) {
+            const std::string editor = midichopper::plugin::encodePlaybackSettings(
+                sampler_.padPlaybackSettings(request.pad));
+            static_cast<void>(updateStateValue(
+                kPadEditStateKeys[request.pad].c_str(), editor.c_str()));
+            const std::string waveform = makeWaveformState(request.pad);
+            static_cast<void>(updateStateValue(kWaveformDataKey, waveform.c_str()));
+        }
+        publishClipboardResult(result);
     }
 
     void handlePadFileRequest(const std::string_view encoded)
@@ -837,6 +917,7 @@ private:
     }
 
     midichopper::SamplerEngine sampler_;
+    midichopper::PadClipboard padClipboard_;
     sms::dsp::StereoPeakMeter inputMeter_;
     sms::dsp::StereoPeakMeter outputMeter_;
     std::array<std::atomic<float>, midichopper::plugin::kParameterCount> parameters_{};
@@ -847,6 +928,7 @@ private:
     std::uint64_t publishedPlaybackTriggerGeneration_ = 0;
     bool playbackPadEventAlternateHalf_ = false;
     bool padFileResultAlternateHalf_ = false;
+    bool padClipboardResultAlternateHalf_ = false;
 
     DISTRHO_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MidichopperPlugin)
 };

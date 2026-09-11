@@ -1,9 +1,9 @@
 #pragma once
 
+#include "AlternatingResultEvent.hpp"
 #include "Configuration.hpp"
 
 #include <charconv>
-#include <cmath>
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -24,31 +24,17 @@ enum class PadFileResultCode : std::uint8_t {
     failed,
 };
 
+inline constexpr std::uint32_t kPadFileResultCount = 4U;
+
 [[nodiscard]] inline constexpr float padFileResultEventValue(
     const PadFileResultCode result, const bool alternateHalf) noexcept
 {
-    const auto code = static_cast<std::uint32_t>(result);
-    return result == PadFileResultCode::none ? 0.0f :
-        static_cast<float>(code + (alternateHalf ? 4U : 0U));
+    return alternatingResultEventValue<PadFileResultCode, kPadFileResultCount>(
+        result, alternateHalf);
 }
 
-class PadFileResultEventTracker {
-public:
-    [[nodiscard]] PadFileResultCode consume(const float value) noexcept
-    {
-        if (!std::isfinite(value) || value < 0.5f || value > 8.5f)
-            return PadFileResultCode::none;
-        const auto encoded = static_cast<std::uint32_t>(value + 0.5f);
-        if (encoded == lastEncoded_)
-            return PadFileResultCode::none;
-        lastEncoded_ = encoded;
-        const auto code = (encoded - 1U) % 4U + 1U;
-        return static_cast<PadFileResultCode>(code);
-    }
-
-private:
-    std::uint32_t lastEncoded_ = 0U;
-};
+using PadFileResultEventTracker =
+    AlternatingResultEventTracker<PadFileResultCode, kPadFileResultCount>;
 
 struct PadFileRequest {
     PadFileAction action = PadFileAction::import;

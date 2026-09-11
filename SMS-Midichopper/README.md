@@ -76,7 +76,7 @@ Side-panel clicks select and load pads without auditioning them. MIDI playback
 selects populated pads, including retriggers. The
 editor is unavailable in Arm so capture controls remain visible.
 
-In Play or Sample Editor, right-click a pad to import, export, or clear it. See
+In Play or Sample Editor, right-click a pad to copy, paste, import, export, or clear it. See
 [WAV files](Docs/WAV-FILES.md) for formats and Linux requirements. **Clear Pad**
 requires confirmation.
 

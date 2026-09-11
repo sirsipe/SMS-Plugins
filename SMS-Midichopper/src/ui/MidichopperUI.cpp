@@ -12,6 +12,7 @@
  *   pad_clear_request one-based pad command consumed at an audio block boundary
  *   pad_file_request action, pad, and UTF-8 path sent from UI to DSP
  *   pad_file_busy/status small progress and result messages returned to the UI
+ *   pad_clipboard_request internal per-instance Copy or Paste command
  *
  * The UI sends C1 + pad as MIDI note-on/off in PLAY mode only. In ARM mode a
  * clicked pad selects the first destination and the next incoming MIDI note is
@@ -38,6 +39,7 @@
 #include "WaveformEditor.hpp"
 #include "MidichopperLayout.hpp"
 #include "MidichopperView.hpp"
+#include "PadClipboardProtocol.hpp"
 #include "PadFileActionProtocol.hpp"
 #include "Parameters.hpp"
 
@@ -63,7 +65,9 @@ inline constexpr auto kClearConfirmationTimeout = std::chrono::seconds(2);
 inline constexpr auto kMeterFrameInterval = std::chrono::milliseconds(33);
 
 enum class PadMenuAction : int {
-    exportRaw = 0,
+    copy = 0,
+    paste,
+    exportRaw,
     exportProcessed,
     import,
     clear,
@@ -184,6 +188,41 @@ protected:
                 completedPad == fSelectedPad) {
                 fEditorSettings = {};
                 fEditorSettingsPad = completedPad;
+                refreshSelectedWaveform();
+            }
+            requestRepaint();
+            return;
+        }
+        if (index == kParameterPadClipboardAvailable)
+        {
+            const bool available = value >= 0.5f;
+            if (available != fPadClipboardAvailable) {
+                fPadClipboardAvailable = available;
+                requestRepaint();
+            }
+            return;
+        }
+        if (index == kParameterPadClipboardResultEvent)
+        {
+            const auto result = fPadClipboardResultEvents.consume(value);
+            if (result == midichopper::plugin::PadClipboardResultCode::none)
+                return;
+            const int completedPad = fActivePadClipboardPad;
+            const auto completedAction = fActivePadClipboardAction;
+            if (result == midichopper::plugin::PadClipboardResultCode::copied)
+                copyString(fStatus, "Pad copied");
+            else if (result == midichopper::plugin::PadClipboardResultCode::pasted)
+                copyString(fStatus, "Pad pasted");
+            else
+                copyString(fStatus, completedAction == PadClipboardAction::paste
+                    ? "Could not paste pad" : "Could not copy pad");
+            fPadClipboardBusy = false;
+            fActivePadClipboardAction = PadClipboardAction::copy;
+            fActivePadClipboardPad = -1;
+            if (result == midichopper::plugin::PadClipboardResultCode::pasted &&
+                completedPad == fSelectedPad) {
+                fEditorSettings = {};
+                fEditorSettingsPad = -1;
                 refreshSelectedWaveform();
             }
             requestRepaint();
@@ -506,14 +545,18 @@ protected:
         beginLogicalDisplay();
         const std::array contextMenuItems{
             sms::ui::ContextMenuItemView{
+                "COPY PAD", padCopyEnabled(), false},
+            sms::ui::ContextMenuItemView{
+                "PASTE PAD", padPasteEnabled(), false},
+            sms::ui::ContextMenuItemView{
                 "EXPORT WAV...", padExportEnabled(), false},
             sms::ui::ContextMenuItemView{
                 "EXPORT PROCESSED...", padProcessedExportEnabled(), false},
             sms::ui::ContextMenuItemView{
-                "IMPORT WAV...", !fPadFileBusy, false},
+                "IMPORT WAV...", !padActionBusy(), false},
             sms::ui::ContextMenuItemView{
                 fPadContextClearArmed ? "CONFIRM CLEAR" : "CLEAR PAD",
-                padContextTargetOccupied(), true},
+                !padActionBusy() && padContextTargetOccupied(), true},
         };
         const midichopper::ui::ViewState view{
             fArm, fRecordMode, fFixedLength, fPlaybackMode, fMonitor,
@@ -586,42 +629,8 @@ protected:
             {
                 fPadContextPointerCaptured = true;
                 const int item = fPadContextMenu.hit({x, y});
-                if (item == static_cast<int>(PadMenuAction::exportRaw))
-                {
-                    if (padExportEnabled())
-                        openPadFileDialog(PendingFileDialog::exportRaw);
-                    return true;
-                }
-                if (item == static_cast<int>(PadMenuAction::exportProcessed))
-                {
-                    if (padProcessedExportEnabled())
-                        openPadFileDialog(PendingFileDialog::exportProcessed);
-                    return true;
-                }
-                if (item == static_cast<int>(PadMenuAction::import))
-                {
-                    if (!fPadFileBusy)
-                        openPadFileDialog(PendingFileDialog::import);
-                    return true;
-                }
-                if (item == static_cast<int>(PadMenuAction::clear))
-                {
-                    if (!padContextTargetOccupied())
-                        return true;
-                    if (!fPadContextClearArmed)
-                    {
-                        fPadContextClearArmed = true;
-                        fPadContextClearDeadline = std::chrono::steady_clock::now() +
-                                                   kClearConfirmationTimeout;
-                        setLocalStatus("Click CLEAR PAD again to confirm");
-                    }
-                    else
-                    {
-                        requestPadClear();
-                        closePadContextMenu();
-                        setLocalStatus("Pad cleared");
-                    }
-                    requestRepaint();
+                if (item >= 0 && item < static_cast<int>(PadMenuAction::count)) {
+                    invokePadMenuAction(static_cast<PadMenuAction>(item));
                     return true;
                 }
                 closePadContextMenu();
@@ -905,14 +914,8 @@ protected:
         if (fPadContextMenuOpen)
         {
             int item = fPadContextMenu.hit({x, y});
-            const bool enabled = item == static_cast<int>(PadMenuAction::exportRaw)
-                ? padExportEnabled()
-                : item == static_cast<int>(PadMenuAction::exportProcessed)
-                    ? padProcessedExportEnabled()
-                    : item == static_cast<int>(PadMenuAction::import)
-                        ? !fPadFileBusy
-                        : item == static_cast<int>(PadMenuAction::clear)
-                            ? padContextTargetOccupied() : false;
+            const bool enabled = item >= 0 && item < static_cast<int>(PadMenuAction::count) &&
+                padMenuActionEnabled(static_cast<PadMenuAction>(item));
             if (!enabled)
                 item = sms::ui::kNoInteractiveTarget;
             if (fPadContextHover.update(item))
@@ -1013,6 +1016,10 @@ private:
     std::chrono::steady_clock::time_point fPadContextClearDeadline{};
     bool fPadContextPointerCaptured;
     bool fPadFileBusy = false;
+    bool fPadClipboardAvailable = false;
+    bool fPadClipboardBusy = false;
+    PadClipboardAction fActivePadClipboardAction = PadClipboardAction::copy;
+    int fActivePadClipboardPad = -1;
     bool fSaveDialogAvailable = true;
     PendingFileDialog fPendingFileDialog = PendingFileDialog::none;
     int fPendingFilePad = -1;
@@ -1030,6 +1037,7 @@ private:
     bool fCaptureTargetRequestAlternateHalf;
     PlaybackPadEventTracker fPlaybackPadEvents;
     midichopper::plugin::PadFileResultEventTracker fPadFileResultEvents;
+    midichopper::plugin::PadClipboardResultEventTracker fPadClipboardResultEvents;
     std::array<char, midichopper::kPadsPerBank> fPadState;
     std::array<char, midichopper::kPadsPerBank> fPadStatus;
     sms::dsp::SamplePlaybackSettings fEditorSettings{};
@@ -1080,7 +1088,23 @@ private:
 
     [[nodiscard]] bool padExportEnabled() const noexcept
     {
-        return fSaveDialogAvailable && !fPadFileBusy && padContextTargetOccupied();
+        return fSaveDialogAvailable && !padActionBusy() && padContextTargetOccupied();
+    }
+
+    [[nodiscard]] bool padActionBusy() const noexcept
+    {
+        return fPadFileBusy || fPadClipboardBusy;
+    }
+
+    [[nodiscard]] bool padCopyEnabled() const noexcept
+    {
+        return !padActionBusy() && padContextTargetOccupied();
+    }
+
+    [[nodiscard]] bool padPasteEnabled() const noexcept
+    {
+        return !padActionBusy() && fPadClipboardAvailable &&
+               fPadContextMenuOpen && fPadContextTarget >= 0;
     }
 
     [[nodiscard]] bool padProcessedExportEnabled() const noexcept
@@ -1095,10 +1119,63 @@ private:
                settings.sustainLevel != 1.0f || settings.releaseSeconds != 0.0f;
     }
 
+    [[nodiscard]] bool padMenuActionEnabled(const PadMenuAction action) const noexcept
+    {
+        switch (action) {
+        case PadMenuAction::copy: return padCopyEnabled();
+        case PadMenuAction::paste: return padPasteEnabled();
+        case PadMenuAction::exportRaw: return padExportEnabled();
+        case PadMenuAction::exportProcessed: return padProcessedExportEnabled();
+        case PadMenuAction::import: return !padActionBusy();
+        case PadMenuAction::clear:
+            return !padActionBusy() && padContextTargetOccupied();
+        case PadMenuAction::count: return false;
+        }
+        return false;
+    }
+
+    void invokePadMenuAction(const PadMenuAction action)
+    {
+        if (!padMenuActionEnabled(action))
+            return;
+        switch (action) {
+        case PadMenuAction::copy:
+            requestPadClipboard(PadClipboardAction::copy);
+            return;
+        case PadMenuAction::paste:
+            requestPadClipboard(PadClipboardAction::paste);
+            return;
+        case PadMenuAction::exportRaw:
+            openPadFileDialog(PendingFileDialog::exportRaw);
+            return;
+        case PadMenuAction::exportProcessed:
+            openPadFileDialog(PendingFileDialog::exportProcessed);
+            return;
+        case PadMenuAction::import:
+            openPadFileDialog(PendingFileDialog::import);
+            return;
+        case PadMenuAction::clear:
+            if (!fPadContextClearArmed) {
+                fPadContextClearArmed = true;
+                fPadContextClearDeadline = std::chrono::steady_clock::now() +
+                                           kClearConfirmationTimeout;
+                setLocalStatus("Click CLEAR PAD again to confirm");
+            } else {
+                requestPadClear();
+                closePadContextMenu();
+                setLocalStatus("Pad cleared");
+            }
+            requestRepaint();
+            return;
+        case PadMenuAction::count:
+            return;
+        }
+    }
+
     void openPadFileDialog(const PendingFileDialog action)
     {
 #if DISTRHO_UI_FILE_BROWSER
-        if (fPadContextTarget < 0 || fPadFileBusy)
+        if (fPadContextTarget < 0 || padActionBusy())
             return;
         FileBrowserOptions options;
         const bool saving = action == PendingFileDialog::exportRaw ||
@@ -1123,6 +1200,27 @@ private:
                 setLocalStatus("Open dialog unavailable");
             }
         }
+        requestRepaint();
+#else
+        static_cast<void>(action);
+#endif
+    }
+
+    void requestPadClipboard(const PadClipboardAction action)
+    {
+#if DISTRHO_PLUGIN_WANT_STATE
+        if (fPadContextTarget < 0 || padActionBusy())
+            return;
+        const int pad = fPadContextTarget;
+        fPadClipboardBusy = true;
+        fActivePadClipboardAction = action;
+        fActivePadClipboardPad = pad;
+        closePadContextMenu();
+        setLocalStatus(action == PadClipboardAction::copy
+            ? "Copying pad..." : "Pasting pad...");
+        const std::string request = midichopper::plugin::encodePadClipboardRequest(
+            action, static_cast<std::uint32_t>(pad));
+        setState("pad_clipboard_request", request.c_str());
         requestRepaint();
 #else
         static_cast<void>(action);

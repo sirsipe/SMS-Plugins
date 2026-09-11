@@ -15,7 +15,7 @@ For focused iteration, use `ctest --test-dir build --output-on-failure -R NAME`:
 
 | CTest name | Coverage |
 | --- | --- |
-| `sampler-core` | Capture boundaries/pre-roll, banks/layouts, storage, voices, regions/ADSR, resampling, lifecycle |
+| `sampler-core` | Capture, banks/layouts, storage, voices, regions/ADSR, resampling, clipboard snapshots, lifecycle |
 | `state-codec` | Audio and editor-state round trips, malformed/corrupt state |
 | `ui-geometry` | Pad mapping, waveform geometry, hit testing and editing |
 | `wav-codec` | WAV formats, validation, file actions, offline render, real-time access gate |
@@ -82,6 +82,9 @@ Choose checks matching the change:
   voice limits, and stereo output.
 - UI/editor: verify drawing/resizing and input mapping; select pads, adjust
   region/ADSR, retrigger, and check that both waveform and sound match.
+- Pad clipboard: Copy an edited occupied pad, then alter or clear its source and
+  Paste to empty and occupied targets. Confirm stereo audio, cut points, and ADSR
+  match the copy-time snapshot, and that an empty clipboard disables Paste.
 - State: save populated pads and editor settings using the host's state-saving
   facility, close, reload that state, and compare playback/settings. Inspect the
   installed host's help for saving. Also check DAW project restoration when the

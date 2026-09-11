@@ -1,7 +1,8 @@
 # Pad context menu
 
-Audience: agents changing pad interactions. The shared menu, Clear Pad, and WAV
-actions are implemented; later actions remain approved direction. It is related to
+Audience: agents changing pad interactions. The shared menu, Clear Pad, WAV, and
+Copy/Paste actions are implemented; later actions remain approved direction. It
+is related to
 [issue #10](https://github.com/sirsipe/SMS-Plugins/issues/10), which requests
 copy, delete, MIDI assignment, and optional color. The menu is a general pad
 action surface; WAV operations are one consumer, not its defining purpose.
@@ -61,3 +62,26 @@ Maintain coverage for every action and the menu lifecycle in both Play and Sampl
 Editor. Verify target selection without audition, pad layouts and banks,
 disabled entries, hover transitions, dismissal by mapped MIDI playback and
 other interactions, canvas-edge placement, resizing, and UI scaling.
+
+**Copy Pad** is enabled only for an occupied target. It takes a private snapshot
+of the pad's stereo sample, source sample rate, and all current non-destructive
+region and ADSR settings. Later edits or clearing the source do not change that
+snapshot. A failed Copy, including an empty source, leaves the previous snapshot
+available.
+
+**Paste Pad** is enabled whenever that snapshot exists, including on an empty
+target. It immediately replaces the target's audio and region/ADSR settings with
+the snapshot; pasting onto an occupied pad has no confirmation step. Copy and
+Paste use an internal clipboard owned by one plug-in instance. It is not the OS
+clipboard, cannot cross plug-in instances, is not part of saved DAW state, and
+is lost when the instance is destroyed.
+
+The snapshot and replacement run outside the audio callback under the existing
+real-time access gate. The callback emits silence while access is granted; it
+never allocates, blocks, locks, or copies sample data. Keep clipboard storage and
+mutation framework-neutral in `src/core`; DPF state and output parameters carry
+only bounded commands and completion/availability signals. Paste publishes fresh
+editor and waveform state through the same path as WAV Import. Consequently the
+documented [DPF VST3 DSP-to-UI limitation](DPF-VST3-CONSTRAINTS.md) also applies:
+VST3 playback receives the pasted data, but its open editor may not refresh;
+LV2 is the supported reference workflow.
