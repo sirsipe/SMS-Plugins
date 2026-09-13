@@ -146,7 +146,9 @@ private:
         canvas_.roundedRect(uiLayout::menuButton.x, uiLayout::menuButton.y,
                             uiLayout::menuButton.width, uiLayout::menuButton.height, 6.0f);
         canvas_.fillColor(state_.menuOpen ? colors.surfaceRaised :
-                          (menuHovered ? colors.activityPlayback.withAlpha(0.12f) : colors.canvas));
+                          (menuHovered
+                              ? colors.activityPlayback.withAlpha(colors.hoverFillAlpha)
+                              : colors.canvas));
         canvas_.fill();
         canvas_.strokeColor(menuColor);
         canvas_.strokeWidth(1.0f);

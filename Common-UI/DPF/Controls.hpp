@@ -56,7 +56,7 @@ inline void drawSegment(DGL_NAMESPACE::NanoVG& canvas,
     canvas.beginPath();
     canvas.roundedRect(x, y, width, height, 7.0f);
     canvas.fillColor(active ? accent.withAlpha(0.20f) :
-                     (hovered ? accent.withAlpha(0.12f) : colors.surfaceRaised));
+                     (hovered ? accent.withAlpha(colors.hoverFillAlpha) : colors.surfaceRaised));
     canvas.fill();
     canvas.strokeColor(active || hovered ? accent : colors.outline);
     canvas.strokeWidth(active ? 1.5f : (hovered ? 1.25f : colors.outlineWidth));
@@ -97,7 +97,7 @@ inline void drawSlider(DGL_NAMESPACE::NanoVG& canvas,
     canvas.fillColor(accent);
     canvas.fill();
     if (hovered) {
-        canvas.strokeColor(accent.withAlpha(0.75f));
+        canvas.strokeColor(accent.withAlpha(colors.hoverHaloAlpha));
         canvas.strokeWidth(3.0f);
         canvas.stroke();
     }
@@ -113,7 +113,7 @@ inline void drawAction(DGL_NAMESPACE::NanoVG& canvas,
     canvas.beginPath();
     canvas.roundedRect(x, y, width, height, colors.controlRadius);
     canvas.fillColor(active ? accent.withAlpha(0.28f) :
-                     (hovered ? accent.withAlpha(0.12f) : colors.surfaceRaised));
+                     (hovered ? accent.withAlpha(colors.hoverFillAlpha) : colors.surfaceRaised));
     canvas.fill();
     canvas.strokeColor(accent.withAlpha(active || hovered ? 1.0f : 0.65f));
     canvas.strokeWidth(hovered ? 1.5f : colors.outlineWidth);
