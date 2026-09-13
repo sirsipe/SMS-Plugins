@@ -5,6 +5,7 @@
 #include "Configuration.hpp"
 #include "ContextMenu.hpp"
 #include "DSP/SamplePlaybackSettings.hpp"
+#include "Interaction.hpp"
 
 #include <array>
 #include <span>
@@ -33,7 +34,7 @@ struct ViewState {
     bool padContextMenuOpen = false;
     sms::ui::ContextMenuGeometry padContextMenu;
     std::span<const sms::ui::ContextMenuItemView> padContextMenuItems;
-    int hoveredContextMenuItem = -1;
+    sms::ui::InteractiveTarget hoveredTarget;
     bool editorMode = false;
     bool hasWaveform = false;
     std::array<float, 2> inputLevels{};

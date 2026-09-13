@@ -11,10 +11,10 @@ SMS-Midichopper separates the sampler from the plug-in format and UI:
   engine. Start with `Parameters.hpp` for parameter indices/ranges,
   `MidichopperPlugin.cpp` for host callbacks and symbols, `StateCodec.*` for
   sample serialization, and `DistrhoPluginInfo.h` for plugin identity/ports.
-- `src/ui/MidichopperUI.cpp` owns host communication and interaction state,
-  while `MidichopperView.cpp` composes the product-specific drawing.
-- `tests` exercises engine behavior, state, WAV handling, and UI geometry
-  without a plug-in host.
+- `src/ui/MidichopperUI.cpp` owns host communication,
+  `MidichopperInteraction.hpp` resolves one enabled hover/click target, and
+  `MidichopperView.cpp` draws it.
+- `tests` covers engine behavior, state, WAV handling, and host-free UI geometry.
 - `../Common-Src` contains plug-in-independent sample-region, ADSR, waveform
   summary, state-codec, and UI geometry components intended for reuse by future
   SMS plug-ins.

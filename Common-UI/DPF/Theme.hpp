@@ -23,6 +23,9 @@ struct Theme {
     float panelRadius = 12.0f;
     float controlRadius = 6.0f;
     float outlineWidth = 1.0f;
+    float hoverFillAlpha = 0.07f;
+    float hoverMenuFillAlpha = 0.10f;
+    float hoverHaloAlpha = 0.50f;
 };
 
 inline const Theme& theme() noexcept

@@ -27,7 +27,7 @@ inline void drawContextMenu(DGL_NAMESPACE::NanoVG& canvas,
             canvas.beginPath();
             canvas.roundedRect(bounds.x, bounds.y, bounds.width, bounds.height,
                                colors.controlRadius);
-            canvas.fillColor(accent.withAlpha(0.18f));
+            canvas.fillColor(accent.withAlpha(colors.hoverMenuFillAlpha));
             canvas.fill();
         }
 
