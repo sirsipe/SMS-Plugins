@@ -32,14 +32,46 @@ inline constexpr sms::ui::Rect armMode{804.0f, 145.0f, 108.0f, 42.0f};
 inline constexpr sms::ui::Rect sequentialMode{690.0f, 220.0f, 106.0f, 38.0f};
 inline constexpr sms::ui::Rect fixedMode{804.0f, 220.0f, 108.0f, 38.0f};
 inline constexpr sms::ui::Rect fixedLength{690.0f, 298.0f, 222.0f, 36.0f};
-inline constexpr sms::ui::Rect oneShotMode{690.0f, 352.0f, 106.0f, 36.0f};
-inline constexpr sms::ui::Rect gatedMode{804.0f, 352.0f, 108.0f, 36.0f};
-inline constexpr sms::ui::Rect voiceLimit{690.0f, 410.0f, 222.0f, 28.0f};
-inline constexpr sms::ui::Rect preRoll{690.0f, 448.0f, 222.0f, 28.0f};
-inline constexpr sms::ui::Rect monitor{690.0f, 480.0f, 222.0f, 34.0f};
-inline constexpr sms::ui::Rect finalizeAction{690.0f, 540.0f, 70.0f, 34.0f};
-inline constexpr sms::ui::Rect undoAction{766.0f, 540.0f, 70.0f, 34.0f};
-inline constexpr sms::ui::Rect clearAction{842.0f, 540.0f, 70.0f, 34.0f};
+inline constexpr sms::ui::Rect oneShotMode{690.0f, 220.0f, 106.0f, 38.0f};
+inline constexpr sms::ui::Rect gatedMode{804.0f, 220.0f, 108.0f, 38.0f};
+inline constexpr sms::ui::Rect voiceLimit{690.0f, 298.0f, 222.0f, 28.0f};
+
+[[nodiscard]] constexpr sms::ui::Rect preRoll(const bool fixedCapture) noexcept
+{
+    return {690.0f, fixedCapture ? 352.0f : 298.0f, 222.0f, 28.0f};
+}
+
+[[nodiscard]] constexpr sms::ui::Rect monitor(const bool armed,
+                                               const bool fixedCapture) noexcept
+{
+    return {690.0f, armed && fixedCapture ? 410.0f : 352.0f, 222.0f, 34.0f};
+}
+
+[[nodiscard]] constexpr float chopLabelY(const bool armed,
+                                         const bool fixedCapture) noexcept
+{
+    return armed && fixedCapture ? 452.0f : 394.0f;
+}
+
+[[nodiscard]] constexpr sms::ui::Rect finalizeAction(const bool armed,
+                                                     const bool fixedCapture) noexcept
+{
+    return {690.0f, armed && fixedCapture ? 470.0f : 412.0f, 70.0f, 34.0f};
+}
+
+[[nodiscard]] constexpr sms::ui::Rect undoAction(const bool armed,
+                                                 const bool fixedCapture) noexcept
+{
+    const auto finalize = finalizeAction(armed, fixedCapture);
+    return {766.0f, finalize.y, 70.0f, 34.0f};
+}
+
+[[nodiscard]] constexpr sms::ui::Rect clearAction(const bool armed,
+                                                  const bool fixedCapture) noexcept
+{
+    const auto finalize = finalizeAction(armed, fixedCapture);
+    return {842.0f, finalize.y, 70.0f, 34.0f};
+}
 
 [[nodiscard]] constexpr sms::ui::Rect menuOption(const int index) noexcept
 {

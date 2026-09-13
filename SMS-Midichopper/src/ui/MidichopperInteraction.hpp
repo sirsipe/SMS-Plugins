@@ -56,6 +56,7 @@ struct InteractionContext {
     bool menuOpen = false;
     bool padContextMenuOpen = false;
     bool armed = false;
+    bool fixedCapture = false;
     bool captureActive = false;
     int padLayout = 0;
     sms::ui::ContextMenuGeometry padContextMenu;
@@ -141,29 +142,35 @@ interactiveTargetAt(const sms::ui::Point point, const InteractionContext& contex
             return target(InteractiveType::pad, localPad);
     }
 
-    struct FixedTarget {
-        sms::ui::Rect bounds;
-        InteractiveType type;
-    };
-    const FixedTarget fixedTargets[] = {
-        {uiLayout::playMode, InteractiveType::playMode},
-        {uiLayout::armMode, InteractiveType::armMode},
-        {uiLayout::sequentialMode, InteractiveType::sequentialMode},
-        {uiLayout::fixedMode, InteractiveType::fixedMode},
-        {uiLayout::fixedLength, InteractiveType::fixedLength},
-        {uiLayout::oneShotMode, InteractiveType::oneShotMode},
-        {uiLayout::gatedMode, InteractiveType::gatedMode},
-        {uiLayout::voiceLimit, InteractiveType::voiceLimit},
-        {uiLayout::preRoll, InteractiveType::preRoll},
-        {uiLayout::monitor, InteractiveType::monitor},
-        {uiLayout::finalizeAction, InteractiveType::finalizeAction},
-        {uiLayout::undoAction, InteractiveType::undoAction},
-        {uiLayout::clearAction, InteractiveType::clearAction},
-    };
-    for (const auto& item : fixedTargets) {
-        if (item.bounds.contains(point))
-            return target(item.type);
+    if (uiLayout::playMode.contains(point))
+        return target(InteractiveType::playMode);
+    if (uiLayout::armMode.contains(point))
+        return target(InteractiveType::armMode);
+    if (context.armed) {
+        if (uiLayout::sequentialMode.contains(point))
+            return target(InteractiveType::sequentialMode);
+        if (uiLayout::fixedMode.contains(point))
+            return target(InteractiveType::fixedMode);
+        if (context.fixedCapture && uiLayout::fixedLength.contains(point))
+            return target(InteractiveType::fixedLength);
+        if (uiLayout::preRoll(context.fixedCapture).contains(point))
+            return target(InteractiveType::preRoll);
+    } else {
+        if (uiLayout::oneShotMode.contains(point))
+            return target(InteractiveType::oneShotMode);
+        if (uiLayout::gatedMode.contains(point))
+            return target(InteractiveType::gatedMode);
+        if (uiLayout::voiceLimit.contains(point))
+            return target(InteractiveType::voiceLimit);
     }
+    if (uiLayout::monitor(context.armed, context.fixedCapture).contains(point))
+        return target(InteractiveType::monitor);
+    if (uiLayout::finalizeAction(context.armed, context.fixedCapture).contains(point))
+        return target(InteractiveType::finalizeAction);
+    if (uiLayout::undoAction(context.armed, context.fixedCapture).contains(point))
+        return target(InteractiveType::undoAction);
+    if (uiLayout::clearAction(context.armed, context.fixedCapture).contains(point))
+        return target(InteractiveType::clearAction);
     return sms::ui::kNoInteractiveTarget;
 }
 

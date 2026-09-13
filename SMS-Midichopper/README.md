@@ -61,21 +61,20 @@ UI follows it.
 Layout changes regroup slots without changing notes. All Banks limits the
 effective base to 64 so every layout fits MIDI 0–127.
 
-The pad layout can be switched between 16 pads (4×4), 12 pads (3×4), and 8 pads
-(4×2). Pad numbering runs from the bottom row upward to match common hardware.
-Each bank retains 16 storage slots, so switching to a smaller layout hides the
-unused slots without deleting their samples. Sequential capture skips hidden
-slots and continues automatically into the next bank in Selected Bank mode. In
-All Banks mode, capture and display instead use contiguous layout-sized pages.
+The pad layout supports 16 pads (4×4), 12 pads (3×4), and 8 pads (4×2), numbered
+from the bottom row. Banks retain 16 slots; smaller layouts hide slots without
+deleting samples. Sequential capture skips hidden slots and continues into the
+next bank in Selected Bank mode. All Banks uses contiguous layout-sized pages.
 
 In Play, open **Sample Editor** to edit a pad's region and ADSR non-destructively.
 Side-panel clicks select and load pads without auditioning them. MIDI playback
 selects populated pads, including retriggers. The
 editor is unavailable in Arm so capture controls remain visible.
 
-Hovering highlights the one enabled control under the pointer. Use the mouse
-wheel over Fixed Length, Max Voices, Pre-roll, or any Sample Editor ADSR slider
-for precise adjustments; dragging and clicking continue to work as before.
+Hovering highlights the enabled control under the pointer. The mouse wheel
+adjusts Fixed Length, Max Voices, Pre-roll, and editor ADSR sliders.
+Arm shows Capture Mode and Pre-roll, plus Fixed Length only for Fixed capture.
+Play shows playback mode and Max Voices. Hidden controls retain their values.
 
 In Play or Sample Editor, right-click a pad to copy, paste, import, export, or clear it. See
 [WAV files](Docs/WAV-FILES.md) for formats and Linux requirements. **Clear Pad**

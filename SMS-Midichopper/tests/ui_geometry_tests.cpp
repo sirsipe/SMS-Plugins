@@ -108,9 +108,24 @@ void interactionTargets()
               interaction::InteractiveType::menuButton),
           "hamburger button resolves to one hover target");
     check(interaction::isTarget(
+              interaction::interactiveTargetAt(center(layout::oneShotMode), context),
+              interaction::InteractiveType::oneShotMode) &&
+          interaction::isTarget(
+              interaction::interactiveTargetAt(center(layout::voiceLimit), context),
+              interaction::InteractiveType::voiceLimit),
+          "play mode exposes only its playback controls");
+    check(interaction::isTarget(
+              interaction::interactiveTargetAt(center(layout::monitor(false, false)), context),
+              interaction::InteractiveType::monitor) &&
+          interaction::isTarget(
+              interaction::interactiveTargetAt(
+                  center(layout::finalizeAction(false, false)), context),
+              interaction::InteractiveType::finalizeAction),
+          "play mode resolves its compact monitor and action positions");
+    check(!interaction::isTarget(
               interaction::interactiveTargetAt(center(layout::fixedLength), context),
               interaction::InteractiveType::fixedLength),
-          "main-view slider resolves to its control target");
+          "play mode does not expose fixed capture length");
 
     const sms::ui::BankedPadLayout pads(0);
     const int localPad = 0;
@@ -137,7 +152,41 @@ void interactionTargets()
     context.armed = true;
     check(!interaction::interactiveTargetAt(center(layout::openEditor), context).valid(),
           "disabled editor button is not hoverable");
+    check(interaction::isTarget(
+              interaction::interactiveTargetAt(center(layout::sequentialMode), context),
+              interaction::InteractiveType::sequentialMode) &&
+          interaction::isTarget(
+              interaction::interactiveTargetAt(center(layout::preRoll(false)), context),
+              interaction::InteractiveType::preRoll),
+          "sequential capture exposes capture mode and compact pre-roll");
+    check(!interaction::isTarget(
+              interaction::interactiveTargetAt(center(layout::oneShotMode), context),
+              interaction::InteractiveType::oneShotMode) &&
+          !interaction::isTarget(
+              interaction::interactiveTargetAt(center(layout::voiceLimit), context),
+              interaction::InteractiveType::voiceLimit),
+          "arm mode does not expose playback controls");
+    context.fixedCapture = true;
+    check(interaction::isTarget(
+              interaction::interactiveTargetAt(center(layout::fixedLength), context),
+              interaction::InteractiveType::fixedLength) &&
+          interaction::isTarget(
+              interaction::interactiveTargetAt(center(layout::preRoll(true)), context),
+              interaction::InteractiveType::preRoll),
+          "fixed capture inserts length before pre-roll");
+    check(interaction::isTarget(
+              interaction::interactiveTargetAt(center(layout::monitor(true, true)), context),
+              interaction::InteractiveType::monitor) &&
+          interaction::isTarget(
+              interaction::interactiveTargetAt(
+                  center(layout::clearAction(true, true)), context),
+              interaction::InteractiveType::clearAction),
+          "fixed capture resolves shifted monitor and action positions");
+    check(layout::preRoll(false).y == layout::fixedLength.y &&
+          layout::preRoll(true).y > layout::fixedLength.y + layout::fixedLength.height,
+          "pre-roll occupies the fixed-length slot only when length is hidden");
     context.armed = false;
+    context.fixedCapture = false;
     context.editorMode = true;
     const auto waveformTarget = interaction::interactiveTargetAt(
         {layout::editorWaveform.x + 1.0f, layout::editorWaveform.y + 20.0f}, context);

@@ -413,84 +413,92 @@ private:
         canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_LEFT |
                           DGL_NAMESPACE::NanoVG::ALIGN_TOP);
         canvas_.fillColor(colors.contentSecondary);
-        canvas_.text(690.0f, 204.0f, "CAPTURE MODE", nullptr);
-        sms::ui::dpf::drawSegment(canvas_, uiLayout::sequentialMode, "SEQUENTIAL",
-            state_.captureMode < 0.5f, colors.activityPlayback,
-            hovered(InteractiveType::sequentialMode));
-        sms::ui::dpf::drawSegment(canvas_, uiLayout::fixedMode, "FIXED",
-            state_.captureMode >= 0.5f, colors.activityPlayback,
-            hovered(InteractiveType::fixedMode));
+        const bool fixedCapture = state_.captureMode >= 0.5f;
+        if (state_.armed) {
+            canvas_.text(690.0f, 204.0f, "CAPTURE MODE", nullptr);
+            sms::ui::dpf::drawSegment(canvas_, uiLayout::sequentialMode, "SEQUENTIAL",
+                !fixedCapture, colors.activityPlayback,
+                hovered(InteractiveType::sequentialMode));
+            sms::ui::dpf::drawSegment(canvas_, uiLayout::fixedMode, "FIXED",
+                fixedCapture, colors.activityPlayback, hovered(InteractiveType::fixedMode));
 
-        const float length = std::clamp(state_.fixedLengthSeconds,
-            plugin::parameterRanges::fixedLengthSeconds.minimum,
-            plugin::parameterRanges::fixedLengthSeconds.maximum);
-        canvas_.text(690.0f, 278.0f, "FIXED LENGTH", nullptr);
-        char lengthText[32];
-        std::snprintf(lengthText, sizeof(lengthText), "%.2f s", length);
-        canvas_.fontSize(12.0f);
-        canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_RIGHT |
-                          DGL_NAMESPACE::NanoVG::ALIGN_TOP);
-        canvas_.fillColor(colors.contentPrimary);
-        canvas_.text(912.0f, 278.0f, lengthText, nullptr);
-        sms::ui::dpf::drawSlider(canvas_, 690.0f, 298.0f, 222.0f,
-            length / plugin::parameterRanges::fixedLengthSeconds.maximum,
-            colors.activityPlayback, hovered(InteractiveType::fixedLength));
+            if (fixedCapture) {
+                const float length = std::clamp(state_.fixedLengthSeconds,
+                    plugin::parameterRanges::fixedLengthSeconds.minimum,
+                    plugin::parameterRanges::fixedLengthSeconds.maximum);
+                canvas_.text(690.0f, 278.0f, "FIXED LENGTH", nullptr);
+                char lengthText[32];
+                std::snprintf(lengthText, sizeof(lengthText), "%.2f s", length);
+                canvas_.fontSize(12.0f);
+                canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_RIGHT |
+                                  DGL_NAMESPACE::NanoVG::ALIGN_TOP);
+                canvas_.fillColor(colors.contentPrimary);
+                canvas_.text(912.0f, 278.0f, lengthText, nullptr);
+                sms::ui::dpf::drawSlider(canvas_, 690.0f, 298.0f, 222.0f,
+                    length / plugin::parameterRanges::fixedLengthSeconds.maximum,
+                    colors.activityPlayback, hovered(InteractiveType::fixedLength));
+            }
 
-        canvas_.fontSize(11.0f);
-        canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_LEFT |
-                          DGL_NAMESPACE::NanoVG::ALIGN_TOP);
-        canvas_.fillColor(colors.contentSecondary);
-        canvas_.text(690.0f, 334.0f, "PLAYBACK", nullptr);
-        sms::ui::dpf::drawSegment(canvas_, uiLayout::oneShotMode, "ONE SHOT",
-            state_.playbackMode < 0.5f, colors.activityPlayback,
-            hovered(InteractiveType::oneShotMode));
-        sms::ui::dpf::drawSegment(canvas_, uiLayout::gatedMode, "GATE",
-            state_.playbackMode >= 0.5f, colors.activityPlayback,
-            hovered(InteractiveType::gatedMode));
-        canvas_.text(690.0f, 400.0f, "MAX VOICES", nullptr);
-        char voices[8];
-        std::snprintf(voices, sizeof(voices), "%d", state_.maxVoices);
-        canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_RIGHT |
-                          DGL_NAMESPACE::NanoVG::ALIGN_TOP);
-        canvas_.fillColor(colors.contentPrimary);
-        canvas_.text(912.0f, 400.0f, voices, nullptr);
-        sms::ui::dpf::drawSlider(canvas_, 690.0f, 419.0f, 222.0f,
-            static_cast<float>(state_.maxVoices - 1) /
-            (plugin::parameterRanges::maxVoices.maximum - 1.0f), colors.activityPlayback,
-            hovered(InteractiveType::voiceLimit));
+            const auto preRollBounds = uiLayout::preRoll(fixedCapture);
+            canvas_.fontSize(11.0f);
+            canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_LEFT |
+                              DGL_NAMESPACE::NanoVG::ALIGN_TOP);
+            canvas_.fillColor(colors.contentSecondary);
+            canvas_.text(preRollBounds.x, preRollBounds.y - 10.0f, "PRE-ROLL", nullptr);
+            char preRoll[24];
+            std::snprintf(preRoll, sizeof(preRoll), "%d ms",
+                          static_cast<int>(std::lround(std::clamp(state_.preRollMs,
+                              plugin::parameterRanges::preRollMs.minimum,
+                              plugin::parameterRanges::preRollMs.maximum))));
+            canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_RIGHT |
+                              DGL_NAMESPACE::NanoVG::ALIGN_TOP);
+            canvas_.fillColor(colors.contentPrimary);
+            canvas_.text(preRollBounds.x + preRollBounds.width,
+                         preRollBounds.y - 10.0f, preRoll, nullptr);
+            sms::ui::dpf::drawSlider(canvas_, preRollBounds.x,
+                preRollBounds.y + 9.0f, preRollBounds.width,
+                std::clamp(state_.preRollMs / plugin::parameterRanges::preRollMs.maximum,
+                           0.0f, 1.0f), colors.controlAccent,
+                hovered(InteractiveType::preRoll));
+        } else {
+            canvas_.text(690.0f, 204.0f, "PLAYBACK", nullptr);
+            sms::ui::dpf::drawSegment(canvas_, uiLayout::oneShotMode, "ONE SHOT",
+                state_.playbackMode < 0.5f, colors.activityPlayback,
+                hovered(InteractiveType::oneShotMode));
+            sms::ui::dpf::drawSegment(canvas_, uiLayout::gatedMode, "GATE",
+                state_.playbackMode >= 0.5f, colors.activityPlayback,
+                hovered(InteractiveType::gatedMode));
+            canvas_.text(690.0f, 278.0f, "MAX VOICES", nullptr);
+            char voices[8];
+            std::snprintf(voices, sizeof(voices), "%d", state_.maxVoices);
+            canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_RIGHT |
+                              DGL_NAMESPACE::NanoVG::ALIGN_TOP);
+            canvas_.fillColor(colors.contentPrimary);
+            canvas_.text(912.0f, 278.0f, voices, nullptr);
+            sms::ui::dpf::drawSlider(canvas_, 690.0f, 307.0f, 222.0f,
+                static_cast<float>(state_.maxVoices - 1) /
+                (plugin::parameterRanges::maxVoices.maximum - 1.0f),
+                colors.activityPlayback, hovered(InteractiveType::voiceLimit));
+        }
 
-        canvas_.fontSize(11.0f);
-        canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_LEFT |
-                          DGL_NAMESPACE::NanoVG::ALIGN_TOP);
-        canvas_.fillColor(colors.contentSecondary);
-        canvas_.text(690.0f, 438.0f, "PRE-ROLL", nullptr);
-        char preRoll[24];
-        std::snprintf(preRoll, sizeof(preRoll), "%d ms",
-                      static_cast<int>(std::lround(std::clamp(state_.preRollMs,
-                          plugin::parameterRanges::preRollMs.minimum,
-                          plugin::parameterRanges::preRollMs.maximum))));
-        canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_RIGHT |
-                          DGL_NAMESPACE::NanoVG::ALIGN_TOP);
-        canvas_.fillColor(colors.contentPrimary);
-        canvas_.text(912.0f, 438.0f, preRoll, nullptr);
-        sms::ui::dpf::drawSlider(canvas_, 690.0f, 457.0f, 222.0f,
-            std::clamp(state_.preRollMs / plugin::parameterRanges::preRollMs.maximum,
-                       0.0f, 1.0f), colors.controlAccent,
-            hovered(InteractiveType::preRoll));
+        const auto monitorBounds = uiLayout::monitor(state_.armed, fixedCapture);
         const char* monitor = state_.monitorInput >= 0.5f ? "MONITOR  ON" : "MONITOR  OFF";
-        sms::ui::dpf::drawSegment(canvas_, uiLayout::monitor, monitor,
+        sms::ui::dpf::drawSegment(canvas_, monitorBounds, monitor,
             state_.monitorInput >= 0.5f, colors.activityPlayback,
             hovered(InteractiveType::monitor));
         canvas_.fontSize(11.0f);
         canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_LEFT |
                           DGL_NAMESPACE::NanoVG::ALIGN_TOP);
         canvas_.fillColor(colors.contentSecondary);
-        canvas_.text(690.0f, 522.0f, "CHOP", nullptr);
-        sms::ui::dpf::drawAction(canvas_, uiLayout::finalizeAction, "FINALIZE",
+        canvas_.text(690.0f, uiLayout::chopLabelY(state_.armed, fixedCapture), "CHOP", nullptr);
+        sms::ui::dpf::drawAction(canvas_,
+            uiLayout::finalizeAction(state_.armed, fixedCapture), "FINALIZE",
             colors.activityPlayback, false, hovered(InteractiveType::finalizeAction));
-        sms::ui::dpf::drawAction(canvas_, uiLayout::undoAction, "UNDO",
+        sms::ui::dpf::drawAction(canvas_,
+            uiLayout::undoAction(state_.armed, fixedCapture), "UNDO",
             colors.controlAccent, false, hovered(InteractiveType::undoAction));
-        sms::ui::dpf::drawAction(canvas_, uiLayout::clearAction,
+        sms::ui::dpf::drawAction(canvas_,
+            uiLayout::clearAction(state_.armed, fixedCapture),
                                  state_.clearArmed ? "CONFIRM" : "CLEAR",
             colors.intentDanger, state_.clearArmed, hovered(InteractiveType::clearAction));
     }

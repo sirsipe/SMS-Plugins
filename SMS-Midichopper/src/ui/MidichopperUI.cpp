@@ -815,7 +815,7 @@ protected:
             }
             if (midichopper::ui::isTarget(clicked, midichopper::ui::InteractiveType::preRoll))
             {
-                const float t = normalizedX(x, uiLayout::preRoll);
+                const float t = normalizedX(x, uiLayout::preRoll(fRecordMode >= 0.5f));
                 setControlValue(kParameterPreRollMs,
                                 t * parameterRanges::preRollMs.maximum);
                 return true;
@@ -1113,6 +1113,7 @@ private:
         context.menuOpen = fMenuOpen;
         context.padContextMenuOpen = fPadContextMenuOpen;
         context.armed = fArm;
+        context.fixedCapture = fRecordMode >= 0.5f;
         context.captureActive = fArm && fCurrentPad >= 0;
         context.padLayout = fLayout;
         context.padContextMenu = fPadContextMenu;
