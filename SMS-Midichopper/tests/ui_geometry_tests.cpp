@@ -158,6 +158,23 @@ void interactionTargets()
           "enabled context item takes overlay hover priority");
 }
 
+void wheelAdjustment()
+{
+    check(std::abs(sms::ui::wheelAdjustedValue(1.0f, 1.0f, 0.1f, 0.01f, 30.0f) -
+                   1.1f) < 1.0e-6f,
+          "wheel up increases a continuous control by one step");
+    check(std::abs(sms::ui::wheelAdjustedValue(1.0f, -0.25f, 0.1f, 0.01f, 30.0f) -
+                   0.9f) < 1.0e-6f,
+          "smooth wheel input still applies one predictable step");
+    check(sms::ui::wheelAdjustedValue(16.0f, 1.0f, 1.0f, 1.0f, 16.0f, true) == 16.0f &&
+              sms::ui::wheelAdjustedValue(1.0f, -1.0f, 1.0f, 1.0f, 16.0f, true) == 1.0f,
+          "wheel adjustment clamps at both boundaries");
+    check(sms::ui::wheelAdjustedValue(7.0f, 1.0f, 1.0f, 1.0f, 16.0f, true) == 8.0f,
+          "integer wheel controls stay integral");
+    check(sms::ui::wheelAdjustedValue(0.5f, 0.0f, 0.1f, 0.0f, 1.0f) == 0.5f,
+          "zero wheel delta does not change a control");
+}
+
 void levelMeterGeometry()
 {
     namespace meter = sms::ui::meter;
@@ -258,6 +275,7 @@ int main()
     hamburgerMenuGeometry();
     contextMenuGeometry();
     interactionTargets();
+    wheelAdjustment();
     levelMeterGeometry();
     waveformGeometry();
     std::cout << "UI geometry tests passed\n";

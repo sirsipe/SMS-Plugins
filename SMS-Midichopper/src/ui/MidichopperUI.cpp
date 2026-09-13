@@ -907,6 +907,82 @@ protected:
         return hovered.valid() || fMenuOpen || fPadContextMenuOpen;
     }
 
+    bool onScroll(const ScrollEvent& ev) override
+    {
+        const auto position = toLogicalPosition(ev.pos);
+        const float x = position.getX() - uiLayout::contentOffsetX;
+        const float y = position.getY();
+        const auto hovered = resolveInteractiveTarget(x, y);
+        if (fHover.update(hovered))
+            requestRepaint();
+
+        float delta = static_cast<float>(ev.delta.getY());
+        if (delta == 0.0f) {
+            if (ev.direction == DGL_NAMESPACE::kScrollUp)
+                delta = 1.0f;
+            else if (ev.direction == DGL_NAMESPACE::kScrollDown)
+                delta = -1.0f;
+        }
+        if (delta == 0.0f || !std::isfinite(delta))
+            return false;
+
+        if (midichopper::ui::isTarget(
+                hovered, midichopper::ui::InteractiveType::fixedLength)) {
+            setControlValueFromWheel(kParameterFixedLengthSeconds,
+                sms::ui::wheelAdjustedValue(fFixedLength, delta, 0.1f,
+                    parameterRanges::fixedLengthSeconds.minimum,
+                    parameterRanges::fixedLengthSeconds.maximum));
+            return true;
+        }
+        if (midichopper::ui::isTarget(
+                hovered, midichopper::ui::InteractiveType::voiceLimit)) {
+            setControlValueFromWheel(kParameterMaxVoices,
+                sms::ui::wheelAdjustedValue(static_cast<float>(fMaxVoices), delta, 1.0f,
+                    parameterRanges::maxVoices.minimum,
+                    parameterRanges::maxVoices.maximum, true));
+            return true;
+        }
+        if (midichopper::ui::isTarget(
+                hovered, midichopper::ui::InteractiveType::preRoll)) {
+            setControlValueFromWheel(kParameterPreRollMs,
+                sms::ui::wheelAdjustedValue(fPreRoll, delta, 1.0f,
+                    parameterRanges::preRollMs.minimum,
+                    parameterRanges::preRollMs.maximum, true));
+            return true;
+        }
+        if (!midichopper::ui::isTarget(
+                hovered, midichopper::ui::InteractiveType::envelopeSlider))
+            return false;
+
+        switch (hovered.index) {
+        case 0:
+            fEditorSettings.attackSeconds = sms::ui::wheelAdjustedValue(
+                fEditorSettings.attackSeconds, delta, 0.01f, 0.0f,
+                sms::ui::waveform::kEnvelopeControlMaximumSeconds);
+            break;
+        case 1:
+            fEditorSettings.decaySeconds = sms::ui::wheelAdjustedValue(
+                fEditorSettings.decaySeconds, delta, 0.01f, 0.0f,
+                sms::ui::waveform::kEnvelopeControlMaximumSeconds);
+            break;
+        case 2:
+            fEditorSettings.sustainLevel = sms::ui::wheelAdjustedValue(
+                fEditorSettings.sustainLevel, delta, 0.01f, 0.0f, 1.0f);
+            break;
+        case 3:
+            fEditorSettings.releaseSeconds = sms::ui::wheelAdjustedValue(
+                fEditorSettings.releaseSeconds, delta, 0.01f, 0.0f,
+                sms::ui::waveform::kEnvelopeControlMaximumSeconds);
+            break;
+        default:
+            return false;
+        }
+        fEditorSettings = sms::dsp::sanitize(fEditorSettings);
+        commitEditorSettings();
+        requestRepaint();
+        return true;
+    }
+
     bool onKeyboard(const KeyboardEvent& ev) override
     {
         if (!ev.press || ev.key != DGL_NAMESPACE::kKeyEscape ||
@@ -1401,6 +1477,13 @@ private:
         // the exact same value to the plugin.
         parameterChanged(parameter, value);
         setParameterValue(parameter, value);
+    }
+
+    void setControlValueFromWheel(const uint32_t parameter, const float value)
+    {
+        editParameter(parameter, true);
+        setControlValue(parameter, value);
+        editParameter(parameter, false);
     }
 
     void requestWaveform()

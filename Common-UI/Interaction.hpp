@@ -1,5 +1,8 @@
 #pragma once
 
+#include <algorithm>
+#include <cmath>
+
 namespace sms::ui {
 
 inline constexpr int kNoInteractiveTargetType = -1;
@@ -46,5 +49,21 @@ public:
 private:
     InteractiveTarget target_ = kNoInteractiveTarget;
 };
+
+/** Apply one wheel event as one bounded control step, independent of device resolution. */
+[[nodiscard]] inline float wheelAdjustedValue(const float current, const float verticalDelta,
+                                              const float step, const float minimum,
+                                              const float maximum,
+                                              const bool integral = false) noexcept
+{
+    if (!std::isfinite(current) || !std::isfinite(verticalDelta) ||
+        !std::isfinite(step) || verticalDelta == 0.0f || step <= 0.0f || minimum > maximum)
+        return std::clamp(std::isfinite(current) ? current : minimum, minimum, maximum);
+    const float direction = verticalDelta > 0.0f ? 1.0f : -1.0f;
+    float adjusted = std::clamp(current + direction * step, minimum, maximum);
+    if (integral)
+        adjusted = std::round(adjusted);
+    return adjusted;
+}
 
 } // namespace sms::ui
