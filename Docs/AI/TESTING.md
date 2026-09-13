@@ -17,7 +17,7 @@ For focused iteration, use `ctest --test-dir build --output-on-failure -R NAME`:
 | --- | --- |
 | `sampler-core` | Capture, banks/layouts, storage, voices, regions/ADSR, resampling, clipboard snapshots, lifecycle |
 | `state-codec` | Audio and editor-state round trips, malformed/corrupt state |
-| `ui-geometry` | Pad mapping, waveform geometry, hit testing and editing |
+| `ui-geometry` | Pad mapping, waveform geometry, hit testing, hover, wheel adjustment and editing |
 | `wav-codec` | WAV formats, validation, file actions, offline render, real-time access gate |
 
 Rebuild affected targets before testing. Run all four before handing off code
@@ -81,7 +81,9 @@ Choose checks matching the change:
 - Playback: return to PLAY; verify expected notes/banks, one-shot/gated behavior,
   voice limits, and stereo output.
 - UI/editor: verify drawing/resizing and input mapping; select pads, adjust
-  region/ADSR, retrigger, and check that both waveform and sound match.
+  region/ADSR by dragging and wheel, retrigger, and check that both waveform
+  and sound match. Sweep the pointer across controls and confirm only the
+  enabled target under it receives hover emphasis.
 - Pad clipboard: Copy an edited occupied pad, then alter or clear its source and
   Paste to empty and occupied targets. Confirm stereo audio, cut points, and ADSR
   match the copy-time snapshot, and that an empty clipboard disables Paste.
