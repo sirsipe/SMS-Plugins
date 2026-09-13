@@ -115,13 +115,13 @@ void interactionTargets()
               interaction::InteractiveType::voiceLimit),
           "play mode exposes only its playback controls");
     check(interaction::isTarget(
-              interaction::interactiveTargetAt(center(layout::monitor(false, false)), context),
+              interaction::interactiveTargetAt(center(layout::monitor), context),
               interaction::InteractiveType::monitor) &&
           interaction::isTarget(
               interaction::interactiveTargetAt(
-                  center(layout::finalizeAction(false, false)), context),
+                  center(layout::finalizeAction), context),
               interaction::InteractiveType::finalizeAction),
-          "play mode resolves its compact monitor and action positions");
+          "play mode resolves bottom-anchored monitor and actions");
     check(!interaction::isTarget(
               interaction::interactiveTargetAt(center(layout::fixedLength), context),
               interaction::InteractiveType::fixedLength),
@@ -175,13 +175,13 @@ void interactionTargets()
               interaction::InteractiveType::preRoll),
           "fixed capture inserts length before pre-roll");
     check(interaction::isTarget(
-              interaction::interactiveTargetAt(center(layout::monitor(true, true)), context),
+              interaction::interactiveTargetAt(center(layout::monitor), context),
               interaction::InteractiveType::monitor) &&
           interaction::isTarget(
               interaction::interactiveTargetAt(
-                  center(layout::clearAction(true, true)), context),
+                  center(layout::clearAction), context),
               interaction::InteractiveType::clearAction),
-          "fixed capture resolves shifted monitor and action positions");
+          "fixed capture resolves bottom-anchored monitor and actions");
     check(layout::preRoll(false).y == layout::fixedLength.y &&
           layout::preRoll(true).y > layout::fixedLength.y + layout::fixedLength.height,
           "pre-roll occupies the fixed-length slot only when length is hidden");

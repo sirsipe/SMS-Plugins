@@ -163,13 +163,13 @@ interactiveTargetAt(const sms::ui::Point point, const InteractionContext& contex
         if (uiLayout::voiceLimit.contains(point))
             return target(InteractiveType::voiceLimit);
     }
-    if (uiLayout::monitor(context.armed, context.fixedCapture).contains(point))
+    if (uiLayout::monitor.contains(point))
         return target(InteractiveType::monitor);
-    if (uiLayout::finalizeAction(context.armed, context.fixedCapture).contains(point))
+    if (uiLayout::finalizeAction.contains(point))
         return target(InteractiveType::finalizeAction);
-    if (uiLayout::undoAction(context.armed, context.fixedCapture).contains(point))
+    if (uiLayout::undoAction.contains(point))
         return target(InteractiveType::undoAction);
-    if (uiLayout::clearAction(context.armed, context.fixedCapture).contains(point))
+    if (uiLayout::clearAction.contains(point))
         return target(InteractiveType::clearAction);
     return sms::ui::kNoInteractiveTarget;
 }

@@ -481,24 +481,20 @@ private:
                 colors.activityPlayback, hovered(InteractiveType::voiceLimit));
         }
 
-        const auto monitorBounds = uiLayout::monitor(state_.armed, fixedCapture);
         const char* monitor = state_.monitorInput >= 0.5f ? "MONITOR  ON" : "MONITOR  OFF";
-        sms::ui::dpf::drawSegment(canvas_, monitorBounds, monitor,
+        sms::ui::dpf::drawSegment(canvas_, uiLayout::monitor, monitor,
             state_.monitorInput >= 0.5f, colors.activityPlayback,
             hovered(InteractiveType::monitor));
         canvas_.fontSize(11.0f);
         canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_LEFT |
                           DGL_NAMESPACE::NanoVG::ALIGN_TOP);
         canvas_.fillColor(colors.contentSecondary);
-        canvas_.text(690.0f, uiLayout::chopLabelY(state_.armed, fixedCapture), "CHOP", nullptr);
-        sms::ui::dpf::drawAction(canvas_,
-            uiLayout::finalizeAction(state_.armed, fixedCapture), "FINALIZE",
+        canvas_.text(690.0f, uiLayout::chopLabelY, "CHOP", nullptr);
+        sms::ui::dpf::drawAction(canvas_, uiLayout::finalizeAction, "FINALIZE",
             colors.activityPlayback, false, hovered(InteractiveType::finalizeAction));
-        sms::ui::dpf::drawAction(canvas_,
-            uiLayout::undoAction(state_.armed, fixedCapture), "UNDO",
+        sms::ui::dpf::drawAction(canvas_, uiLayout::undoAction, "UNDO",
             colors.controlAccent, false, hovered(InteractiveType::undoAction));
-        sms::ui::dpf::drawAction(canvas_,
-            uiLayout::clearAction(state_.armed, fixedCapture),
+        sms::ui::dpf::drawAction(canvas_, uiLayout::clearAction,
                                  state_.clearArmed ? "CONFIRM" : "CLEAR",
             colors.intentDanger, state_.clearArmed, hovered(InteractiveType::clearAction));
     }
