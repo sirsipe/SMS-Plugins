@@ -3,6 +3,7 @@
 #include "DSP/SamplePlaybackSettings.hpp"
 #include "Interaction.hpp"
 #include "MidichopperLayout.hpp"
+#include "MidichopperInteraction.hpp"
 #include "LevelMeter.hpp"
 #include "PadLayout.hpp"
 #include "UI/Geometry.hpp"
@@ -77,9 +78,84 @@ void contextMenuGeometry()
           "context menu clamps to the logical canvas");
 
     sms::ui::HoverState hover;
-    check(hover.target() == sms::ui::kNoInteractiveTarget && hover.update(0) &&
-          !hover.update(0) && hover.clear() && !hover.clear(),
+    const auto item = midichopper::ui::target(midichopper::ui::InteractiveType::pad, 0);
+    check(hover.target() == sms::ui::kNoInteractiveTarget && hover.update(item) &&
+          !hover.update(item) && hover.clear() && !hover.clear(),
           "hover state reports only target transitions");
+}
+
+sms::ui::Point center(const sms::ui::Rect bounds)
+{
+    return {bounds.x + bounds.width * 0.5f, bounds.y + bounds.height * 0.5f};
+}
+
+void interactionTargets()
+{
+    namespace interaction = midichopper::ui;
+    namespace layout = midichopper::ui::layout;
+
+    sms::dsp::SamplePlaybackSettings settings;
+    sms::audio::WaveformSummary waveform;
+    const auto envelope = sms::ui::waveform::envelopeGeometry(
+        layout::envelopeGraph, waveform, settings);
+    interaction::InteractionContext context;
+    context.padLayout = 0;
+    context.editorSettings = &settings;
+    context.envelope = &envelope;
+
+    check(interaction::isTarget(
+              interaction::interactiveTargetAt(center(layout::menuButton), context),
+              interaction::InteractiveType::menuButton),
+          "hamburger button resolves to one hover target");
+    check(interaction::isTarget(
+              interaction::interactiveTargetAt(center(layout::fixedLength), context),
+              interaction::InteractiveType::fixedLength),
+          "main-view slider resolves to its control target");
+
+    const sms::ui::BankedPadLayout pads(0);
+    const int localPad = 0;
+    const auto padCell = pads.grid(layout::mainPadBounds, 10.0f).cell(
+        pads.visualIndex(localPad));
+    check(interaction::isTarget(
+              interaction::interactiveTargetAt(center(padCell), context),
+              interaction::InteractiveType::pad, localPad),
+          "main pad target preserves the local pad identity");
+    context.captureActive = true;
+    check(!interaction::interactiveTargetAt(center(padCell), context).valid(),
+          "inactive capture pad does not advertise a click that has no effect");
+    context.captureActive = false;
+
+    context.menuOpen = true;
+    check(interaction::isTarget(
+              interaction::interactiveTargetAt(center(layout::menuOption(1)), context),
+              interaction::InteractiveType::menuLayout, 1),
+          "open hamburger menu exposes its option");
+    check(!interaction::interactiveTargetAt(center(layout::fixedLength), context).valid(),
+          "open hamburger menu blocks underlying controls");
+    context.menuOpen = false;
+
+    context.armed = true;
+    check(!interaction::interactiveTargetAt(center(layout::openEditor), context).valid(),
+          "disabled editor button is not hoverable");
+    context.armed = false;
+    context.editorMode = true;
+    const auto waveformTarget = interaction::interactiveTargetAt(
+        {layout::editorWaveform.x + 1.0f, layout::editorWaveform.y + 20.0f}, context);
+    check(interaction::isTarget(waveformTarget, interaction::InteractiveType::regionHandle) &&
+              waveformTarget.index == static_cast<int>(sms::ui::waveform::EditTarget::regionStart),
+          "waveform hover identifies the nearest editable cut handle");
+
+    const std::array<bool, 2> enabled{false, true};
+    context.padContextMenuOpen = true;
+    context.padContextMenu = sms::ui::ContextMenuGeometry(
+        {200.0f, 200.0f}, 2, layout::contentBounds);
+    context.padContextMenuEnabled = enabled;
+    check(!interaction::interactiveTargetAt(center(context.padContextMenu.item(0)), context).valid(),
+          "disabled context item is not hoverable");
+    check(interaction::isTarget(
+              interaction::interactiveTargetAt(center(context.padContextMenu.item(1)), context),
+              interaction::InteractiveType::padContextItem, 1),
+          "enabled context item takes overlay hover priority");
 }
 
 void levelMeterGeometry()
@@ -181,6 +257,7 @@ int main()
     padLayouts();
     hamburgerMenuGeometry();
     contextMenuGeometry();
+    interactionTargets();
     levelMeterGeometry();
     waveformGeometry();
     std::cout << "UI geometry tests passed\n";

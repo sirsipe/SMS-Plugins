@@ -45,7 +45,8 @@ inline void drawWaveform(DGL_NAMESPACE::NanoVG& canvas, const ui::Rect bounds,
 }
 
 inline void drawCutHandle(DGL_NAMESPACE::NanoVG& canvas, const float x, const float y,
-                          const float height, const char* const label)
+                          const float height, const char* const label,
+                          const bool hovered = false)
 {
     const ScopedCanvasState canvasState(canvas);
     const Theme& colors = theme();
@@ -53,10 +54,11 @@ inline void drawCutHandle(DGL_NAMESPACE::NanoVG& canvas, const float x, const fl
     canvas.moveTo(x, y);
     canvas.lineTo(x, y + height);
     canvas.strokeColor(colors.selection);
-    canvas.strokeWidth(2.0f);
+    canvas.strokeWidth(hovered ? 4.0f : 2.0f);
     canvas.stroke();
     canvas.beginPath();
-    canvas.roundedRect(x - 16.0f, y + 7.0f, 32.0f, 16.0f, 4.0f);
+    canvas.roundedRect(x - (hovered ? 18.0f : 16.0f), y + (hovered ? 5.0f : 7.0f),
+                       hovered ? 36.0f : 32.0f, hovered ? 20.0f : 16.0f, 4.0f);
     canvas.fillColor(colors.selection);
     canvas.fill();
     canvas.fontFace(NANOVG_DEJAVU_SANS_TTF);
@@ -70,7 +72,8 @@ inline void drawCutHandle(DGL_NAMESPACE::NanoVG& canvas, const float x, const fl
 inline void drawWaveformEditor(DGL_NAMESPACE::NanoVG& canvas, const ui::Rect bounds,
                                const audio::WaveformSummary& summary,
                                const bool hasWaveform,
-                               const dsp::SamplePlaybackSettings& settings)
+                               const dsp::SamplePlaybackSettings& settings,
+                               const waveform::EditTarget hovered = waveform::EditTarget::none)
 {
     const ScopedCanvasState canvasState(canvas);
     const Theme& colors = theme();
@@ -146,13 +149,16 @@ inline void drawWaveformEditor(DGL_NAMESPACE::NanoVG& canvas, const ui::Rect bou
                 std::max(0.0f, bounds.x + bounds.width - endX), bounds.height);
     canvas.fillColor(colors.canvas.withAlpha(0.64f));
     canvas.fill();
-    drawCutHandle(canvas, startX, bounds.y, bounds.height, "START");
-    drawCutHandle(canvas, endX, bounds.y, bounds.height, "END");
+    drawCutHandle(canvas, startX, bounds.y, bounds.height, "START",
+                  hovered == waveform::EditTarget::regionStart);
+    drawCutHandle(canvas, endX, bounds.y, bounds.height, "END",
+                  hovered == waveform::EditTarget::regionEnd);
 }
 
 inline void drawEnvelopeGraph(DGL_NAMESPACE::NanoVG& canvas, const ui::Rect bounds,
                               const audio::WaveformSummary& summary,
-                              const dsp::SamplePlaybackSettings& settings)
+                              const dsp::SamplePlaybackSettings& settings,
+                              const waveform::EditTarget hovered = waveform::EditTarget::none)
 {
     const ScopedCanvasState canvasState(canvas);
     const Theme& colors = theme();
@@ -219,12 +225,14 @@ inline void drawEnvelopeGraph(DGL_NAMESPACE::NanoVG& canvas, const ui::Rect boun
         canvas.stroke();
     }
     for (std::size_t index = 0; index < handles.size(); ++index) {
+        const bool isHovered = static_cast<int>(hovered) ==
+            static_cast<int>(waveform::EditTarget::attackNode) + static_cast<int>(index);
         canvas.beginPath();
-        canvas.circle(handles[index].x, handles[index].y, 5.0f);
+        canvas.circle(handles[index].x, handles[index].y, isHovered ? 8.0f : 5.0f);
         canvas.fillColor(index == 0U ? colors.controlAccent : colors.activityPlayback);
         canvas.fill();
-        canvas.strokeColor(colors.canvas);
-        canvas.strokeWidth(1.5f);
+        canvas.strokeColor(isHovered ? colors.contentPrimary : colors.canvas);
+        canvas.strokeWidth(isHovered ? 2.0f : 1.5f);
         canvas.stroke();
     }
 
@@ -247,7 +255,7 @@ inline void drawEnvelopeGraph(DGL_NAMESPACE::NanoVG& canvas, const ui::Rect boun
 
 inline void drawEnvelopeSlider(DGL_NAMESPACE::NanoVG& canvas, const ui::Rect bounds,
                                const char* const label, const float value,
-                               const bool sustain)
+                               const bool sustain, const bool hovered = false)
 {
     const ScopedCanvasState canvasState(canvas);
     const Theme& colors = theme();
@@ -273,7 +281,7 @@ inline void drawEnvelopeSlider(DGL_NAMESPACE::NanoVG& canvas, const ui::Rect bou
     canvas.text(bounds.x + bounds.width, bounds.y, display, nullptr);
     const ui::Rect track = waveform::envelopeSliderTrack(bounds);
     drawSlider(canvas, track.x, track.y, track.width, normalized,
-               sustain ? colors.activityPlayback : colors.controlAccent);
+               sustain ? colors.activityPlayback : colors.controlAccent, hovered);
 }
 
 } // namespace sms::ui::dpf

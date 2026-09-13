@@ -113,6 +113,7 @@ if(BUILD_TESTING)
 
   add_executable(midichopper_ui_geometry_tests tests/ui_geometry_tests.cpp)
   target_include_directories(midichopper_ui_geometry_tests PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/ui")
   target_link_libraries(midichopper_ui_geometry_tests PRIVATE sms_common_ui)
   add_test(NAME ui-geometry COMMAND midichopper_ui_geometry_tests)

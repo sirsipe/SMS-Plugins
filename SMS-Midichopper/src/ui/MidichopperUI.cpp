@@ -38,6 +38,7 @@
 #include "PadLayout.hpp"
 #include "WaveformEditor.hpp"
 #include "MidichopperLayout.hpp"
+#include "MidichopperInteraction.hpp"
 #include "MidichopperView.hpp"
 #include "PadClipboardProtocol.hpp"
 #include "PadFileActionProtocol.hpp"
@@ -564,7 +565,7 @@ protected:
             fSelectedPad, fCurrentPad, fPressedPad, fClearArmed, fMenuOpen,
             fPadContextMenuOpen, fPadContextMenu,
             std::span<const sms::ui::ContextMenuItemView>{contextMenuItems},
-            fPadContextHover.target(),
+            fHover.target(),
             fEditorMode, fHasWaveform, fInputLevels, fOutputLevels, fPadState, fPadStatus,
             fEditorSettings, fWaveform, fStatus,
         };
@@ -625,19 +626,23 @@ protected:
 
         if (ev.press)
         {
+            const auto clicked = resolveInteractiveTarget(x, y);
+            if (fHover.update(clicked))
+                requestRepaint();
             if (fPadContextMenuOpen)
             {
                 fPadContextPointerCaptured = true;
-                const int item = fPadContextMenu.hit({x, y});
-                if (item >= 0 && item < static_cast<int>(PadMenuAction::count)) {
-                    invokePadMenuAction(static_cast<PadMenuAction>(item));
+                if (midichopper::ui::isTarget(
+                        clicked, midichopper::ui::InteractiveType::padContextItem)) {
+                    invokePadMenuAction(static_cast<PadMenuAction>(clicked.index));
                     return true;
                 }
                 closePadContextMenu();
                 requestRepaint();
                 return true;
             }
-            if (hit(x, y, uiLayout::menuButton))
+            if (midichopper::ui::isTarget(
+                    clicked, midichopper::ui::InteractiveType::menuButton))
             {
                 fMenuOpen = !fMenuOpen;
                 requestRepaint();
@@ -645,25 +650,17 @@ protected:
             }
             if (fMenuOpen)
             {
-                for (int layoutIndex = 0;
-                     layoutIndex < static_cast<int>(midichopper::kPadLayoutCount);
-                     ++layoutIndex)
-                {
-                    if (hit(x, y, uiLayout::menuOption(layoutIndex)))
-                    {
-                        fMenuOpen = false;
-                        selectLayout(layoutIndex);
-                        return true;
-                    }
+                if (midichopper::ui::isTarget(
+                        clicked, midichopper::ui::InteractiveType::menuLayout)) {
+                    fMenuOpen = false;
+                    selectLayout(clicked.index);
+                    return true;
                 }
-                for (int mode = 0; mode < static_cast<int>(midichopper::kMidiBankModeCount); ++mode)
-                {
-                    if (hit(x, y, uiLayout::midiBankModeOption(mode)))
-                    {
-                        fMenuOpen = false;
-                        selectMidiBankMode(mode);
-                        return true;
-                    }
+                if (midichopper::ui::isTarget(
+                        clicked, midichopper::ui::InteractiveType::menuMidiBankMode)) {
+                    fMenuOpen = false;
+                    selectMidiBankMode(clicked.index);
+                    return true;
                 }
                 fMenuOpen = false;
                 requestRepaint();
@@ -671,7 +668,8 @@ protected:
             }
             if (fEditorMode)
             {
-                if (hit(x, y, uiLayout::closeEditor))
+                if (midichopper::ui::isTarget(
+                        clicked, midichopper::ui::InteractiveType::closeEditor))
                 {
                     fEditorMode = false;
                     fDragTarget = WaveformEditTarget::none;
@@ -679,37 +677,31 @@ protected:
                     requestRepaint();
                     return true;
                 }
-                for (int bank = 0; bank < static_cast<int>(midichopper::kBankCount); ++bank)
-                {
-                    if (hit(x, y, uiLayout::editorBank(bank)))
-                    {
-                        selectBank(bank);
-                        return true;
-                    }
-                }
-                const int editorPad = localPadFromVisualIndex(editorPadGrid().hit({x, y}));
-                if (editorPad >= 0)
-                {
-                    selectEditorPad(globalPad(editorPad));
+                if (midichopper::ui::isTarget(
+                        clicked, midichopper::ui::InteractiveType::bank)) {
+                    selectBank(clicked.index);
                     return true;
                 }
-                if (hit(x, y, uiLayout::editorWaveform))
+                if (midichopper::ui::isTarget(
+                        clicked, midichopper::ui::InteractiveType::pad)) {
+                    selectEditorPad(globalPad(clicked.index));
+                    return true;
+                }
+                if (midichopper::ui::isTarget(
+                        clicked, midichopper::ui::InteractiveType::regionHandle))
                 {
-                    fDragTarget = sms::ui::waveform::nearestRegionHandle(
-                        x, uiLayout::editorWaveform, fEditorSettings);
+                    fDragTarget = static_cast<WaveformEditTarget>(clicked.index);
                     updateEditorDrag(x, y);
                     return true;
                 }
-                if (hit(x, y, uiLayout::envelopeGraph))
+                if (midichopper::ui::isTarget(
+                        clicked, midichopper::ui::InteractiveType::envelopeNode))
                 {
-                    fDragTarget = hitEnvelopeHandle(x, y);
-                    if (fDragTarget != WaveformEditTarget::none)
-                    {
-                        fDragStartX = x;
-                        fDragStartY = y;
-                        fDragStartSettings = fEditorSettings;
-                        return true;
-                    }
+                    fDragTarget = static_cast<WaveformEditTarget>(clicked.index);
+                    fDragStartX = x;
+                    fDragStartY = y;
+                    fDragStartSettings = fEditorSettings;
+                    return true;
                 }
                 constexpr std::array sliderTargets{
                     WaveformEditTarget::attackSlider,
@@ -717,22 +709,18 @@ protected:
                     WaveformEditTarget::sustainSlider,
                     WaveformEditTarget::releaseSlider,
                 };
-                for (std::size_t index = 0; index < sliderTargets.size(); ++index)
-                {
-                    if (hit(x, y, uiLayout::editorSlider(static_cast<int>(index))))
-                    {
-                        fDragTarget = sliderTargets[index];
-                        updateEditorDrag(x, y);
-                        return true;
-                    }
+                if (midichopper::ui::isTarget(
+                        clicked, midichopper::ui::InteractiveType::envelopeSlider)) {
+                    fDragTarget = sliderTargets[static_cast<std::size_t>(clicked.index)];
+                    updateEditorDrag(x, y);
+                    return true;
                 }
                 return false;
             }
 
-            if (hit(x, y, uiLayout::openEditor))
+            if (midichopper::ui::isTarget(
+                    clicked, midichopper::ui::InteractiveType::openEditor))
             {
-                if (fArm)
-                    return true;
                 fEditorMode = true;
                 fStatus[0] = '\0';
                 if (!hasSelectedPad() || bankForGlobalPad(fSelectedPad) != fBank)
@@ -742,21 +730,17 @@ protected:
                 requestRepaint();
                 return true;
             }
-            for (int bank = 0; bank < static_cast<int>(midichopper::kBankCount); ++bank)
-            {
-                if (hit(x, y, uiLayout::mainBank(bank)))
-                {
-                    selectBank(bank);
-                    return true;
-                }
+            if (midichopper::ui::isTarget(
+                    clicked, midichopper::ui::InteractiveType::bank)) {
+                selectBank(clicked.index);
+                return true;
             }
-            const int pad = hitPad(x, y);
-            if (pad >= 0)
+            if (midichopper::ui::isTarget(
+                    clicked, midichopper::ui::InteractiveType::pad))
             {
+                const int pad = clicked.index;
                 if (fArm)
                 {
-                    if (fCurrentPad >= 0)
-                        return true;
                     fSelectedPad = globalPad(pad);
                     fHasWaveform = false;
                     requestWaveform();
@@ -780,27 +764,28 @@ protected:
                 return true;
             }
 
-            if (hit(x, y, uiLayout::playMode))
+            if (midichopper::ui::isTarget(clicked, midichopper::ui::InteractiveType::playMode))
             {
                 setControlValue(kParameterMode, 0.0f);
                 return true;
             }
-            if (hit(x, y, uiLayout::armMode))
+            if (midichopper::ui::isTarget(clicked, midichopper::ui::InteractiveType::armMode))
             {
                 setControlValue(kParameterMode, 1.0f);
                 return true;
             }
-            if (hit(x, y, uiLayout::sequentialMode))
+            if (midichopper::ui::isTarget(
+                    clicked, midichopper::ui::InteractiveType::sequentialMode))
             {
                 setControlValue(kParameterCaptureMode, 0.0f);
                 return true;
             }
-            if (hit(x, y, uiLayout::fixedMode))
+            if (midichopper::ui::isTarget(clicked, midichopper::ui::InteractiveType::fixedMode))
             {
                 setControlValue(kParameterCaptureMode, 1.0f);
                 return true;
             }
-            if (hit(x, y, uiLayout::fixedLength))
+            if (midichopper::ui::isTarget(clicked, midichopper::ui::InteractiveType::fixedLength))
             {
                 const float t = normalizedX(x, uiLayout::fixedLength);
                 setControlValue(kParameterFixedLengthSeconds,
@@ -809,17 +794,17 @@ protected:
                      parameterRanges::fixedLengthSeconds.minimum));
                 return true;
             }
-            if (hit(x, y, uiLayout::oneShotMode))
+            if (midichopper::ui::isTarget(clicked, midichopper::ui::InteractiveType::oneShotMode))
             {
                 setControlValue(kParameterPlaybackMode, 0.0f);
                 return true;
             }
-            if (hit(x, y, uiLayout::gatedMode))
+            if (midichopper::ui::isTarget(clicked, midichopper::ui::InteractiveType::gatedMode))
             {
                 setControlValue(kParameterPlaybackMode, 1.0f);
                 return true;
             }
-            if (hit(x, y, uiLayout::voiceLimit))
+            if (midichopper::ui::isTarget(clicked, midichopper::ui::InteractiveType::voiceLimit))
             {
                 const float t = normalizedX(x, uiLayout::voiceLimit);
                 setControlValue(kParameterMaxVoices,
@@ -828,33 +813,34 @@ protected:
                              parameterRanges::maxVoices.minimum))));
                 return true;
             }
-            if (hit(x, y, uiLayout::preRoll))
+            if (midichopper::ui::isTarget(clicked, midichopper::ui::InteractiveType::preRoll))
             {
                 const float t = normalizedX(x, uiLayout::preRoll);
                 setControlValue(kParameterPreRollMs,
                                 t * parameterRanges::preRollMs.maximum);
                 return true;
             }
-            if (hit(x, y, uiLayout::monitor))
+            if (midichopper::ui::isTarget(clicked, midichopper::ui::InteractiveType::monitor))
             {
                 setControlValue(kParameterInputMonitor, fMonitor >= 0.5f ? 0.0f : 1.0f);
                 return true;
             }
-            if (hit(x, y, uiLayout::finalizeAction))
+            if (midichopper::ui::isTarget(
+                    clicked, midichopper::ui::InteractiveType::finalizeAction))
             {
                 setParameterValue(kParameterFinalize, 1.0f);
                 fPressedActionParameter = kParameterFinalize;
                 setLocalStatus("Chop finalized");
                 return true;
             }
-            if (hit(x, y, uiLayout::undoAction))
+            if (midichopper::ui::isTarget(clicked, midichopper::ui::InteractiveType::undoAction))
             {
                 setParameterValue(kParameterUndo, 1.0f);
                 fPressedActionParameter = kParameterUndo;
                 setLocalStatus("Last chop undone");
                 return true;
             }
-            if (hit(x, y, uiLayout::clearAction))
+            if (midichopper::ui::isTarget(clicked, midichopper::ui::InteractiveType::clearAction))
             {
                 if (!fClearArmed)
                 {
@@ -911,21 +897,14 @@ protected:
         const auto position = toLogicalPosition(ev.pos);
         const float x = position.getX() - uiLayout::contentOffsetX;
         const float y = position.getY();
-        if (fPadContextMenuOpen)
-        {
-            int item = fPadContextMenu.hit({x, y});
-            const bool enabled = item >= 0 && item < static_cast<int>(PadMenuAction::count) &&
-                padMenuActionEnabled(static_cast<PadMenuAction>(item));
-            if (!enabled)
-                item = sms::ui::kNoInteractiveTarget;
-            if (fPadContextHover.update(item))
-                requestRepaint();
+        if (fEditorMode && fDragTarget != WaveformEditTarget::none) {
+            updateEditorDrag(x, y);
             return true;
         }
-        if (!fEditorMode || fDragTarget == WaveformEditTarget::none)
-            return false;
-        updateEditorDrag(x, y);
-        return true;
+        const auto hovered = resolveInteractiveTarget(x, y);
+        if (fHover.update(hovered))
+            requestRepaint();
+        return hovered.valid() || fMenuOpen || fPadContextMenuOpen;
     }
 
     bool onKeyboard(const KeyboardEvent& ev) override
@@ -1011,7 +990,7 @@ private:
     bool fPadContextMenuOpen;
     int fPadContextTarget;
     sms::ui::ContextMenuGeometry fPadContextMenu;
-    sms::ui::HoverState fPadContextHover;
+    sms::ui::HoverState fHover;
     bool fPadContextClearArmed;
     std::chrono::steady_clock::time_point fPadContextClearDeadline{};
     bool fPadContextPointerCaptured;
@@ -1046,9 +1025,25 @@ private:
     sms::audio::WaveformSummary fWaveform{};
     char fStatus[160];
 
-    static bool hit(const float x, const float y, const sms::ui::Rect bounds) noexcept
+    [[nodiscard]] sms::ui::InteractiveTarget
+    resolveInteractiveTarget(const float x, const float y) const noexcept
     {
-        return bounds.contains({x, y});
+        std::array<bool, static_cast<std::size_t>(PadMenuAction::count)> menuEnabled{};
+        for (std::size_t index = 0; index < menuEnabled.size(); ++index)
+            menuEnabled[index] = padMenuActionEnabled(static_cast<PadMenuAction>(index));
+        const auto envelope = envelopeGraphGeometry();
+        midichopper::ui::InteractionContext context;
+        context.editorMode = fEditorMode;
+        context.menuOpen = fMenuOpen;
+        context.padContextMenuOpen = fPadContextMenuOpen;
+        context.armed = fArm;
+        context.captureActive = fArm && fCurrentPad >= 0;
+        context.padLayout = fLayout;
+        context.padContextMenu = fPadContextMenu;
+        context.padContextMenuEnabled = menuEnabled;
+        context.editorSettings = &fEditorSettings;
+        context.envelope = &envelope;
+        return midichopper::ui::interactiveTargetAt({x, y}, context);
     }
 
     static float normalizedX(const float x, const sms::ui::Rect bounds) noexcept
@@ -1061,7 +1056,7 @@ private:
         fPadContextTarget = pad;
         fPadContextMenu = sms::ui::ContextMenuGeometry(
             anchor, static_cast<int>(PadMenuAction::count), uiLayout::contentBounds);
-        static_cast<void>(fPadContextHover.clear());
+        static_cast<void>(fHover.clear());
         fPadContextClearArmed = false;
         fPadContextMenuOpen = true;
     }
@@ -1070,7 +1065,7 @@ private:
     {
         fPadContextMenuOpen = false;
         fPadContextTarget = -1;
-        static_cast<void>(fPadContextHover.clear());
+        static_cast<void>(fHover.clear());
         fPadContextClearArmed = false;
     }
 
@@ -1274,11 +1269,6 @@ private:
             static_cast<int>(parameterRanges::baseMidiNote.maximum));
     }
 
-    int hitPad(float x, float y) const
-    {
-        return localPadFromVisualIndex(mainPadGrid().hit({x, y}));
-    }
-
     int visiblePadCount() const noexcept
     {
         return padLayout().visiblePadCount();
@@ -1396,11 +1386,6 @@ private:
     {
         return sms::ui::waveform::envelopeGeometry(uiLayout::envelopeGraph, fWaveform,
                                                    fEditorSettings);
-    }
-
-    WaveformEditTarget hitEnvelopeHandle(const float x, const float y) const noexcept
-    {
-        return sms::ui::waveform::hitEnvelopeHandle({x, y}, envelopeGraphGeometry());
     }
 
     void setLocalStatus(const char* status)
