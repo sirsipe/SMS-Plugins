@@ -524,7 +524,7 @@ protected:
                             fStatus[0] = '\0';
                         else
                             copyString(fStatus,
-                                "Three occupied pads with one sample rate are required");
+                                "Non-empty samples must use one sample rate");
                     }
                 }
                 if (summary.pad == static_cast<std::uint32_t>(fSelectedPad)) {
@@ -1329,11 +1329,7 @@ private:
         const int localPad = localPadForGlobalPad(fPadContextTarget);
         if (localPad <= 0 || localPad + 1 >= visiblePadCount())
             return false;
-        const auto occupied = [this](const int pad) {
-            const char state = fPadState[static_cast<std::size_t>(pad)];
-            return state != '0' && state != '.';
-        };
-        return occupied(localPad - 1) && occupied(localPad + 1);
+        return true;
     }
 
     [[nodiscard]] bool padProcessedExportEnabled() const noexcept
@@ -1750,13 +1746,16 @@ private:
     {
 #if DISTRHO_PLUGIN_WANT_STATE
         if (!chopReady() || padInEditor < 0 || padInEditor >= 3) {
-            setLocalStatus("Three occupied pads with one sample rate are required");
+            setLocalStatus("Non-empty samples must use one sample rate");
             return;
         }
         const auto start = midichopper::ui::chop::adjustedStartFrame(
             fChopWaveforms, fChopOffsets, padInEditor);
-        const auto end = start + midichopper::ui::chop::adjustedFrames(
+        const auto frames = midichopper::ui::chop::adjustedFrames(
             fChopWaveforms, fChopOffsets, padInEditor);
+        if (frames == 0U)
+            return;
+        const auto end = start + frames;
         const auto request = midichopper::plugin::encodeChopPreviewRequest(
             {true, static_cast<std::uint32_t>(fChopFirstPad), 3U, start, end});
         setState("chop_preview_request", request.c_str());
@@ -1784,7 +1783,7 @@ private:
     {
 #if DISTRHO_PLUGIN_WANT_STATE
         if (!chopReady()) {
-            setLocalStatus("Three occupied pads with one sample rate are required");
+            setLocalStatus("Non-empty samples must use one sample rate");
             return;
         }
         midichopper::plugin::ChopApplyRequest request;

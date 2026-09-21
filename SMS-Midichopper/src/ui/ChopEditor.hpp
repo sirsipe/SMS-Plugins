@@ -19,15 +19,35 @@ inline constexpr std::uint32_t kMinimumSliceFrames = 1U;
 [[nodiscard]] inline bool ready(
     const std::span<const sms::audio::WaveformSummary> waveforms) noexcept
 {
-    if (waveforms.size() != kPadCount || waveforms[0].frames == 0U ||
-        !std::isfinite(waveforms[0].sampleRate) || waveforms[0].sampleRate <= 1.0)
+    if (waveforms.size() != kPadCount)
         return false;
-    for (std::size_t pad = 1; pad < waveforms.size(); ++pad) {
-        if (waveforms[pad].frames == 0U ||
-            std::abs(waveforms[pad].sampleRate - waveforms[0].sampleRate) > 0.5)
+
+    double audioRate = 0.0;
+    bool hasAudio = false;
+    for (const auto& waveform : waveforms) {
+        // Empty summaries still carry the engine rate, which distinguishes a
+        // received response from a default-initialized summary.
+        if (!std::isfinite(waveform.sampleRate) || waveform.sampleRate <= 1.0)
             return false;
+        if (waveform.frames == 0U)
+            continue;
+        if (hasAudio && std::abs(waveform.sampleRate - audioRate) > 0.5)
+            return false;
+        audioRate = waveform.sampleRate;
+        hasAudio = true;
     }
-    return true;
+    return hasAudio;
+}
+
+[[nodiscard]] inline double sampleRate(
+    const std::span<const sms::audio::WaveformSummary> waveforms) noexcept
+{
+    for (const auto& waveform : waveforms) {
+        if (waveform.frames != 0U && std::isfinite(waveform.sampleRate) &&
+            waveform.sampleRate > 1.0)
+            return waveform.sampleRate;
+    }
+    return 0.0;
 }
 
 [[nodiscard]] inline std::uint64_t totalFrames(
@@ -154,7 +174,7 @@ inline constexpr std::uint32_t kMinimumSliceFrames = 1U;
     if (waveforms.empty())
         return result;
     result.pad = waveforms.front().pad;
-    result.sampleRate = waveforms.front().sampleRate;
+    result.sampleRate = sampleRate(waveforms);
     const auto total = totalFrames(waveforms);
     result.frames = static_cast<std::uint32_t>(std::min<std::uint64_t>(
         total, std::numeric_limits<std::uint32_t>::max()));

@@ -679,27 +679,35 @@ bool SamplerEngine::rechopPads(const std::uint32_t firstPad,
     std::array<std::uint64_t, kPadsPerBank + 1U> originalBoundaries{};
     std::array<std::uint64_t, kPadsPerBank + 1U> newBoundaries{};
     double sourceRate = 0.0;
+    bool hasSourceAudio = false;
     std::uint32_t releasableBlocks = 0U;
     for (std::uint32_t index = 0; index < padCount; ++index) {
         const auto& pad = pads_[firstPad + index];
         const auto frames = pad.publishedFrames.load(std::memory_order_acquire);
         const double rate = pad.sourceSampleRate.load(std::memory_order_acquire);
-        if (!pad.occupied.load(std::memory_order_acquire) || frames == 0U ||
-            !std::isfinite(rate) || rate <= 1.0 ||
-            (index != 0U && std::abs(rate - sourceRate) > 0.5))
+        const bool occupied = pad.occupied.load(std::memory_order_acquire);
+        if (occupied != (frames != 0U))
             return false;
-        if (index == 0U)
-            sourceRate = rate;
+        if (occupied) {
+            if (!std::isfinite(rate) || rate <= 1.0 ||
+                (hasSourceAudio && std::abs(rate - sourceRate) > 0.5))
+                return false;
+            if (!hasSourceAudio)
+                sourceRate = rate;
+            hasSourceAudio = true;
+        }
         originalFrames[index] = frames;
         originalSettings[index] = padPlaybackSettings(firstPad + index);
         originalBoundaries[index + 1U] = originalBoundaries[index] + frames;
         releasableBlocks += pad.allocatedBlocks;
     }
+    if (!hasSourceAudio)
+        return false;
 
     for (std::uint32_t boundary = 0; boundary + 1U < padCount; ++boundary) {
         const auto original = static_cast<std::int64_t>(originalBoundaries[boundary + 1U]);
         const auto moved = original + boundaryOffsets[boundary];
-        if (moved <= static_cast<std::int64_t>(newBoundaries[boundary]) || moved < 1)
+        if (moved < static_cast<std::int64_t>(newBoundaries[boundary]) || moved < 0)
             return false;
         newBoundaries[boundary + 1U] = static_cast<std::uint64_t>(moved);
     }
@@ -707,10 +715,12 @@ bool SamplerEngine::rechopPads(const std::uint32_t firstPad,
 
     std::uint32_t requiredBlocks = 0U;
     for (std::uint32_t index = 0; index < padCount; ++index) {
-        if (newBoundaries[index + 1U] <= newBoundaries[index])
+        if (newBoundaries[index + 1U] < newBoundaries[index])
             return false;
         const auto length = newBoundaries[index + 1U] - newBoundaries[index];
-        if (length > max_frames_)
+        const bool unchangedEmptyEdge = length == 0U && originalFrames[index] == 0U &&
+            (index == 0U || index + 1U == padCount);
+        if ((length == 0U && !unchangedEmptyEdge) || length > max_frames_)
             return false;
         newFrames[index] = static_cast<std::uint32_t>(length);
         requiredBlocks += (newFrames[index] + kSampleBlockFrames - 1U) / kSampleBlockFrames;
@@ -761,11 +771,12 @@ bool SamplerEngine::rechopPads(const std::uint32_t firstPad,
         pad.recordPeak = peak;
         pad.recordSumSquares = sumSquares;
         pad.publishedPeak.store(peak, std::memory_order_relaxed);
-        pad.publishedRms.store(static_cast<float>(std::sqrt(
-            sumSquares / (2.0 * static_cast<double>(newFrames[index])))),
+        pad.publishedRms.store(newFrames[index] == 0U ? 0.0f :
+            static_cast<float>(std::sqrt(
+                sumSquares / (2.0 * static_cast<double>(newFrames[index])))),
             std::memory_order_relaxed);
         pad.publishedFrames.store(newFrames[index], std::memory_order_release);
-        pad.occupied.store(true, std::memory_order_release);
+        pad.occupied.store(newFrames[index] != 0U, std::memory_order_release);
         const bool changed = (index > 0U && boundaryOffsets[index - 1U] != 0) ||
                              (index + 1U < padCount && boundaryOffsets[index] != 0);
         setPadPlaybackSettings(padIndex, changed
@@ -789,7 +800,7 @@ void SamplerEngine::startChopPreview(const std::uint32_t firstPad,
     for (std::uint32_t index = 0; index < padCount; ++index) {
         const auto frames = pads_[firstPad + index].publishedFrames.load(std::memory_order_acquire);
         if (frames == 0U)
-            return;
+            continue;
         if (remaining < frames) {
             chopPreviewFirstPad_ = firstPad;
             chopPreviewPadCount_ = padCount;
@@ -832,8 +843,8 @@ void SamplerEngine::mixChopPreview(float& left, float& right) noexcept {
     while (chopPreviewPad_ < endPad) {
         const auto frames = pads_[chopPreviewPad_].publishedFrames.load(std::memory_order_acquire);
         if (frames == 0U) {
-            stopChopPreview();
-            return;
+            ++chopPreviewPad_;
+            continue;
         }
         if (chopPreviewFrame_ < frames)
             break;

@@ -396,14 +396,15 @@ private:
             char label[48];
             const auto frames = chop::adjustedFrames(
                 state_.chopWaveforms, state_.chopOffsets, pad);
-            const double seconds = state_.chopReady
-                ? frames / state_.chopWaveforms[static_cast<std::size_t>(pad)].sampleRate : 0.0;
+            const double rate = chop::sampleRate(state_.chopWaveforms);
+            const double seconds = state_.chopReady && rate > 0.0 ? frames / rate : 0.0;
+            const bool previewEnabled = state_.chopReady && frames != 0U;
             std::snprintf(label, sizeof(label), "PAD %02d   %.2f s",
                           localPadForGlobalPad(state_.chopFirstPad + pad) + 1, seconds);
             sms::ui::dpf::drawSegment(canvas_, uiLayout::chopPadButton(pad), label,
                 state_.chopPreviewPad == pad,
                 pad == 1 ? colors.selection : colors.activityPlayback,
-                hovered(InteractiveType::chopPadPreview, pad), state_.chopReady);
+                hovered(InteractiveType::chopPadPreview, pad), previewEnabled);
         }
     }
 

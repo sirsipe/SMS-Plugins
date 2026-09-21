@@ -223,6 +223,14 @@ void interactionTargets()
               interaction::interactiveTargetAt(center(layout::chopPadButton(1)), context),
               interaction::InteractiveType::chopPadPreview, 1),
           "cut-point editor exposes both handles and three-pad raw preview");
+    chopWaveforms[0].frames = 0U;
+    check(!interaction::interactiveTargetAt(center(layout::chopPadButton(0)), context).valid(),
+          "an empty proposed slice has no preview target");
+    chopOffsets[0] = 25;
+    check(interaction::isTarget(
+              interaction::interactiveTargetAt(center(layout::chopPadButton(0)), context),
+              interaction::InteractiveType::chopPadPreview, 0),
+          "moving an edge cut enables preview for the newly filled pad");
     context.chopEditorMode = false;
 
     const std::array<bool, 2> enabled{false, true};
@@ -397,6 +405,32 @@ void chopEditorGeometry()
     check(std::abs(midichopper::ui::chop::sourceFrameForPlayhead(
               waveforms, 1, 0.25f) - 125.0) < 1.0e-6,
           "raw playhead maps into the combined waveform");
+
+    auto emptyLeft = waveforms;
+    emptyLeft[0].frames = 0U;
+    check(midichopper::ui::chop::ready(emptyLeft) &&
+          midichopper::ui::chop::boundaryX(bounds, emptyLeft, offsets, 0) == bounds.x,
+          "empty left neighbor is ready with its cut at the far left");
+    std::array<std::int64_t, 2> fillLeft{{25, 0}};
+    check(midichopper::ui::chop::adjustedFrames(emptyLeft, fillLeft, 0) == 25U &&
+          midichopper::ui::chop::adjustedFrames(emptyLeft, fillLeft, 1) == 75U &&
+          midichopper::ui::chop::combinedWaveform(emptyLeft).sampleRate == 1000.0,
+          "moving the left edge cut creates a slice using the shared audio rate");
+
+    auto emptyRight = waveforms;
+    emptyRight[2].frames = 0U;
+    check(midichopper::ui::chop::ready(emptyRight) &&
+          midichopper::ui::chop::boundaryX(bounds, emptyRight, offsets, 1) ==
+              bounds.x + bounds.width,
+          "empty right neighbor is ready with its cut at the far right");
+    std::array<std::int64_t, 2> fillRight{{0, -25}};
+    check(midichopper::ui::chop::adjustedFrames(emptyRight, fillRight, 1) == 75U &&
+          midichopper::ui::chop::adjustedFrames(emptyRight, fillRight, 2) == 25U,
+          "moving the right edge cut creates a slice in the empty pad");
+
+    emptyRight[2].sampleRate = 0.0;
+    check(!midichopper::ui::chop::ready(emptyRight),
+          "editor waits for an empty neighbor waveform response");
 }
 
 } // namespace

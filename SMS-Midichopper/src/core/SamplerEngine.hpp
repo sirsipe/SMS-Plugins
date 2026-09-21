@@ -133,8 +133,9 @@ public:
     /** Import/replaces a pad on the control thread; stereo must be interleaved. */
     [[nodiscard]] bool importPad(std::uint32_t pad, const PadData& source);
     /**
-     * Repartition raw audio across consecutive occupied pads. Boundary offsets
-     * are frame deltas from the original boundaries. Control thread only.
+     * Repartition raw audio across consecutive pad slots. Empty edge slots may
+     * receive audio when their boundary moves inward. Boundary offsets are
+     * frame deltas from the original boundaries. Control thread only.
      */
     [[nodiscard]] bool rechopPads(std::uint32_t firstPad, std::uint32_t padCount,
                                   std::span<const std::int64_t> boundaryOffsets);

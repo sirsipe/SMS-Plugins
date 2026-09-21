@@ -152,8 +152,72 @@ void rechop_and_raw_preview() {
     close(movedLeft.stereo[6], 4.0f, "negative move preserves left pad order");
     close(movedRight.stereo[0], 5.0f, "negative move restores the right pad prefix");
 
-    const std::array<std::int64_t, 2> invalid{{-6, 0}};
-    check(!engine.rechopPads(0, 3, invalid), "rechop rejects an empty slice");
+    const std::array<std::int64_t, 2> emptyOccupied{{-4, 0}};
+    check(!engine.rechopPads(0, 3, emptyOccupied),
+          "rechop rejects emptying an occupied pad");
+    const std::array<std::int64_t, 2> outsideSource{{-7, 0}};
+    check(!engine.rechopPads(0, 3, outsideSource),
+          "rechop rejects a cut outside the source");
+}
+
+void rechop_empty_neighbors()
+{
+    midichopper::PadData first;
+    first.sampleRate = 1000.0;
+    first.frames = 4U;
+    first.stereo = {1, 1, 2, 2, 3, 3, 4, 4};
+    first.peak = 4.0f;
+    first.rms = 1.0f;
+    midichopper::PadData second = first;
+    second.stereo = {5, 5, 6, 6, 7, 7, 8, 8};
+    second.peak = 8.0f;
+
+    midichopper::SamplerEngine emptyLeft(1000.0, 1.0);
+    check(emptyLeft.importPad(1, first) && emptyLeft.importPad(2, second),
+          "import two pads after an empty slot");
+    auto settings = emptyLeft.settings();
+    settings.monitorInput = false;
+    emptyLeft.setSettings(settings);
+    emptyLeft.startChopPreview(0, 3, 0U, 2U);
+    float previewLeft[2]{};
+    float previewRight[2]{};
+    emptyLeft.process(nullptr, nullptr, previewLeft, previewRight, 2U);
+    close(previewLeft[0], 1.0f, "raw preview skips an empty leading pad");
+    close(previewLeft[1], 2.0f, "raw preview preserves audio after an empty pad");
+
+    const std::array<std::int64_t, 2> claimLeft{{2, 0}};
+    check(emptyLeft.rechopPads(0, 3, claimLeft),
+          "left empty pad claims audio by moving its cut right");
+    midichopper::PadData left, middle, right;
+    check(emptyLeft.exportPad(0, left) && emptyLeft.exportPad(1, middle) &&
+          emptyLeft.exportPad(2, right), "export pads after filling the empty left slot");
+    check(left.frames == 2U && middle.frames == 2U && right.frames == 4U,
+          "left edge cut repartitions a two-sample run");
+    close(left.stereo[0], 1.0f, "new left pad starts at the combined source start");
+    close(middle.stereo[0], 3.0f, "selected pad starts at the moved left cut");
+
+    midichopper::SamplerEngine emptyRight(1000.0, 1.0);
+    check(emptyRight.importPad(0, first) && emptyRight.importPad(1, second),
+          "import two pads before an empty slot");
+    const std::array<std::int64_t, 2> claimRight{{0, -2}};
+    check(emptyRight.rechopPads(0, 3, claimRight),
+          "right empty pad claims audio by moving its cut left");
+    check(emptyRight.exportPad(0, left) && emptyRight.exportPad(1, middle) &&
+          emptyRight.exportPad(2, right), "export pads after filling the empty right slot");
+    check(left.frames == 4U && middle.frames == 2U && right.frames == 2U,
+          "right edge cut repartitions a two-sample run");
+    close(middle.stereo[0], 5.0f, "selected pad retains its source prefix");
+    close(right.stereo[0], 7.0f, "new right pad receives the source suffix");
+
+    midichopper::SamplerEngine preserveEmpty(1000.0, 1.0);
+    check(preserveEmpty.importPad(0, first) && preserveEmpty.importPad(1, second),
+          "import a second two-pad run");
+    const std::array<std::int64_t, 2> moveOccupiedCut{{2, 0}};
+    check(preserveEmpty.rechopPads(0, 3, moveOccupiedCut),
+          "moving another cut preserves an untouched empty edge slot");
+    check(!preserveEmpty.padMetadata(2).occupied &&
+          preserveEmpty.padMetadata(2).frames == 0U,
+          "unchanged empty neighbor remains empty after Apply");
 }
 
 void full_bank_and_undo() {
@@ -756,6 +820,7 @@ int main() {
     live_peak_meter();
     sequential_boundaries_and_preroll();
     rechop_and_raw_preview();
+    rechop_empty_neighbors();
     full_bank_and_undo();
     bank_and_layout_mapping();
     all_bank_midi_mapping();

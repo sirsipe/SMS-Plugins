@@ -145,7 +145,8 @@ interactiveTargetAt(const sms::ui::Point point, const InteractionContext& contex
         if (boundary >= 0)
             return target(InteractiveType::chopBoundary, boundary);
         for (int pad = 0; context.chopReady && pad < static_cast<int>(chop::kPadCount); ++pad) {
-            if (uiLayout::chopPadButton(pad).contains(point))
+            if (chop::adjustedFrames(context.chopWaveforms, context.chopOffsets, pad) != 0U &&
+                uiLayout::chopPadButton(pad).contains(point))
                 return target(InteractiveType::chopPadPreview, pad);
         }
         return sms::ui::kNoInteractiveTarget;
