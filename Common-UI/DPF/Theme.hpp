@@ -15,6 +15,8 @@ struct Theme {
     DGL_NAMESPACE::Color activityCapture{255, 94, 77};
     DGL_NAMESPACE::Color selection{255, 74, 91};
     DGL_NAMESPACE::Color controlAccent{232, 55, 68};
+    DGL_NAMESPACE::Color controlActive{154, 42, 48};
+    DGL_NAMESPACE::Color controlActiveContent{198, 78, 80};
     DGL_NAMESPACE::Color intentDanger{255, 30, 55};
     DGL_NAMESPACE::Color meterGreen{75, 211, 112};
     DGL_NAMESPACE::Color meterYellow{245, 198, 66};

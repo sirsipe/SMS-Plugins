@@ -179,7 +179,8 @@ inline void drawRaisedControlSurface(DGL_NAMESPACE::NanoVG& canvas, const ui::Re
         canvas.roundedRect(bounds.x - 4.0f, bounds.y - 4.0f,
                            bounds.width + 8.0f, bounds.height + 8.0f, radius + 4.0f);
         canvas.fillPaint(canvas.boxGradient(bounds.x, bounds.y, bounds.width, bounds.height,
-            radius, 7.0f, accent.withAlpha(0.18f), accent.withAlpha(0.0f)));
+            radius, 7.0f, colors.controlActive.withAlpha(0.10f),
+            colors.controlActive.withAlpha(0.0f)));
         canvas.fill();
     }
     canvas.beginPath();
@@ -196,7 +197,8 @@ inline void drawRaisedControlSurface(DGL_NAMESPACE::NanoVG& canvas, const ui::Re
     if (state.active) {
         canvas.fillPaint(canvas.linearGradient(bounds.x, bounds.y,
             bounds.x, bounds.y + bounds.height,
-            accent.withAlpha(0.34f * alpha), colors.controlBottom.withAlpha(alpha)));
+            colors.controlActive.withAlpha(0.28f * alpha),
+            colors.controlBottom.withAlpha(alpha)));
     } else {
         canvas.fillPaint(canvas.linearGradient(bounds.x, bounds.y,
             bounds.x, bounds.y + bounds.height,
@@ -213,8 +215,10 @@ inline void drawRaisedControlSurface(DGL_NAMESPACE::NanoVG& canvas, const ui::Re
     }
     canvas.beginPath();
     canvas.roundedRect(bounds.x, bounds.y + depression, bounds.width, bounds.height, radius);
-    canvas.strokeColor((state.active || state.hovered) && state.enabled
-        ? accent : colors.outline.withAlpha(alpha));
+    canvas.strokeColor(state.hovered && state.enabled
+        ? accent
+        : (state.active && state.enabled
+            ? colors.controlActive : colors.outline.withAlpha(alpha)));
     canvas.strokeWidth(state.active ? 1.8f : (state.hovered ? 1.35f : 1.0f));
     canvas.stroke();
     canvas.beginPath();

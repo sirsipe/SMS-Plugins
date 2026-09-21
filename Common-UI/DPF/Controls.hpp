@@ -33,7 +33,8 @@ inline void drawSegment(DGL_NAMESPACE::NanoVG& canvas,
     canvas.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_CENTER |
                      DGL_NAMESPACE::NanoVG::ALIGN_MIDDLE);
     canvas.fillColor(enabled
-        ? (active || hovered ? accent : colors.contentSecondary)
+        ? (hovered ? accent
+                   : (active ? colors.controlActiveContent : colors.contentSecondary))
         : colors.contentSecondary.withAlpha(colors.disabledAlpha));
     canvas.text(x + width * 0.5f, y + height * 0.5f, label, nullptr);
 }
@@ -101,7 +102,9 @@ inline void drawAction(DGL_NAMESPACE::NanoVG& canvas,
     canvas.fontSize(9.0f);
     canvas.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_CENTER |
                      DGL_NAMESPACE::NanoVG::ALIGN_MIDDLE);
-    canvas.fillColor(active || hovered ? accent : colors.contentSecondary);
+    canvas.fillColor(hovered ? accent
+                             : (active ? colors.controlActiveContent
+                                       : colors.contentSecondary));
     canvas.text(x + width * 0.5f, y + height * 0.5f, label, nullptr);
 }
 
