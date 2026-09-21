@@ -74,6 +74,9 @@ points and an allocation-free ADSR voice envelope. Editor values use atomics;
 playback snapshots them on the next note trigger. Preserve that boundary when
 changing live-edit behavior.
 
+The raw rolling-boundary workflow and its real-time contract are documented in
+[Chop Editor](../../Docs/AI/CHOP-EDITOR.md).
+
 Pad storage mutations are control-thread work. A shared gate makes `run()`
 output silence while control code copies or replaces storage at a block
 boundary; its audio side only checks lock-free atomics. File access, codecs, and
@@ -101,9 +104,6 @@ large sample blobs through the UI channel.
 required worker. Busy/status states contain small messages, while a hidden
 output signals completion where wrapper state callbacks cannot return status
 to the UI. PCM never crosses the UI state channel.
-
-Long recordings make DAW project files correspondingly larger. Pads are limited
-to 30 seconds.
 
 ## Build and validation
 

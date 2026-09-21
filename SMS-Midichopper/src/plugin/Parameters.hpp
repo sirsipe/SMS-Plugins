@@ -39,6 +39,7 @@ enum Parameter : std::uint32_t {
     kParameterPadFileResultEvent,
     kParameterPadClipboardAvailable,
     kParameterPadClipboardResultEvent,
+    kParameterChopPreviewPosition,
     kParameterCount,
 };
 
@@ -80,6 +81,8 @@ inline constexpr ParameterRange captureTargetRequest{
 inline constexpr ParameterRange meterLevel{0.0f, 0.0f, 1.0f};
 inline constexpr ParameterRange padFileResultEvent{0.0f, 0.0f, 8.0f};
 inline constexpr ParameterRange padClipboardResultEvent{0.0f, 0.0f, 6.0f};
+inline constexpr ParameterRange chopPreviewPosition{
+    0.0f, 0.0f, static_cast<float>(kPadCount + 1U)};
 } // namespace parameterRanges
 
 /**
@@ -147,6 +150,7 @@ private:
     case kParameterOutputLevelRight: return parameterRanges::meterLevel;
     case kParameterPadFileResultEvent: return parameterRanges::padFileResultEvent;
     case kParameterPadClipboardResultEvent: return parameterRanges::padClipboardResultEvent;
+    case kParameterChopPreviewPosition: return parameterRanges::chopPreviewPosition;
     default: return parameterRanges::toggle;
     }
 }

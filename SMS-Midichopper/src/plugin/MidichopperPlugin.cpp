@@ -3,6 +3,7 @@
 #include "Audio/WaveformSummary.hpp"
 #include "Audio/RealtimeAccessGate.hpp"
 #include "Audio/WavCodec.hpp"
+#include "ChopEditorProtocol.hpp"
 #include "DSP/PeakMeter.hpp"
 #include "PadClipboard.hpp"
 #include "PadClipboardProtocol.hpp"
@@ -52,7 +53,10 @@ constexpr std::uint32_t kPadFileRequestState = kPadClearRequestState + 1U;
 constexpr std::uint32_t kPadFileBusyState = kPadFileRequestState + 1U;
 constexpr std::uint32_t kPadFileStatusState = kPadFileBusyState + 1U;
 constexpr std::uint32_t kPadClipboardRequestState = kPadFileStatusState + 1U;
-constexpr std::uint32_t kStateCount = kPadClipboardRequestState + 1U;
+constexpr std::uint32_t kChopApplyRequestState = kPadClipboardRequestState + 1U;
+constexpr std::uint32_t kChopStatusState = kChopApplyRequestState + 1U;
+constexpr std::uint32_t kChopPreviewRequestState = kChopStatusState + 1U;
+constexpr std::uint32_t kStateCount = kChopPreviewRequestState + 1U;
 constexpr const char* kWaveformRequestKey = "waveform_request";
 constexpr const char* kWaveformDataKey = "waveform_data";
 constexpr const char* kPadClearRequestKey = "pad_clear_request";
@@ -60,6 +64,9 @@ constexpr const char* kPadFileRequestKey = "pad_file_request";
 constexpr const char* kPadFileBusyKey = "pad_file_busy";
 constexpr const char* kPadFileStatusKey = "pad_file_status";
 constexpr const char* kPadClipboardRequestKey = "pad_clipboard_request";
+constexpr const char* kChopApplyRequestKey = "chop_apply_request";
+constexpr const char* kChopStatusKey = "chop_status";
+constexpr const char* kChopPreviewRequestKey = "chop_preview_request";
 static_assert(midichopper::kPadCount <= 64U,
               "pending clear requests use one bit per pad");
 
@@ -273,6 +280,12 @@ protected:
                            kParameterIsOutput | kParameterIsInteger | kParameterIsHidden,
                            "Internal UI notification that a pad Copy or Paste completed.");
             break;
+        case kParameterChopPreviewPosition:
+            setupParameter(index, parameter, "Chop Preview Position",
+                           "chop_preview_position", "",
+                           kParameterIsOutput | kParameterIsHidden,
+                           "Internal UI playhead for raw Chop Editor preview.");
+            break;
         default:
             if (index >= kFirstPadStatusParameter && index < kFirstPadActivityParameter) {
                 const std::uint32_t pad = index - kFirstPadStatusParameter;
@@ -339,9 +352,24 @@ protected:
             state.label = "Pad File Status";
             state.defaultValue = "";
             state.hints = kStateIsOnlyForUI;
-        } else {
+        } else if (index == kPadClipboardRequestState) {
             state.key = kPadClipboardRequestKey;
             state.label = "Pad Clipboard Request";
+            state.defaultValue = "";
+            state.hints = kStateIsOnlyForDSP;
+        } else if (index == kChopApplyRequestState) {
+            state.key = kChopApplyRequestKey;
+            state.label = "Chop Apply Request";
+            state.defaultValue = "";
+            state.hints = kStateIsOnlyForDSP;
+        } else if (index == kChopStatusState) {
+            state.key = kChopStatusKey;
+            state.label = "Chop Editor Status";
+            state.defaultValue = "";
+            state.hints = kStateIsOnlyForUI;
+        } else {
+            state.key = kChopPreviewRequestKey;
+            state.label = "Chop Preview Request";
             state.defaultValue = "";
             state.hints = kStateIsOnlyForDSP;
         }
@@ -413,6 +441,10 @@ protected:
             return String("0");
         if (std::strcmp(key, kPadClipboardRequestKey) == 0)
             return String();
+        if (std::strcmp(key, kChopApplyRequestKey) == 0 ||
+            std::strcmp(key, kChopStatusKey) == 0 ||
+            std::strcmp(key, kChopPreviewRequestKey) == 0)
+            return String();
         return String();
     }
 
@@ -479,6 +511,24 @@ protected:
             handlePadClipboardRequest(value != nullptr ? value : "");
             return;
         }
+        if (std::strcmp(key, kChopApplyRequestKey) == 0) {
+            handleChopApplyRequest(value != nullptr ? value : "");
+            return;
+        }
+        if (std::strcmp(key, kChopStatusKey) == 0)
+            return;
+        if (std::strcmp(key, kChopPreviewRequestKey) == 0) {
+            midichopper::plugin::ChopPreviewRequest request;
+            if (midichopper::plugin::decodeChopPreviewRequest(
+                    value != nullptr ? value : "", request)) {
+                pendingChopPreviewFrame_.store(request.sourceFrame, std::memory_order_relaxed);
+                const std::uint32_t packed = (request.firstPad & 0xffU) |
+                    ((request.padCount & 0xffU) << 8U) |
+                    ((request.play ? 1U : 2U) << 16U);
+                pendingChopPreviewCommand_.store(packed, std::memory_order_release);
+            }
+            return;
+        }
     }
 
     void run(const float** const inputs, float** const outputs, const uint32_t frames,
@@ -523,6 +573,8 @@ protected:
         updateMeterOutputParameters();
         updatePlaybackPadEvent();
         updatePadOutputParameters();
+        parameters_[midichopper::plugin::kParameterChopPreviewPosition].store(
+            sampler_.chopPreviewPosition(), std::memory_order_relaxed);
     }
 
     void sampleRateChanged(const double newSampleRate) override
@@ -577,6 +629,42 @@ private:
         parameters_[midichopper::plugin::kParameterPadClipboardResultEvent].store(
             midichopper::plugin::padClipboardResultEventValue(
                 result, padClipboardResultAlternateHalf_), std::memory_order_relaxed);
+    }
+
+    void handleChopApplyRequest(const std::string_view encoded)
+    {
+        try {
+            handleChopApplyRequestImpl(encoded);
+        } catch (...) {
+            static_cast<void>(updateStateValue(kChopStatusKey, "CH1;ERROR;Chop apply failed"));
+        }
+    }
+
+    void handleChopApplyRequestImpl(const std::string_view encoded)
+    {
+        midichopper::plugin::ChopApplyRequest request;
+        if (!midichopper::plugin::decodeChopApplyRequest(encoded, request)) {
+            static_cast<void>(updateStateValue(kChopStatusKey, "CH1;ERROR;Invalid request"));
+            return;
+        }
+        bool applied = false;
+        const bool accessed = withSamplerPaused([&] {
+            applied = sampler_.rechopPads(request.firstPad, request.padCount,
+                std::span<const std::int64_t>{request.boundaryOffsets.data(),
+                                              request.padCount - 1U});
+        });
+        if (!accessed || !applied) {
+            static_cast<void>(updateStateValue(
+                kChopStatusKey, "CH1;ERROR;Pads must be contiguous and use one sample rate"));
+            return;
+        }
+        for (std::uint32_t index = 0; index < request.padCount; ++index) {
+            const auto pad = request.firstPad + index;
+            const std::string editor = midichopper::plugin::encodePlaybackSettings(
+                sampler_.padPlaybackSettings(pad));
+            static_cast<void>(updateStateValue(kPadEditStateKeys[pad].c_str(), editor.c_str()));
+        }
+        static_cast<void>(updateStateValue(kChopStatusKey, "CH1;OK"));
     }
 
     void handlePadClipboardRequest(const std::string_view encoded)
@@ -792,6 +880,17 @@ private:
             pendingCaptureTarget_.exchange(0U, std::memory_order_acquire);
         if (captureTarget != 0U)
             sampler_.selectCaptureTarget(captureTarget - 1U);
+        const std::uint32_t preview =
+            pendingChopPreviewCommand_.exchange(0U, std::memory_order_acquire);
+        if (preview != 0U) {
+            const auto action = (preview >> 16U) & 0xffU;
+            if (action == 1U) {
+                sampler_.startChopPreview(preview & 0xffU, (preview >> 8U) & 0xffU,
+                    pendingChopPreviewFrame_.load(std::memory_order_relaxed));
+            } else {
+                sampler_.stopChopPreview();
+            }
+        }
     }
 
     void activateAllBanksMidiBank(const midichopper::MidiEvent* const events,
@@ -915,6 +1014,8 @@ private:
     std::atomic<std::uint32_t> pendingCommands_{0};
     std::atomic<std::uint64_t> pendingClearPads_{0};
     std::atomic<std::uint32_t> pendingCaptureTarget_{0};
+    std::atomic<std::uint32_t> pendingChopPreviewCommand_{0};
+    std::atomic<std::uint64_t> pendingChopPreviewFrame_{0};
     mutable sms::audio::RealtimeAccessGate samplerAccess_;
     std::uint64_t publishedPlaybackTriggerGeneration_ = 0;
     bool playbackPadEventAlternateHalf_ = false;

@@ -1,6 +1,7 @@
 #include "MidichopperView.hpp"
 
 #include "Configuration.hpp"
+#include "ChopEditor.hpp"
 #include "DPF/AnalogMaterials.hpp"
 #include "DPF/Controls.hpp"
 #include "DPF/ContextMenu.hpp"
@@ -43,7 +44,10 @@ public:
         canvas_.save();
         canvas_.translate(uiLayout::contentOffsetX, 0.0f);
         drawHeader();
-        if (state_.editorMode) {
+        if (state_.chopEditorMode) {
+            drawChopEditor();
+            drawChopEditorPanel();
+        } else if (state_.editorMode) {
             drawSampleEditor();
             drawEditorPadPanel();
         } else {
@@ -317,6 +321,172 @@ private:
             hovered(InteractiveType::envelopeSlider, 3));
     }
 
+    void drawChopEditor()
+    {
+        const auto& colors = sms::ui::dpf::theme();
+        sms::ui::dpf::drawPanel(canvas_, uiLayout::mainPanel);
+        canvas_.fontFace(NANOVG_DEJAVU_SANS_TTF);
+        canvas_.fontSize(13.0f);
+        canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_LEFT |
+                          DGL_NAMESPACE::NanoVG::ALIGN_TOP);
+        canvas_.fillColor(colors.contentSecondary);
+        char heading[64];
+        std::snprintf(heading, sizeof(heading), "CHOP EDITOR  /  BANK %c  /  RAW AUDIO",
+                      'A' + state_.bank);
+        canvas_.text(46.0f, 120.0f, heading, nullptr);
+        canvas_.fontSize(9.0f);
+        canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_RIGHT |
+                          DGL_NAMESPACE::NanoVG::ALIGN_TOP);
+        canvas_.text(632.0f, 122.0f, "PULL SEPARATORS TO ROLL AUDIO", nullptr);
+
+        float sharedPeak = 0.0f;
+        for (const auto& waveform : state_.chopWaveforms) {
+            for (std::size_t bin = 0; bin < sms::audio::kWaveformBins; ++bin)
+                sharedPeak = std::max({sharedPeak, std::abs(waveform.minimum[bin]),
+                                      std::abs(waveform.maximum[bin])});
+        }
+        const float scale = sharedPeak > 1.0e-6f ? 1.0f / sharedPeak : 1.0f;
+        const auto grid = mainGrid();
+        const int encodedPlayPad = state_.chopPreviewPosition > 0.0f
+            ? static_cast<int>(std::floor(state_.chopPreviewPosition)) - 1 : -1;
+        const float playFraction = state_.chopPreviewPosition > 0.0f
+            ? state_.chopPreviewPosition - std::floor(state_.chopPreviewPosition) : 0.0f;
+        const auto playhead = encodedPlayPad >= 0 &&
+                              bankForGlobalPad(encodedPlayPad) == state_.bank
+            ? chop::adjustedPlayhead(state_.chopWaveforms, state_.chopOffsets,
+                  localPadForGlobalPad(encodedPlayPad), playFraction)
+            : chop::PlayheadPosition{};
+        for (int localPad = 0; localPad < pads_.visiblePadCount(); ++localPad) {
+            const auto cell = grid.cell(pads_.visualIndex(localPad));
+            const auto preview = chop::previewWaveform(
+                state_.chopWaveforms, state_.chopOffsets, localPad);
+            canvas_.beginPath();
+            canvas_.roundedRect(cell.x, cell.y, cell.width, cell.height, 7.0f);
+            canvas_.fillColor(colors.canvas);
+            canvas_.fill();
+            canvas_.strokeColor(preview.frames != 0U ? colors.outline :
+                                colors.outline.withAlpha(0.45f));
+            canvas_.strokeWidth(1.5f);
+            canvas_.stroke();
+            const float centerY = cell.y + cell.height * 0.57f;
+            canvas_.beginPath();
+            canvas_.moveTo(cell.x + 7.0f, centerY);
+            canvas_.lineTo(cell.x + cell.width - 7.0f, centerY);
+            canvas_.strokeColor(colors.outline.withAlpha(0.55f));
+            canvas_.strokeWidth(1.0f);
+            canvas_.stroke();
+            if (preview.frames != 0U) {
+                for (std::size_t bin = 0; bin < sms::audio::kWaveformBins; ++bin) {
+                    const float x = cell.x + 7.0f + (cell.width - 14.0f) *
+                        (static_cast<float>(bin) + 0.5f) / sms::audio::kWaveformBins;
+                    const float height = cell.height * 0.30f;
+                    canvas_.beginPath();
+                    canvas_.moveTo(x, centerY - preview.maximum[bin] * scale * height);
+                    canvas_.lineTo(x, centerY - preview.minimum[bin] * scale * height);
+                    canvas_.strokeColor(colors.activityPlayback);
+                    canvas_.strokeWidth(1.1f);
+                    canvas_.stroke();
+                }
+            }
+            char padLabel[16];
+            std::snprintf(padLabel, sizeof(padLabel), "%02d", localPad + 1);
+            canvas_.fontSize(11.0f);
+            canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_LEFT |
+                              DGL_NAMESPACE::NanoVG::ALIGN_TOP);
+            canvas_.fillColor(colors.contentPrimary);
+            canvas_.text(cell.x + 9.0f, cell.y + 7.0f, padLabel, nullptr);
+            char duration[24];
+            const double seconds = preview.sampleRate > 1.0
+                ? preview.frames / preview.sampleRate : 0.0;
+            std::snprintf(duration, sizeof(duration), preview.frames == 0U ? "EMPTY" : "%.2f s",
+                          seconds);
+            canvas_.fontSize(8.0f);
+            canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_RIGHT |
+                              DGL_NAMESPACE::NanoVG::ALIGN_TOP);
+            canvas_.fillColor(colors.contentSecondary);
+            canvas_.text(cell.x + cell.width - 9.0f, cell.y + 8.0f, duration, nullptr);
+            if (playhead.pad == localPad) {
+                const float x = cell.x + 7.0f +
+                    (cell.width - 14.0f) * playhead.fraction;
+                canvas_.beginPath();
+                canvas_.moveTo(x, cell.y + 5.0f);
+                canvas_.lineTo(x, cell.y + cell.height - 5.0f);
+                canvas_.strokeColor(colors.selection);
+                canvas_.strokeWidth(2.0f);
+                canvas_.stroke();
+            }
+        }
+
+        for (int boundary = 0; boundary + 1 < pads_.visiblePadCount(); ++boundary) {
+            if (boundary + 1 >= static_cast<int>(state_.chopWaveforms.size()) ||
+                state_.chopWaveforms[static_cast<std::size_t>(boundary)].frames == 0U ||
+                state_.chopWaveforms[static_cast<std::size_t>(boundary + 1)].frames == 0U ||
+                std::abs(state_.chopWaveforms[static_cast<std::size_t>(boundary)].sampleRate -
+                         state_.chopWaveforms[static_cast<std::size_t>(boundary + 1)].sampleRate) > 0.5)
+                continue;
+            auto geometry = chop::boundaryGeometry(state_.layout, boundary);
+            const bool active = boundary == state_.chopActiveBoundary;
+            const float pull = active ? std::clamp(state_.chopLeverPull, -10.0f, 10.0f) : 0.0f;
+            geometry.handle.x += pull;
+            sms::ui::dpf::drawRaisedControlSurface(canvas_, geometry.handle, colors.selection,
+                {active, hovered(InteractiveType::chopBoundary, boundary), false, true});
+            canvas_.fontSize(12.0f);
+            canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_CENTER |
+                              DGL_NAMESPACE::NanoVG::ALIGN_MIDDLE);
+            canvas_.fillColor(colors.contentPrimary);
+            canvas_.text(geometry.handle.x + geometry.handle.width * 0.5f,
+                         geometry.handle.y + geometry.handle.height * 0.5f,
+                         geometry.rowWrap ? "↵" : "↔", nullptr);
+        }
+    }
+
+    void drawChopEditorPanel()
+    {
+        const auto& colors = sms::ui::dpf::theme();
+        sms::ui::dpf::drawPanel(canvas_, uiLayout::sidePanel);
+        sms::ui::dpf::drawSegment(canvas_, uiLayout::closeEditor, "MAIN VIEW", true,
+                                  colors.activityPlayback,
+                                  hovered(InteractiveType::closeEditor));
+        canvas_.fontFace(NANOVG_DEJAVU_SANS_TTF);
+        canvas_.fontSize(11.0f);
+        canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_LEFT |
+                          DGL_NAMESPACE::NanoVG::ALIGN_TOP);
+        canvas_.fillColor(colors.contentSecondary);
+        canvas_.text(690.0f, 153.0f, "SOURCE BANK", nullptr);
+        for (int bank = 0; bank < static_cast<int>(kBankCount); ++bank) {
+            char label[4];
+            std::snprintf(label, sizeof(label), "%c", 'A' + bank);
+            sms::ui::dpf::drawSegment(canvas_, uiLayout::editorBank(bank), label,
+                                      bank == state_.bank, colors.activityPlayback,
+                                      hovered(InteractiveType::bank, bank));
+        }
+        canvas_.text(690.0f, 202.0f, "RAW PREVIEW", nullptr);
+        sms::ui::dpf::drawSegment(canvas_, uiLayout::chopPlay, "PLAY", false,
+                                  colors.activityPlayback,
+                                  hovered(InteractiveType::chopPlay));
+        sms::ui::dpf::drawSegment(canvas_, uiLayout::chopPause, "PAUSE", false,
+                                  colors.activityPlayback,
+                                  hovered(InteractiveType::chopPause));
+        canvas_.text(690.0f, 262.0f, "CHANGES", nullptr);
+        sms::ui::dpf::drawSegment(canvas_, uiLayout::chopApply,
+                                  state_.chopApplying ? "APPLYING..." : "APPLY",
+                                  false, colors.selection,
+                                  hovered(InteractiveType::chopApply),
+                                  state_.chopDirty && !state_.chopApplying);
+        sms::ui::dpf::drawSegment(canvas_, uiLayout::chopCancel, "REVERT", false,
+                                  colors.controlAccent,
+                                  hovered(InteractiveType::chopCancel),
+                                  state_.chopDirty && !state_.chopApplying);
+        canvas_.fontSize(10.0f);
+        canvas_.fillColor(colors.contentSecondary);
+        canvas_.textBox(690.0f, 342.0f, 222.0f,
+            "Pads show raw audio. Drag inside a pad to seek. Pull a separator to move audio between neighboring pads.",
+            nullptr);
+        canvas_.textBox(690.0f, 446.0f, 222.0f,
+            "Apply rewrites affected samples and resets their Start, End and ADSR settings.",
+            nullptr);
+    }
+
     void drawEditorPadPanel()
     {
         const auto& colors = sms::ui::dpf::theme();
@@ -376,8 +546,12 @@ private:
         const auto& colors = sms::ui::dpf::theme();
         sms::ui::dpf::drawPanel(canvas_, uiLayout::sidePanel);
         sms::ui::dpf::drawSegment(canvas_, uiLayout::openEditor,
-                                  state_.armed ? "EDITOR · PLAY ONLY" : "SAMPLE EDITOR", false,
+                                  state_.armed ? "PLAY ONLY" : "SAMPLE", false,
                                   colors.controlAccent, hovered(InteractiveType::openEditor),
+                                  !state_.armed);
+        sms::ui::dpf::drawSegment(canvas_, uiLayout::openChopEditor,
+                                  state_.armed ? "PLAY ONLY" : "CHOP", false,
+                                  colors.controlAccent, hovered(InteractiveType::openChopEditor),
                                   !state_.armed);
         canvas_.fontFace(NANOVG_DEJAVU_SANS_TTF);
         sms::ui::dpf::drawSegment(canvas_, uiLayout::playMode, "PLAY", !state_.armed,
@@ -479,8 +653,12 @@ private:
         const auto& colors = sms::ui::dpf::theme();
         char liveStatus[96];
         const char* status = nullptr;
-        if (state_.editorMode && state_.status[0] != '\0') {
+        if ((state_.editorMode || state_.chopEditorMode) && state_.status[0] != '\0') {
             status = state_.status;
+        } else if (state_.chopEditorMode) {
+            status = state_.chopDirty
+                ? "Chop preview changed — Apply rewrites raw pad audio"
+                : "Raw chop preview — pull a separator or drag a waveform to seek";
         } else if (state_.editorMode) {
             std::snprintf(liveStatus, sizeof(liveStatus),
                           "Editing Bank %c Pad %02d — drag cut handles or envelope controls",
@@ -507,12 +685,16 @@ private:
         canvas_.fontSize(12.0f);
         canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_LEFT |
                           DGL_NAMESPACE::NanoVG::ALIGN_MIDDLE);
-        canvas_.fillColor(state_.editorMode ? colors.activityPlayback :
+        canvas_.fillColor((state_.editorMode || state_.chopEditorMode) ? colors.activityPlayback :
                           (state_.currentPad >= 0 ? colors.activityCapture
                                                   : colors.contentSecondary));
         canvas_.text(38.0f, 642.0f, status, nullptr);
         char details[96];
-        if (state_.editorMode)
+        if (state_.chopEditorMode)
+            std::snprintf(details, sizeof(details), "%s   %s",
+                          state_.chopDirty ? "UNAPPLIED CHANGES" : "BOUNDARIES CLEAN",
+                          state_.chopApplying ? "WORKING" : "RAW PREVIEW");
+        else if (state_.editorMode)
             std::snprintf(details, sizeof(details),
                           "REGION %.1f%% — %.1f%%   SUSTAIN %d%%",
                           state_.editorSettings.start * 100.0f,

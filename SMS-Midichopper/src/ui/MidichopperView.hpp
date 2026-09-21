@@ -8,6 +8,7 @@
 #include "Interaction.hpp"
 
 #include <array>
+#include <cstdint>
 #include <span>
 
 namespace midichopper::ui {
@@ -36,6 +37,7 @@ struct ViewState {
     std::span<const sms::ui::ContextMenuItemView> padContextMenuItems;
     sms::ui::InteractiveTarget hoveredTarget;
     bool editorMode = false;
+    bool chopEditorMode = false;
     bool playOnSelect = false;
     bool hasWaveform = false;
     std::array<float, 2> inputLevels{};
@@ -44,6 +46,13 @@ struct ViewState {
     std::span<const char> padActivity;
     const sms::dsp::SamplePlaybackSettings& editorSettings;
     const sms::audio::WaveformSummary& waveform;
+    std::span<const sms::audio::WaveformSummary> chopWaveforms;
+    std::span<const std::int64_t> chopOffsets;
+    float chopPreviewPosition = 0.0f;
+    int chopActiveBoundary = -1;
+    float chopLeverPull = 0.0f;
+    bool chopDirty = false;
+    bool chopApplying = false;
     const char* status = "";
 };
 

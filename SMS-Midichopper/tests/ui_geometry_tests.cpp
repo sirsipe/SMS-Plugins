@@ -1,5 +1,6 @@
 #include "Audio/WaveformSummary.hpp"
 #include "ContextMenu.hpp"
+#include "ChopEditor.hpp"
 #include "DSP/SamplePlaybackSettings.hpp"
 #include "Interaction.hpp"
 #include "MidichopperLayout.hpp"
@@ -203,6 +204,21 @@ void interactionTargets()
               waveformTarget.index == static_cast<int>(sms::ui::waveform::EditTarget::regionStart),
           "waveform hover identifies the nearest editable cut handle");
 
+    context.editorMode = false;
+    context.chopEditorMode = true;
+    std::array<sms::audio::WaveformSummary, 16> chopWaveforms{};
+    chopWaveforms[0].frames = chopWaveforms[1].frames = 100U;
+    chopWaveforms[0].sampleRate = chopWaveforms[1].sampleRate = 48000.0;
+    context.chopWaveforms = chopWaveforms;
+    const auto separator = interaction::interactiveTargetAt(
+        center(interaction::chop::boundaryGeometry(0, 0).handle), context);
+    check(interaction::isTarget(separator, interaction::InteractiveType::chopBoundary, 0) &&
+          interaction::isTarget(
+              interaction::interactiveTargetAt(center(layout::chopPlay), context),
+              interaction::InteractiveType::chopPlay),
+          "chop editor exposes rolling separators and raw transport");
+    context.chopEditorMode = false;
+
     const std::array<bool, 2> enabled{false, true};
     context.padContextMenuOpen = true;
     context.padContextMenu = sms::ui::ContextMenuGeometry(
@@ -336,6 +352,43 @@ void waveformGeometry()
           "envelope slider drawing and interaction share one mapping");
 }
 
+void chopEditorGeometry()
+{
+    std::array<sms::audio::WaveformSummary, 16> waveforms{};
+    for (std::size_t index = 0; index < 5U; ++index) {
+        waveforms[index].pad = static_cast<std::uint32_t>(index);
+        waveforms[index].frames = 100U;
+        waveforms[index].sampleRate = 1000.0;
+        waveforms[index].minimum.fill(-static_cast<float>(index + 1U) * 0.1f);
+        waveforms[index].maximum.fill(static_cast<float>(index + 1U) * 0.1f);
+    }
+    const std::array<std::int64_t, 15> offsets{};
+    const auto first = midichopper::ui::chop::boundaryGeometry(0, 0);
+    check(!first.rowWrap && midichopper::ui::chop::boundaryAt(
+              center(first.handle), 0, waveforms) == 0,
+          "chop separator occupies the gap between horizontal pad neighbors");
+    const auto wrap = midichopper::ui::chop::boundaryGeometry(0, 3);
+    check(wrap.rowWrap && midichopper::ui::chop::boundaryAt(
+              center(wrap.handle), 0, waveforms) == 3,
+          "row-end chop separator remains reachable");
+    check(midichopper::ui::chop::clampBoundaryOffset(waveforms, offsets, 0, -200) == -99 &&
+          midichopper::ui::chop::clampBoundaryOffset(waveforms, offsets, 0, 200) == 99,
+          "chop boundary retains at least one frame in each neighbor");
+
+    auto moved = offsets;
+    moved[0] = 50;
+    check(midichopper::ui::chop::adjustedFrames(waveforms, moved, 0) == 150U &&
+          midichopper::ui::chop::adjustedFrames(waveforms, moved, 1) == 50U,
+          "rolling edit transfers duration between adjacent pads");
+    const auto preview = midichopper::ui::chop::previewWaveform(waveforms, moved, 0);
+    check(preview.frames == 150U && preview.maximum.back() > 0.19f,
+          "chop preview rolls neighboring waveform content into the pad");
+    const auto playhead = midichopper::ui::chop::adjustedPlayhead(
+        waveforms, moved, 1, 0.25f);
+    check(playhead.pad == 0 && std::abs(playhead.fraction - (125.0f / 150.0f)) < 1.0e-6f,
+          "chop playhead follows audio across a pending boundary");
+}
+
 } // namespace
 
 int main()
@@ -348,5 +401,6 @@ int main()
     wheelAdjustment();
     levelMeterGeometry();
     waveformGeometry();
+    chopEditorGeometry();
     std::cout << "UI geometry tests passed\n";
 }

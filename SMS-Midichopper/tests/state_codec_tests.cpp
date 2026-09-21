@@ -1,5 +1,6 @@
 #include "StateCodec.hpp"
 #include "Audio/WaveformSummary.hpp"
+#include "ChopEditorProtocol.hpp"
 
 #include <cmath>
 #include <cstdlib>
@@ -91,6 +92,36 @@ void editorStateRoundTrip()
           "waveform summary rejects partially parsed pad field");
 }
 
+void chopProtocolRoundTrip()
+{
+    midichopper::plugin::ChopApplyRequest apply;
+    apply.firstPad = 16U;
+    apply.padCount = 4U;
+    apply.boundaryOffsets[0] = -120;
+    apply.boundaryOffsets[1] = 0;
+    apply.boundaryOffsets[2] = 240;
+    const auto encodedApply = midichopper::plugin::encodeChopApplyRequest(apply);
+    midichopper::plugin::ChopApplyRequest decodedApply;
+    check(midichopper::plugin::decodeChopApplyRequest(encodedApply, decodedApply) &&
+          decodedApply.firstPad == 16U && decodedApply.padCount == 4U &&
+          decodedApply.boundaryOffsets[0] == -120 &&
+          decodedApply.boundaryOffsets[2] == 240,
+          "chop apply request round-trips");
+    check(!midichopper::plugin::decodeChopApplyRequest("CH1;0;2", decodedApply) &&
+          !midichopper::plugin::decodeChopApplyRequest("CH1;63;2;0", decodedApply),
+          "invalid chop apply requests are rejected");
+
+    const midichopper::plugin::ChopPreviewRequest preview{true, 8U, 8U, 12345U};
+    const auto encodedPreview = midichopper::plugin::encodeChopPreviewRequest(preview);
+    midichopper::plugin::ChopPreviewRequest decodedPreview;
+    check(midichopper::plugin::decodeChopPreviewRequest(encodedPreview, decodedPreview) &&
+          decodedPreview.play && decodedPreview.firstPad == 8U &&
+          decodedPreview.padCount == 8U && decodedPreview.sourceFrame == 12345U,
+          "chop preview request round-trips");
+    check(!midichopper::plugin::decodeChopPreviewRequest("CP1;2;0;2;0", decodedPreview),
+          "invalid chop preview command is rejected");
+}
+
 } // namespace
 
 int main()
@@ -98,5 +129,6 @@ int main()
     roundTrip();
     rejectsDamage();
     editorStateRoundTrip();
+    chopProtocolRoundTrip();
     std::cout << "state codec tests passed\n";
 }

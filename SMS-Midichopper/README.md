@@ -51,9 +51,6 @@ cp -a build/bin/SMS-Midichopper.lv2 ~/.lv2/
 4. Click **FINALIZE** or return to **PLAY** to keep the last open slice.
 5. Select Bank A–D and play from MIDI note 36 upward. The base is configurable.
 
-The yellow outline marks the last played pad in Play and the current or next
-capture destination in Arm. A manual Play bank change clears it.
-
 The hamburger menu provides two MIDI bank modes. **All Banks** (the default)
 assigns stable, gapless notes to exposed sample slots. **Selected Bank** reuses
 the base-note range for the visible bank. A note-on activates its bank and the
@@ -72,12 +69,16 @@ to audition them as you select them; it defaults to off whenever
 the plug-in UI opens. MIDI playback selects populated pads, including retriggers.
 The editor is unavailable in Arm so capture controls remain visible.
 
+Open **Chop Editor** for raw, layout-aware boundary correction across adjacent
+pads. See the [Chop Editor guide](Docs/CHOP-EDITOR.md).
+
 Hovering highlights the enabled control under the pointer. The mouse wheel
 adjusts Fixed Length, Max Voices, Pre-roll, and editor ADSR sliders.
 Arm shows Capture Mode and Pre-roll, plus Fixed Length only for Fixed capture.
 Play shows playback mode and Max Voices. Hidden controls retain their values.
 
-In Play or Sample Editor, right-click a pad to copy, paste, import, export, or clear it. See
+In Play or Sample Editor, right-click a pad to copy, paste, import, export, or
+clear it. See
 [WAV files](Docs/WAV-FILES.md) for formats and Linux requirements. **Clear Pad**
 requires confirmation.
 

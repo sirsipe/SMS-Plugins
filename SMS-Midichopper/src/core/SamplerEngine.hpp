@@ -132,6 +132,18 @@ public:
     [[nodiscard]] bool exportPad(std::uint32_t pad, PadData& destination) const;
     /** Import/replaces a pad on the control thread; stereo must be interleaved. */
     [[nodiscard]] bool importPad(std::uint32_t pad, const PadData& source);
+    /**
+     * Repartition raw audio across consecutive occupied pads. Boundary offsets
+     * are frame deltas from the original boundaries. Control thread only.
+     */
+    [[nodiscard]] bool rechopPads(std::uint32_t firstPad, std::uint32_t padCount,
+                                  std::span<const std::int64_t> boundaryOffsets);
+    /** Allocation-free raw preview used by the Chop Editor. Audio thread only. */
+    void startChopPreview(std::uint32_t firstPad, std::uint32_t padCount,
+                          std::uint64_t sourceFrame) noexcept;
+    void stopChopPreview() noexcept;
+    /** Zero when stopped; otherwise global pad + 1 plus normalized position. */
+    [[nodiscard]] float chopPreviewPosition() const noexcept;
     [[nodiscard]] sms::dsp::SamplePlaybackSettings padPlaybackSettings(std::uint32_t pad) const noexcept;
     void setPadPlaybackSettings(std::uint32_t pad,
                                 const sms::dsp::SamplePlaybackSettings& settings) noexcept;
@@ -193,6 +205,7 @@ private:
     void stopVoice(std::uint32_t pad) noexcept;
     void hardStopVoice(std::uint32_t pad) noexcept;
     void enforceVoiceLimit(std::uint32_t excludedPad = kPadCount) noexcept;
+    void mixChopPreview(float& left, float& right) noexcept;
 
     double sample_rate_;
     double max_record_seconds_;
@@ -221,6 +234,11 @@ private:
     bool sessionComplete_ = false;
     std::atomic<bool> finalizeRequested_{false};
     std::atomic<bool> undoRequested_{false};
+    bool chopPreviewActive_ = false;
+    std::uint32_t chopPreviewFirstPad_ = 0;
+    std::uint32_t chopPreviewPadCount_ = 0;
+    std::uint32_t chopPreviewPad_ = 0;
+    double chopPreviewFrame_ = 0.0;
 };
 
 } // namespace midichopper

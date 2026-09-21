@@ -51,7 +51,8 @@ void live_peak_meter() {
     using namespace midichopper::plugin;
     check(kParameterInputLevelLeft == kParameterCaptureTargetRequest + 1U &&
           kParameterPadClipboardAvailable == kParameterPadFileResultEvent + 1U &&
-          kParameterPadClipboardResultEvent + 1U == kParameterCount,
+          kParameterChopPreviewPosition == kParameterPadClipboardResultEvent + 1U &&
+          kParameterChopPreviewPosition + 1U == kParameterCount,
           "meter outputs remain appended after released parameters");
 }
 
@@ -77,6 +78,82 @@ void sequential_boundaries_and_preroll() {
     close(p0.stereo[2], 2, "pad zero boundary trim");
     close(p1.stereo[0], 3, "pad one starts at adjusted boundary");
     close(p1.stereo[4], 5, "pad one contains post-boundary audio");
+}
+
+void rechop_and_raw_preview() {
+    midichopper::SamplerEngine engine(1000.0, 1.0);
+    midichopper::PadData left;
+    left.sampleRate = 1000.0;
+    left.frames = 4U;
+    left.stereo = {1, 1, 2, 2, 3, 3, 4, 4};
+    left.peak = 4.0f;
+    left.rms = 1.0f;
+    midichopper::PadData right;
+    right.sampleRate = 1000.0;
+    right.frames = 4U;
+    right.stereo = {5, 5, 6, 6, 7, 7, 8, 8};
+    right.peak = 8.0f;
+    right.rms = 1.0f;
+    check(engine.importPad(0, left) && engine.importPad(1, right) &&
+          engine.importPad(2, right), "import a contiguous pad run");
+    sms::dsp::SamplePlaybackSettings shaped;
+    shaped.start = 0.25f;
+    shaped.end = 0.75f;
+    shaped.attackSeconds = 0.1f;
+    engine.setPadPlaybackSettings(0, shaped);
+    engine.setPadPlaybackSettings(2, shaped);
+
+    const std::array<std::int64_t, 2> later{{2, 0}};
+    check(engine.rechopPads(0, 3, later), "move a boundary later");
+    midichopper::PadData movedLeft, movedRight;
+    check(engine.exportPad(0, movedLeft) && engine.exportPad(1, movedRight),
+          "export rechopped pads");
+    check(movedLeft.frames == 6U && movedRight.frames == 2U,
+          "rechop transfers frames between neighbors");
+    close(movedLeft.stereo[10], 6.0f, "left pad receives the right pad prefix");
+    close(movedRight.stereo[0], 7.0f, "right pad begins at the moved boundary");
+    const auto reset = engine.padPlaybackSettings(0);
+    check(reset.start == 0.0f && reset.end == 1.0f && reset.attackSeconds == 0.0f,
+          "rechop resets pad cuts and ADSR");
+    check(engine.padPlaybackSettings(2).start == shaped.start &&
+          engine.padPlaybackSettings(2).attackSeconds == shaped.attackSeconds,
+          "rechop preserves shaping on pads untouched by moved boundaries");
+
+    engine.startChopPreview(0, 2, 5U);
+    check(engine.chopPreviewPosition() > 1.0f && engine.chopPreviewPosition() < 2.0f,
+          "raw preview reports its first pad position");
+    auto settings = engine.settings();
+    settings.monitorInput = false;
+    engine.setSettings(settings);
+    float outputLeft[3]{};
+    float outputRight[3]{};
+    engine.process(nullptr, nullptr, outputLeft, outputRight, 3U);
+    close(outputLeft[0], 6.0f, "raw preview starts at a requested source frame");
+    close(outputLeft[1], 7.0f, "raw preview crosses the edited pad boundary");
+    close(outputLeft[2], 8.0f, "raw preview keeps source order");
+    check(engine.chopPreviewPosition() == 0.0f, "raw preview stops at session end");
+
+    engine.startChopPreview(0, 2, 0U);
+    settings.armed = true;
+    engine.setSettings(settings);
+    check(engine.chopPreviewPosition() == 0.0f,
+          "arming stops and prevents raw preview");
+    engine.startChopPreview(0, 2, 0U);
+    check(engine.chopPreviewPosition() == 0.0f,
+          "raw preview cannot start while armed");
+    settings.armed = false;
+    engine.setSettings(settings);
+
+    const std::array<std::int64_t, 2> earlier{{-2, 0}};
+    check(engine.rechopPads(0, 3, earlier), "move a boundary earlier");
+    check(engine.exportPad(0, movedLeft) && engine.exportPad(1, movedRight) &&
+          movedLeft.frames == 4U && movedRight.frames == 4U,
+          "negative boundary move transfers frames back to the right pad");
+    close(movedLeft.stereo[6], 4.0f, "negative move preserves left pad order");
+    close(movedRight.stereo[0], 5.0f, "negative move restores the right pad prefix");
+
+    const std::array<std::int64_t, 2> invalid{{-6, 0}};
+    check(!engine.rechopPads(0, 3, invalid), "rechop rejects an empty slice");
 }
 
 void full_bank_and_undo() {
@@ -678,6 +755,7 @@ void disarm_note_off_gain_and_rate_change() {
 int main() {
     live_peak_meter();
     sequential_boundaries_and_preroll();
+    rechop_and_raw_preview();
     full_bank_and_undo();
     bank_and_layout_mapping();
     all_bank_midi_mapping();
