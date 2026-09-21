@@ -71,6 +71,13 @@ private:
     int midiNote_ = -1;
 };
 
+/** Editor data only needs reloading when the requested pad changes. */
+[[nodiscard]] constexpr bool editorPadSelectionChanged(const int selectedPad,
+                                                       const int requestedPad) noexcept
+{
+    return selectedPad != requestedPad;
+}
+
 [[nodiscard]] constexpr sms::ui::InteractiveTarget
 target(const InteractiveType type, const int index = -1) noexcept
 {

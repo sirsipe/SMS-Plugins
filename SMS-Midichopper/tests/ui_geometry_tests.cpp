@@ -255,6 +255,10 @@ void padPressTracking()
           "replacement UI pad press releases the previous MIDI note");
     check(press.release() == 37 && press.pad() == -1 && press.release() == -1,
           "UI pad release clears the active press exactly once");
+
+    check(!midichopper::ui::editorPadSelectionChanged(7, 7) &&
+              midichopper::ui::editorPadSelectionChanged(7, 8),
+          "sample editor reloads data only when pad selection changes");
 }
 
 void wheelAdjustment()

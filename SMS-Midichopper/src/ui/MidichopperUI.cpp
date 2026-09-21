@@ -669,12 +669,8 @@ protected:
             {
                 fMenuOpen = false;
                 const int pad = globalPad(localPad);
-                if (fEditorMode) {
-                    if (fSelectedPad != pad)
-                        selectEditorPad(pad);
-                    else
-                        refreshSelectedWaveform();
-                }
+                if (fEditorMode)
+                    selectEditorPad(pad);
                 else {
                     if (fSelectedPad != pad) {
                         fEditorSettings = {};
@@ -1808,7 +1804,11 @@ private:
 
     void selectEditorPad(const int pad)
     {
-        fSelectedPad = clampPad(static_cast<float>(pad));
+        const int selectedPad = clampPad(static_cast<float>(pad));
+        if (!midichopper::ui::editorPadSelectionChanged(fSelectedPad, selectedPad))
+            return;
+
+        fSelectedPad = selectedPad;
         fEditorSettings = {};
         fEditorSettingsPad = -1;
         fHasWaveform = false;
