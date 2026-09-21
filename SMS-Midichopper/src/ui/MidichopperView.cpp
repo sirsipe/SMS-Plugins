@@ -366,12 +366,9 @@ private:
             canvas_.text(cell.x + cell.width - 9.0f, cell.y + cell.height * 0.5f,
                          note, nullptr);
         }
-        canvas_.fontSize(10.0f);
-        canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_LEFT |
-                          DGL_NAMESPACE::NanoVG::ALIGN_TOP);
-        canvas_.fillColor(colors.contentSecondary);
-        canvas_.text(690.0f, 548.0f, "Cut points and ADSR are stored per pad.", nullptr);
-        canvas_.text(690.0f, 564.0f, "Edits are non-destructive.", nullptr);
+        sms::ui::dpf::drawSegment(canvas_, uiLayout::playOnSelect, "PLAY ON SELECT",
+                                  state_.playOnSelect, colors.activityPlayback,
+                                  hovered(InteractiveType::playOnSelect));
     }
 
     void drawControlPanel()

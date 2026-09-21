@@ -36,6 +36,7 @@ struct ViewState {
     std::span<const sms::ui::ContextMenuItemView> padContextMenuItems;
     sms::ui::InteractiveTarget hoveredTarget;
     bool editorMode = false;
+    bool playOnSelect = false;
     bool hasWaveform = false;
     std::array<float, 2> inputLevels{};
     std::array<float, 2> outputLevels{};

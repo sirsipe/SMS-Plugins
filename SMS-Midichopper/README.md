@@ -66,10 +66,11 @@ from the bottom row. Banks retain 16 slots; smaller layouts hide slots without
 deleting samples. Sequential capture skips hidden slots and continues into the
 next bank in Selected Bank mode. All Banks uses contiguous layout-sized pages.
 
-In Play, open **Sample Editor** to edit a pad's region and ADSR non-destructively.
-Side-panel clicks select and load pads without auditioning them. MIDI playback
-selects populated pads, including retriggers. The
-editor is unavailable in Arm so capture controls remain visible.
+In Play, open **Sample Editor** for non-destructive region and ADSR editing.
+Side-panel clicks select and load pads. Enable **Play on Select** below the pads
+to audition them as you select them; it defaults to off whenever
+the plug-in UI opens. MIDI playback selects populated pads, including retriggers.
+The editor is unavailable in Arm so capture controls remain visible.
 
 Hovering highlights the enabled control under the pointer. The mouse wheel
 adjusts Fixed Length, Max Voices, Pre-roll, and editor ADSR sliders.

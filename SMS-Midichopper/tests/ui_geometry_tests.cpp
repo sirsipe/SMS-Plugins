@@ -187,7 +187,16 @@ void interactionTargets()
           "pre-roll occupies the fixed-length slot only when length is hidden");
     context.armed = false;
     context.fixedCapture = false;
+    check(layout::sidePanel.contains(center(layout::playOnSelect)) &&
+              !interaction::isTarget(
+                  interaction::interactiveTargetAt(center(layout::playOnSelect), context),
+                  interaction::InteractiveType::playOnSelect),
+          "play-on-select stays inside the side panel and is hidden outside the editor");
     context.editorMode = true;
+    check(interaction::isTarget(
+              interaction::interactiveTargetAt(center(layout::playOnSelect), context),
+              interaction::InteractiveType::playOnSelect),
+          "sample editor exposes the play-on-select toggle");
     const auto waveformTarget = interaction::interactiveTargetAt(
         {layout::editorWaveform.x + 1.0f, layout::editorWaveform.y + 20.0f}, context);
     check(interaction::isTarget(waveformTarget, interaction::InteractiveType::regionHandle) &&
@@ -205,6 +214,17 @@ void interactionTargets()
               interaction::interactiveTargetAt(center(context.padContextMenu.item(1)), context),
               interaction::InteractiveType::padContextItem, 1),
           "enabled context item takes overlay hover priority");
+}
+
+void padPressTracking()
+{
+    midichopper::ui::PadPressTracker press;
+    check(press.pad() == -1 && press.press(0, 36) == -1 && press.pad() == 0,
+          "first UI pad press has no previous note to release");
+    check(press.press(1, 37) == 36 && press.pad() == 1,
+          "replacement UI pad press releases the previous MIDI note");
+    check(press.release() == 37 && press.pad() == -1 && press.release() == -1,
+          "UI pad release clears the active press exactly once");
 }
 
 void wheelAdjustment()
@@ -324,6 +344,7 @@ int main()
     hamburgerMenuGeometry();
     contextMenuGeometry();
     interactionTargets();
+    padPressTracking();
     wheelAdjustment();
     levelMeterGeometry();
     waveformGeometry();

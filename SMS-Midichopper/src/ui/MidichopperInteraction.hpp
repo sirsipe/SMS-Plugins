@@ -22,6 +22,7 @@ enum class InteractiveType : int {
     regionHandle,
     envelopeNode,
     envelopeSlider,
+    playOnSelect,
     openEditor,
     playMode,
     armMode,
@@ -36,6 +37,33 @@ enum class InteractiveType : int {
     finalizeAction,
     undoAction,
     clearAction,
+};
+
+class PadPressTracker {
+public:
+    [[nodiscard]] constexpr int pad() const noexcept { return pad_; }
+
+    /** Record a new press and return the MIDI note that must be released first. */
+    [[nodiscard]] constexpr int press(const int pad, const int midiNote) noexcept
+    {
+        const int previousMidiNote = midiNote_;
+        pad_ = pad;
+        midiNote_ = midiNote;
+        return previousMidiNote;
+    }
+
+    /** Clear the active press and return its MIDI note for note-off. */
+    [[nodiscard]] constexpr int release() noexcept
+    {
+        const int releasedMidiNote = midiNote_;
+        pad_ = -1;
+        midiNote_ = -1;
+        return releasedMidiNote;
+    }
+
+private:
+    int pad_ = -1;
+    int midiNote_ = -1;
 };
 
 [[nodiscard]] constexpr sms::ui::InteractiveTarget
@@ -124,6 +152,8 @@ interactiveTargetAt(const sms::ui::Point point, const InteractionContext& contex
             if (uiLayout::editorSlider(slider).contains(point))
                 return target(InteractiveType::envelopeSlider, slider);
         }
+        if (uiLayout::playOnSelect.contains(point))
+            return target(InteractiveType::playOnSelect);
         return sms::ui::kNoInteractiveTarget;
     }
 

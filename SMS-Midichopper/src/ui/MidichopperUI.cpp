@@ -121,8 +121,6 @@ public:
           fSelectedPad(-1),
           fLastPlayedPad(-1),
           fCurrentPad(-1),
-          fPressedPad(-1),
-          fPressedMidiNote(-1),
           fPressedActionParameter(-1),
           fClearArmed(false),
           fMenuOpen(false),
@@ -131,6 +129,7 @@ public:
           fPadContextClearArmed(false),
           fPadContextPointerCaptured(false),
           fEditorMode(false),
+          fPlayOnSelect(false),
           fDragTarget(WaveformEditTarget::none),
           fDragStartX(0.0f),
           fDragStartY(0.0f),
@@ -562,11 +561,12 @@ protected:
         const midichopper::ui::ViewState view{
             fArm, fRecordMode, fFixedLength, fPlaybackMode, fMonitor,
             fStartPad, fPreRoll, fBaseNote, fMidiBankMode, fGain, fMaxVoices, fBank, fLayout,
-            fSelectedPad, fCurrentPad, fPressedPad, fClearArmed, fMenuOpen,
+            fSelectedPad, fCurrentPad, fPadPress.pad(), fClearArmed, fMenuOpen,
             fPadContextMenuOpen, fPadContextMenu,
             std::span<const sms::ui::ContextMenuItemView>{contextMenuItems},
             fHover.target(),
-            fEditorMode, fHasWaveform, fInputLevels, fOutputLevels, fPadState, fPadStatus,
+            fEditorMode, fPlayOnSelect, fHasWaveform,
+            fInputLevels, fOutputLevels, fPadState, fPadStatus,
             fEditorSettings, fWaveform, fStatus,
         };
         midichopper::ui::draw(*this, view);
@@ -671,6 +671,7 @@ protected:
                 if (midichopper::ui::isTarget(
                         clicked, midichopper::ui::InteractiveType::closeEditor))
                 {
+                    releasePressedPad();
                     fEditorMode = false;
                     fDragTarget = WaveformEditTarget::none;
                     restoreLastPlayedSelection();
@@ -685,6 +686,14 @@ protected:
                 if (midichopper::ui::isTarget(
                         clicked, midichopper::ui::InteractiveType::pad)) {
                     selectEditorPad(globalPad(clicked.index));
+                    if (fPlayOnSelect)
+                        pressPlaybackPad(clicked.index);
+                    return true;
+                }
+                if (midichopper::ui::isTarget(
+                        clicked, midichopper::ui::InteractiveType::playOnSelect)) {
+                    fPlayOnSelect = !fPlayOnSelect;
+                    requestRepaint();
                     return true;
                 }
                 if (midichopper::ui::isTarget(
@@ -754,11 +763,7 @@ protected:
                 }
                 else
                 {
-                    fPressedPad = pad;
-                    fPressedMidiNote = mappedMidiNote(globalPad(pad));
-#if DISTRHO_PLUGIN_WANT_MIDI_INPUT
-                    sendNote(0, static_cast<uint8_t>(fPressedMidiNote), 127);
-#endif
+                    pressPlaybackPad(pad);
                 }
                 requestRepaint();
                 return true;
@@ -872,14 +877,9 @@ protected:
             requestRepaint();
             return true;
         }
-        else if (fPressedPad >= 0)
+        else if (fPadPress.pad() >= 0)
         {
-#if DISTRHO_PLUGIN_WANT_MIDI_INPUT
-            if (fPressedMidiNote >= 0)
-                sendNote(0, static_cast<uint8_t>(fPressedMidiNote), 0);
-#endif
-            fPressedPad = -1;
-            fPressedMidiNote = -1;
+            releasePressedPad();
             requestRepaint();
             return true;
         }
@@ -1057,8 +1057,7 @@ private:
     int fSelectedPad;
     int fLastPlayedPad;
     int fCurrentPad;
-    int fPressedPad;
-    int fPressedMidiNote;
+    midichopper::ui::PadPressTracker fPadPress;
     int fPressedActionParameter;
     bool fClearArmed;
     std::chrono::steady_clock::time_point fClearDeadline{};
@@ -1081,6 +1080,7 @@ private:
     PendingFileDialog fActiveFileAction = PendingFileDialog::none;
     int fActiveFilePad = -1;
     bool fEditorMode;
+    bool fPlayOnSelect;
     WaveformEditTarget fDragTarget;
     float fDragStartX;
     float fDragStartY;
@@ -1485,6 +1485,30 @@ private:
         editParameter(parameter, true);
         setControlValue(parameter, value);
         editParameter(parameter, false);
+    }
+
+    void pressPlaybackPad(const int localPad)
+    {
+        const int midiNote = mappedMidiNote(globalPad(localPad));
+        const int previousMidiNote = fPadPress.press(localPad, midiNote);
+#if DISTRHO_PLUGIN_WANT_MIDI_INPUT
+        if (previousMidiNote >= 0)
+            sendNote(0, static_cast<uint8_t>(previousMidiNote), 0);
+        sendNote(0, static_cast<uint8_t>(midiNote), 127);
+#else
+        static_cast<void>(previousMidiNote);
+#endif
+    }
+
+    void releasePressedPad()
+    {
+        const int midiNote = fPadPress.release();
+#if DISTRHO_PLUGIN_WANT_MIDI_INPUT
+        if (midiNote >= 0)
+            sendNote(0, static_cast<uint8_t>(midiNote), 0);
+#else
+        static_cast<void>(midiNote);
+#endif
     }
 
     void requestWaveform()

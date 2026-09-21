@@ -25,6 +25,7 @@ inline constexpr sms::ui::Rect overviewWaveform{46.0f, 176.0f, 586.0f, 10.0f};
 inline constexpr sms::ui::Rect editorWaveform{46.0f, 158.0f, 586.0f, 222.0f};
 inline constexpr sms::ui::Rect envelopeGraph{46.0f, 448.0f, 250.0f, 120.0f};
 inline constexpr sms::ui::Rect editorPadBounds{690.0f, 204.0f, 222.0f, 326.0f};
+inline constexpr sms::ui::Rect playOnSelect{690.0f, 548.0f, 222.0f, 34.0f};
 inline constexpr sms::ui::Rect openEditor{690.0f, 108.0f, 222.0f, 28.0f};
 inline constexpr sms::ui::Rect closeEditor{690.0f, 112.0f, 222.0f, 32.0f};
 inline constexpr sms::ui::Rect playMode{690.0f, 145.0f, 108.0f, 42.0f};
