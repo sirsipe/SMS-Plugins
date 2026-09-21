@@ -119,7 +119,7 @@ void rechop_and_raw_preview() {
           engine.padPlaybackSettings(2).attackSeconds == shaped.attackSeconds,
           "rechop preserves shaping on pads untouched by moved boundaries");
 
-    engine.startChopPreview(0, 2, 5U);
+    engine.startChopPreview(0, 2, 5U, 8U);
     check(engine.chopPreviewPosition() > 1.0f && engine.chopPreviewPosition() < 2.0f,
           "raw preview reports its first pad position");
     auto settings = engine.settings();
@@ -133,12 +133,12 @@ void rechop_and_raw_preview() {
     close(outputLeft[2], 8.0f, "raw preview keeps source order");
     check(engine.chopPreviewPosition() == 0.0f, "raw preview stops at session end");
 
-    engine.startChopPreview(0, 2, 0U);
+    engine.startChopPreview(0, 2, 0U, 1U);
     settings.armed = true;
     engine.setSettings(settings);
     check(engine.chopPreviewPosition() == 0.0f,
           "arming stops and prevents raw preview");
-    engine.startChopPreview(0, 2, 0U);
+    engine.startChopPreview(0, 2, 0U, 1U);
     check(engine.chopPreviewPosition() == 0.0f,
           "raw preview cannot start while armed");
     settings.armed = false;

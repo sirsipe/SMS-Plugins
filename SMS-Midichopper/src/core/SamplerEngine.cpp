@@ -777,10 +777,11 @@ bool SamplerEngine::rechopPads(const std::uint32_t firstPad,
 
 void SamplerEngine::startChopPreview(const std::uint32_t firstPad,
                                      const std::uint32_t padCount,
-                                     const std::uint64_t sourceFrame) noexcept {
+                                     const std::uint64_t sourceFrame,
+                                     const std::uint64_t sourceEndFrame) noexcept {
     stopChopPreview();
     if (settings_.armed || padCount == 0U || firstPad >= kPadCount ||
-        padCount > kPadCount - firstPad)
+        padCount > kPadCount - firstPad || sourceEndFrame <= sourceFrame)
         return;
     for (std::uint32_t pad = 0; pad < kPadCount; ++pad)
         hardStopVoice(pad);
@@ -794,6 +795,7 @@ void SamplerEngine::startChopPreview(const std::uint32_t firstPad,
             chopPreviewPadCount_ = padCount;
             chopPreviewPad_ = firstPad + index;
             chopPreviewFrame_ = static_cast<double>(remaining);
+            chopPreviewRemainingFrames_ = static_cast<double>(sourceEndFrame - sourceFrame);
             chopPreviewActive_ = true;
             return;
         }
@@ -805,10 +807,12 @@ void SamplerEngine::stopChopPreview() noexcept {
     chopPreviewActive_ = false;
     chopPreviewPadCount_ = 0U;
     chopPreviewFrame_ = 0.0;
+    chopPreviewRemainingFrames_ = 0.0;
 }
 
 float SamplerEngine::chopPreviewPosition() const noexcept {
-    if (!chopPreviewActive_ || chopPreviewPad_ >= kPadCount)
+    if (!chopPreviewActive_ || chopPreviewRemainingFrames_ <= 0.0 ||
+        chopPreviewPad_ >= kPadCount)
         return 0.0f;
     const auto frames = pads_[chopPreviewPad_].publishedFrames.load(std::memory_order_acquire);
     if (frames == 0U ||
@@ -820,8 +824,10 @@ float SamplerEngine::chopPreviewPosition() const noexcept {
 }
 
 void SamplerEngine::mixChopPreview(float& left, float& right) noexcept {
-    if (!chopPreviewActive_)
+    if (!chopPreviewActive_ || chopPreviewRemainingFrames_ <= 0.0) {
+        stopChopPreview();
         return;
+    }
     const auto endPad = chopPreviewFirstPad_ + chopPreviewPadCount_;
     while (chopPreviewPad_ < endPad) {
         const auto frames = pads_[chopPreviewPad_].publishedFrames.load(std::memory_order_acquire);
@@ -849,7 +855,11 @@ void SamplerEngine::mixChopPreview(float& left, float& right) noexcept {
              sampleAt(chopPreviewPad_, second, 1U) * fraction;
     const double sourceRate =
         pads_[chopPreviewPad_].sourceSampleRate.load(std::memory_order_relaxed);
-    chopPreviewFrame_ += sourceRate / sample_rate_;
+    const double advance = sourceRate / sample_rate_;
+    chopPreviewFrame_ += advance;
+    chopPreviewRemainingFrames_ -= advance;
+    if (chopPreviewRemainingFrames_ <= 0.0)
+        stopChopPreview();
 }
 
 sms::dsp::SamplePlaybackSettings SamplerEngine::padPlaybackSettings(const std::uint32_t pad) const noexcept {

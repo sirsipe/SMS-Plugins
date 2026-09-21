@@ -48,9 +48,12 @@ struct ViewState {
     const sms::audio::WaveformSummary& waveform;
     std::span<const sms::audio::WaveformSummary> chopWaveforms;
     std::span<const std::int64_t> chopOffsets;
+    int chopFirstPad = -1;
+    int chopTargetPad = -1;
     float chopPreviewPosition = 0.0f;
+    int chopPreviewPad = -1;
     int chopActiveBoundary = -1;
-    float chopLeverPull = 0.0f;
+    bool chopReady = false;
     bool chopDirty = false;
     bool chopApplying = false;
     const char* status = "";

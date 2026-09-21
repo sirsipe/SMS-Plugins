@@ -74,8 +74,8 @@ points and an allocation-free ADSR voice envelope. Editor values use atomics;
 playback snapshots them on the next note trigger. Preserve that boundary when
 changing live-edit behavior.
 
-The raw rolling-boundary workflow and its real-time contract are documented in
-[Chop Editor](../../Docs/AI/CHOP-EDITOR.md).
+The three-pad raw boundary workflow and its real-time contract are documented
+in [Cut Point Editor](../../Docs/AI/CHOP-EDITOR.md).
 
 Pad storage mutations are control-thread work. A shared gate makes `run()`
 output silence while control code copies or replaces storage at a block

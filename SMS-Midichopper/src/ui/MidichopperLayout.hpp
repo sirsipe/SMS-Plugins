@@ -26,13 +26,11 @@ inline constexpr sms::ui::Rect editorWaveform{46.0f, 158.0f, 586.0f, 222.0f};
 inline constexpr sms::ui::Rect envelopeGraph{46.0f, 448.0f, 250.0f, 120.0f};
 inline constexpr sms::ui::Rect editorPadBounds{690.0f, 204.0f, 222.0f, 326.0f};
 inline constexpr sms::ui::Rect playOnSelect{690.0f, 548.0f, 222.0f, 34.0f};
-inline constexpr sms::ui::Rect openEditor{690.0f, 108.0f, 108.0f, 28.0f};
-inline constexpr sms::ui::Rect openChopEditor{804.0f, 108.0f, 108.0f, 28.0f};
+inline constexpr sms::ui::Rect openEditor{690.0f, 108.0f, 222.0f, 28.0f};
 inline constexpr sms::ui::Rect closeEditor{690.0f, 112.0f, 222.0f, 32.0f};
-inline constexpr sms::ui::Rect chopPlay{690.0f, 216.0f, 108.0f, 38.0f};
-inline constexpr sms::ui::Rect chopPause{804.0f, 216.0f, 108.0f, 38.0f};
-inline constexpr sms::ui::Rect chopApply{690.0f, 276.0f, 108.0f, 38.0f};
-inline constexpr sms::ui::Rect chopCancel{804.0f, 276.0f, 108.0f, 38.0f};
+inline constexpr sms::ui::Rect chopWaveform{46.0f, 170.0f, 586.0f, 250.0f};
+inline constexpr sms::ui::Rect chopApply{690.0f, 500.0f, 108.0f, 38.0f};
+inline constexpr sms::ui::Rect chopCancel{804.0f, 500.0f, 108.0f, 38.0f};
 inline constexpr sms::ui::Rect playMode{690.0f, 145.0f, 108.0f, 42.0f};
 inline constexpr sms::ui::Rect armMode{804.0f, 145.0f, 108.0f, 42.0f};
 inline constexpr sms::ui::Rect sequentialMode{690.0f, 220.0f, 106.0f, 38.0f};
@@ -76,6 +74,11 @@ inline constexpr sms::ui::Rect clearAction{842.0f, 540.0f, 70.0f, 34.0f};
 [[nodiscard]] constexpr sms::ui::Rect editorSlider(const int index) noexcept
 {
     return {330.0f, 448.0f + static_cast<float>(index) * 32.0f, 280.0f, 24.0f};
+}
+
+[[nodiscard]] constexpr sms::ui::Rect chopPadButton(const int index) noexcept
+{
+    return {46.0f + static_cast<float>(index) * 198.0f, 450.0f, 190.0f, 82.0f};
 }
 
 } // namespace midichopper::ui::layout

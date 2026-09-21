@@ -1,62 +1,93 @@
 #pragma once
 
 #include "Audio/WaveformSummary.hpp"
-#include "Configuration.hpp"
-#include "MidichopperLayout.hpp"
-#include "PadLayout.hpp"
+#include "UI/Geometry.hpp"
 
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <span>
 
 namespace midichopper::ui::chop {
 
+inline constexpr std::uint32_t kPadCount = 3U;
+inline constexpr std::uint32_t kBoundaryCount = kPadCount - 1U;
 inline constexpr std::uint32_t kMinimumSliceFrames = 1U;
 
-struct BoundaryGeometry {
-    sms::ui::Rect handle{};
-    bool rowWrap = false;
-};
-
-struct PlayheadPosition {
-    int pad = -1;
-    float fraction = 0.0f;
-};
-
-[[nodiscard]] inline BoundaryGeometry boundaryGeometry(
-    const int padLayout, const int boundary) noexcept
+[[nodiscard]] inline bool ready(
+    const std::span<const sms::audio::WaveformSummary> waveforms) noexcept
 {
-    const sms::ui::BankedPadLayout pads(padLayout);
-    if (boundary < 0 || boundary + 1 >= pads.visiblePadCount())
-        return {};
-    const auto grid = pads.grid(layout::mainPadBounds, 10.0f);
-    const auto left = grid.cell(pads.visualIndex(boundary));
-    const auto right = grid.cell(pads.visualIndex(boundary + 1));
-    const bool wrap = std::abs(left.y - right.y) > 1.0f;
-    if (!wrap) {
-        const float center = (left.x + left.width + right.x) * 0.5f;
-        return {{center - 7.0f, left.y + left.height * 0.5f - 22.0f, 14.0f, 44.0f}, false};
+    if (waveforms.size() != kPadCount || waveforms[0].frames == 0U ||
+        !std::isfinite(waveforms[0].sampleRate) || waveforms[0].sampleRate <= 1.0)
+        return false;
+    for (std::size_t pad = 1; pad < waveforms.size(); ++pad) {
+        if (waveforms[pad].frames == 0U ||
+            std::abs(waveforms[pad].sampleRate - waveforms[0].sampleRate) > 0.5)
+            return false;
     }
-    return {{left.x + left.width - 8.0f, left.y + left.height * 0.5f - 22.0f,
-             16.0f, 44.0f}, true};
+    return true;
 }
 
-[[nodiscard]] inline int boundaryAt(const sms::ui::Point point, const int padLayout,
-                                    const std::span<const sms::audio::WaveformSummary> waveforms) noexcept
+[[nodiscard]] inline std::uint64_t totalFrames(
+    const std::span<const sms::audio::WaveformSummary> waveforms) noexcept
 {
-    const sms::ui::BankedPadLayout pads(padLayout);
-    for (int boundary = 0; boundary + 1 < pads.visiblePadCount(); ++boundary) {
-        if (boundary + 1 >= static_cast<int>(waveforms.size()) ||
-            waveforms[static_cast<std::size_t>(boundary)].frames == 0U ||
-            waveforms[static_cast<std::size_t>(boundary + 1)].frames == 0U)
-            continue;
-        const double leftRate = waveforms[static_cast<std::size_t>(boundary)].sampleRate;
-        const double rightRate = waveforms[static_cast<std::size_t>(boundary + 1)].sampleRate;
-        if (std::abs(leftRate - rightRate) > 0.5)
-            continue;
-        if (boundaryGeometry(padLayout, boundary).handle.contains(point))
+    std::uint64_t result = 0U;
+    for (const auto& waveform : waveforms)
+        result += waveform.frames;
+    return result;
+}
+
+[[nodiscard]] inline std::uint64_t originalBoundary(
+    const std::span<const sms::audio::WaveformSummary> waveforms,
+    const int boundary) noexcept
+{
+    std::uint64_t result = 0U;
+    for (int pad = 0; pad <= boundary && pad < static_cast<int>(waveforms.size()); ++pad)
+        result += waveforms[static_cast<std::size_t>(pad)].frames;
+    return result;
+}
+
+[[nodiscard]] inline std::int64_t adjustedBoundary(
+    const std::span<const sms::audio::WaveformSummary> waveforms,
+    const std::span<const std::int64_t> offsets, const int boundary) noexcept
+{
+    const auto original = static_cast<std::int64_t>(originalBoundary(waveforms, boundary));
+    return original + (boundary >= 0 && boundary < static_cast<int>(offsets.size())
+        ? offsets[static_cast<std::size_t>(boundary)] : 0);
+}
+
+[[nodiscard]] inline float boundaryX(
+    const sms::ui::Rect waveformBounds,
+    const std::span<const sms::audio::WaveformSummary> waveforms,
+    const std::span<const std::int64_t> offsets, const int boundary) noexcept
+{
+    const auto total = totalFrames(waveforms);
+    if (total == 0U)
+        return waveformBounds.x;
+    return waveformBounds.x + waveformBounds.width * static_cast<float>(
+        static_cast<double>(adjustedBoundary(waveforms, offsets, boundary)) / total);
+}
+
+[[nodiscard]] inline sms::ui::Rect boundaryHandle(
+    const sms::ui::Rect waveformBounds,
+    const std::span<const sms::audio::WaveformSummary> waveforms,
+    const std::span<const std::int64_t> offsets, const int boundary) noexcept
+{
+    return {boundaryX(waveformBounds, waveforms, offsets, boundary) - 9.0f,
+            waveformBounds.y, 18.0f, waveformBounds.height};
+}
+
+[[nodiscard]] inline int boundaryAt(
+    const sms::ui::Point point, const sms::ui::Rect waveformBounds,
+    const std::span<const sms::audio::WaveformSummary> waveforms,
+    const std::span<const std::int64_t> offsets) noexcept
+{
+    if (!ready(waveforms))
+        return -1;
+    for (int boundary = 0; boundary < static_cast<int>(kBoundaryCount); ++boundary) {
+        if (boundaryHandle(waveformBounds, waveforms, offsets, boundary).contains(point))
             return boundary;
     }
     return -1;
@@ -69,21 +100,25 @@ struct PlayheadPosition {
 {
     if (boundary < 0 || boundary + 1 >= static_cast<int>(waveforms.size()))
         return 0;
-    std::int64_t original = 0;
-    for (int index = 0; index <= boundary; ++index)
-        original += waveforms[static_cast<std::size_t>(index)].frames;
-    std::int64_t previous = 0;
-    for (int index = 0; index < boundary; ++index)
-        previous += waveforms[static_cast<std::size_t>(index)].frames;
-    if (boundary > 0 && boundary - 1 < static_cast<int>(offsets.size()))
-        previous += offsets[static_cast<std::size_t>(boundary - 1)];
-    std::int64_t next = original +
-        waveforms[static_cast<std::size_t>(boundary + 1)].frames;
-    if (boundary + 1 < static_cast<int>(offsets.size()))
-        next += offsets[static_cast<std::size_t>(boundary + 1)];
+    const auto original = static_cast<std::int64_t>(originalBoundary(waveforms, boundary));
+    const auto previous = boundary == 0 ? std::int64_t{0} :
+        adjustedBoundary(waveforms, offsets, boundary - 1);
+    const auto next = boundary + 1 == static_cast<int>(waveforms.size()) - 1
+        ? static_cast<std::int64_t>(totalFrames(waveforms))
+        : adjustedBoundary(waveforms, offsets, boundary + 1);
     return std::clamp(requested,
         previous + static_cast<std::int64_t>(kMinimumSliceFrames) - original,
         next - static_cast<std::int64_t>(kMinimumSliceFrames) - original);
+}
+
+[[nodiscard]] inline std::uint64_t adjustedStartFrame(
+    const std::span<const sms::audio::WaveformSummary> waveforms,
+    const std::span<const std::int64_t> offsets, const int pad) noexcept
+{
+    if (pad <= 0)
+        return 0U;
+    return static_cast<std::uint64_t>(std::max<std::int64_t>(
+        adjustedBoundary(waveforms, offsets, pad - 1), 0));
 }
 
 [[nodiscard]] inline std::uint32_t adjustedFrames(
@@ -92,83 +127,57 @@ struct PlayheadPosition {
 {
     if (pad < 0 || pad >= static_cast<int>(waveforms.size()))
         return 0U;
-    std::int64_t frames = waveforms[static_cast<std::size_t>(pad)].frames;
-    if (pad < static_cast<int>(offsets.size()))
-        frames += offsets[static_cast<std::size_t>(pad)];
-    if (pad > 0 && pad - 1 < static_cast<int>(offsets.size()))
-        frames -= offsets[static_cast<std::size_t>(pad - 1)];
-    return static_cast<std::uint32_t>(std::max<std::int64_t>(frames, 0));
+    const auto start = static_cast<std::int64_t>(adjustedStartFrame(waveforms, offsets, pad));
+    const auto end = pad + 1 == static_cast<int>(waveforms.size())
+        ? static_cast<std::int64_t>(totalFrames(waveforms))
+        : adjustedBoundary(waveforms, offsets, pad);
+    return static_cast<std::uint32_t>(std::max<std::int64_t>(end - start, 0));
 }
 
-[[nodiscard]] inline std::uint64_t adjustedStartFrame(
+[[nodiscard]] inline double sourceFrameForPlayhead(
     const std::span<const sms::audio::WaveformSummary> waveforms,
-    const std::span<const std::int64_t> offsets, const int pad) noexcept
+    const int originalPad, const float originalFraction) noexcept
 {
-    std::int64_t start = 0;
-    for (int index = 0; index < pad && index < static_cast<int>(waveforms.size()); ++index)
-        start += waveforms[static_cast<std::size_t>(index)].frames;
-    if (pad > 0 && pad - 1 < static_cast<int>(offsets.size()))
-        start += offsets[static_cast<std::size_t>(pad - 1)];
-    return static_cast<std::uint64_t>(std::max<std::int64_t>(start, 0));
-}
-
-/** Map an engine position in the original pad partition to the pending partition. */
-[[nodiscard]] inline PlayheadPosition adjustedPlayhead(
-    const std::span<const sms::audio::WaveformSummary> waveforms,
-    const std::span<const std::int64_t> offsets, const int originalPad,
-    const float originalFraction) noexcept
-{
-    if (originalPad < 0 || originalPad >= static_cast<int>(waveforms.size()) ||
-        waveforms[static_cast<std::size_t>(originalPad)].frames == 0U)
-        return {};
-    double sourceFrame = 0.0;
+    if (originalPad < 0 || originalPad >= static_cast<int>(waveforms.size()))
+        return -1.0;
+    double result = 0.0;
     for (int pad = 0; pad < originalPad; ++pad)
-        sourceFrame += waveforms[static_cast<std::size_t>(pad)].frames;
-    sourceFrame += std::clamp(originalFraction, 0.0f, 0.999999f) *
-                   waveforms[static_cast<std::size_t>(originalPad)].frames;
-
-    for (int pad = 0; pad < static_cast<int>(waveforms.size()); ++pad) {
-        const auto start = adjustedStartFrame(waveforms, offsets, pad);
-        const auto frames = adjustedFrames(waveforms, offsets, pad);
-        if (frames != 0U && sourceFrame >= static_cast<double>(start) &&
-            sourceFrame < static_cast<double>(start) + frames) {
-            return {pad, static_cast<float>((sourceFrame - static_cast<double>(start)) / frames)};
-        }
-    }
-    return {};
+        result += waveforms[static_cast<std::size_t>(pad)].frames;
+    return result + std::clamp(originalFraction, 0.0f, 0.999999f) *
+        waveforms[static_cast<std::size_t>(originalPad)].frames;
 }
 
-[[nodiscard]] inline sms::audio::WaveformSummary previewWaveform(
-    const std::span<const sms::audio::WaveformSummary> waveforms,
-    const std::span<const std::int64_t> offsets, const int pad) noexcept
+[[nodiscard]] inline sms::audio::WaveformSummary combinedWaveform(
+    const std::span<const sms::audio::WaveformSummary> waveforms) noexcept
 {
     sms::audio::WaveformSummary result;
-    if (pad < 0 || pad >= static_cast<int>(waveforms.size()) || waveforms.empty())
+    if (waveforms.empty())
         return result;
-    result.pad = waveforms[static_cast<std::size_t>(pad)].pad;
-    result.sampleRate = waveforms[static_cast<std::size_t>(pad)].sampleRate;
-    result.frames = adjustedFrames(waveforms, offsets, pad);
-    if (result.frames == 0U)
+    result.pad = waveforms.front().pad;
+    result.sampleRate = waveforms.front().sampleRate;
+    const auto total = totalFrames(waveforms);
+    result.frames = static_cast<std::uint32_t>(std::min<std::uint64_t>(
+        total, std::numeric_limits<std::uint32_t>::max()));
+    if (total == 0U)
         return result;
 
-    std::array<std::uint64_t, kPadsPerBank + 1U> starts{};
-    for (std::size_t index = 0; index < waveforms.size() && index < kPadsPerBank; ++index)
-        starts[index + 1U] = starts[index] + waveforms[index].frames;
-    const auto targetStart = adjustedStartFrame(waveforms, offsets, pad);
+    std::array<std::uint64_t, kPadCount + 1U> starts{};
+    for (std::size_t pad = 0; pad < waveforms.size() && pad < kPadCount; ++pad)
+        starts[pad + 1U] = starts[pad] + waveforms[pad].frames;
     for (std::size_t bin = 0; bin < sms::audio::kWaveformBins; ++bin) {
-        const auto sourceFrame = targetStart + static_cast<std::uint64_t>(
-            (static_cast<double>(bin) + 0.5) * result.frames / sms::audio::kWaveformBins);
-        std::size_t sourcePad = 0U;
-        while (sourcePad + 1U < waveforms.size() && sourceFrame >= starts[sourcePad + 1U])
-            ++sourcePad;
-        if (sourcePad >= waveforms.size() || waveforms[sourcePad].frames == 0U)
+        const auto frame = static_cast<std::uint64_t>(
+            (static_cast<double>(bin) + 0.5) * total / sms::audio::kWaveformBins);
+        std::size_t pad = 0U;
+        while (pad + 1U < waveforms.size() && frame >= starts[pad + 1U])
+            ++pad;
+        if (pad >= waveforms.size() || waveforms[pad].frames == 0U)
             continue;
-        const auto localFrame = sourceFrame - starts[sourcePad];
+        const auto localFrame = frame - starts[pad];
         const auto sourceBin = std::min<std::size_t>(sms::audio::kWaveformBins - 1U,
             static_cast<std::size_t>(localFrame * sms::audio::kWaveformBins /
-                                     waveforms[sourcePad].frames));
-        result.minimum[bin] = waveforms[sourcePad].minimum[sourceBin];
-        result.maximum[bin] = waveforms[sourcePad].maximum[sourceBin];
+                                     waveforms[pad].frames));
+        result.minimum[bin] = waveforms[pad].minimum[sourceBin];
+        result.maximum[bin] = waveforms[pad].maximum[sourceBin];
     }
     return result;
 }

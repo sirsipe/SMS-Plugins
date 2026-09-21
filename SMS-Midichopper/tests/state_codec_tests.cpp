@@ -111,14 +111,17 @@ void chopProtocolRoundTrip()
           !midichopper::plugin::decodeChopApplyRequest("CH1;63;2;0", decodedApply),
           "invalid chop apply requests are rejected");
 
-    const midichopper::plugin::ChopPreviewRequest preview{true, 8U, 8U, 12345U};
+    const midichopper::plugin::ChopPreviewRequest preview{true, 8U, 8U, 12345U, 23456U};
     const auto encodedPreview = midichopper::plugin::encodeChopPreviewRequest(preview);
     midichopper::plugin::ChopPreviewRequest decodedPreview;
     check(midichopper::plugin::decodeChopPreviewRequest(encodedPreview, decodedPreview) &&
           decodedPreview.play && decodedPreview.firstPad == 8U &&
-          decodedPreview.padCount == 8U && decodedPreview.sourceFrame == 12345U,
+          decodedPreview.padCount == 8U && decodedPreview.sourceFrame == 12345U &&
+          decodedPreview.sourceEndFrame == 23456U,
           "chop preview request round-trips");
-    check(!midichopper::plugin::decodeChopPreviewRequest("CP1;2;0;2;0", decodedPreview),
+    check(!midichopper::plugin::decodeChopPreviewRequest("CP1;2;0;2;0;1", decodedPreview) &&
+          !midichopper::plugin::decodeChopPreviewRequest("CP1;1;0;3;50;50", decodedPreview) &&
+          !midichopper::plugin::decodeChopPreviewRequest("CP1;1;0;3;0", decodedPreview),
           "invalid chop preview command is rejected");
 }
 

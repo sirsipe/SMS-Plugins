@@ -69,8 +69,8 @@ to audition them as you select them; it defaults to off whenever
 the plug-in UI opens. MIDI playback selects populated pads, including retriggers.
 The editor is unavailable in Arm so capture controls remain visible.
 
-Open **Chop Editor** for raw, layout-aware boundary correction across adjacent
-pads. See the [Chop Editor guide](Docs/CHOP-EDITOR.md).
+Right-click a middle pad and choose **Adjust cut points** to edit its boundaries
+with its two neighbors. See the [cut-point guide](Docs/CHOP-EDITOR.md).
 
 Hovering highlights the enabled control under the pointer. The mouse wheel
 adjusts Fixed Length, Max Voices, Pre-roll, and editor ADSR sliders.

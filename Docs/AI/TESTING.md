@@ -16,7 +16,7 @@ For focused iteration, use `ctest --test-dir build --output-on-failure -R NAME`:
 | CTest name | Coverage |
 | --- | --- |
 | `sampler-core` | Capture, banks/layouts, storage, voices, regions/ADSR, raw chop preview/repartition, resampling, clipboard snapshots, lifecycle |
-| `state-codec` | Audio, editor-state, and Chop Editor command round trips; malformed/corrupt state |
+| `state-codec` | Audio, editor-state, and Cut Point Editor command round trips; malformed/corrupt state |
 | `ui-geometry` | Pad mapping, waveform/chop geometry, hit testing, hover, wheel adjustment and editing |
 | `wav-codec` | WAV formats, validation, file actions, offline render, real-time access gate |
 
@@ -82,7 +82,7 @@ Choose checks matching the change:
   region/ADSR by dragging and wheel, retrigger, and check that both waveform
   and sound match. Sweep the pointer across controls and confirm only the
   enabled target under it receives hover emphasis.
-- Chop Editor: follow its focused [validation contract](CHOP-EDITOR.md).
+- Cut Point Editor: follow its focused [validation contract](CHOP-EDITOR.md).
 - Pad clipboard: Copy an edited occupied pad, then alter or clear its source and
   Paste to empty and occupied targets. Confirm stereo audio, cut points, and ADSR
   match the copy-time snapshot, and that an empty clipboard disables Paste.

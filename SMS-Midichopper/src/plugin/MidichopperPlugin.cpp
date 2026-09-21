@@ -522,6 +522,8 @@ protected:
             if (midichopper::plugin::decodeChopPreviewRequest(
                     value != nullptr ? value : "", request)) {
                 pendingChopPreviewFrame_.store(request.sourceFrame, std::memory_order_relaxed);
+                pendingChopPreviewEndFrame_.store(
+                    request.sourceEndFrame, std::memory_order_relaxed);
                 const std::uint32_t packed = (request.firstPad & 0xffU) |
                     ((request.padCount & 0xffU) << 8U) |
                     ((request.play ? 1U : 2U) << 16U);
@@ -655,7 +657,8 @@ private:
         });
         if (!accessed || !applied) {
             static_cast<void>(updateStateValue(
-                kChopStatusKey, "CH1;ERROR;Pads must be contiguous and use one sample rate"));
+                kChopStatusKey,
+                "CH1;ERROR;Could not apply cuts; verify samples and available storage"));
             return;
         }
         for (std::uint32_t index = 0; index < request.padCount; ++index) {
@@ -886,7 +889,8 @@ private:
             const auto action = (preview >> 16U) & 0xffU;
             if (action == 1U) {
                 sampler_.startChopPreview(preview & 0xffU, (preview >> 8U) & 0xffU,
-                    pendingChopPreviewFrame_.load(std::memory_order_relaxed));
+                    pendingChopPreviewFrame_.load(std::memory_order_relaxed),
+                    pendingChopPreviewEndFrame_.load(std::memory_order_relaxed));
             } else {
                 sampler_.stopChopPreview();
             }
@@ -1016,6 +1020,7 @@ private:
     std::atomic<std::uint32_t> pendingCaptureTarget_{0};
     std::atomic<std::uint32_t> pendingChopPreviewCommand_{0};
     std::atomic<std::uint64_t> pendingChopPreviewFrame_{0};
+    std::atomic<std::uint64_t> pendingChopPreviewEndFrame_{0};
     mutable sms::audio::RealtimeAccessGate samplerAccess_;
     std::uint64_t publishedPlaybackTriggerGeneration_ = 0;
     bool playbackPadEventAlternateHalf_ = false;

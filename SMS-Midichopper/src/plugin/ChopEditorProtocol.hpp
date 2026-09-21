@@ -21,6 +21,7 @@ struct ChopPreviewRequest {
     std::uint32_t firstPad = 0;
     std::uint32_t padCount = 0;
     std::uint64_t sourceFrame = 0;
+    std::uint64_t sourceEndFrame = 0;
 };
 
 template <class Integer>
@@ -77,7 +78,7 @@ template <class Integer>
 {
     return std::string("CP1;") + (request.play ? "1;" : "0;") +
            std::to_string(request.firstPad) + ";" + std::to_string(request.padCount) + ";" +
-           std::to_string(request.sourceFrame);
+           std::to_string(request.sourceFrame) + ";" + std::to_string(request.sourceEndFrame);
 }
 
 [[nodiscard]] inline bool decodeChopPreviewRequest(
@@ -86,7 +87,7 @@ template <class Integer>
     if (!encoded.starts_with("CP1;"))
         return false;
     ChopPreviewRequest decoded;
-    std::array<std::string_view, 4> tokens{};
+    std::array<std::string_view, 5> tokens{};
     std::size_t cursor = 4U;
     for (auto& token : tokens) {
         if (cursor > encoded.size())
@@ -101,8 +102,10 @@ template <class Integer>
         !parseChopInteger(tokens[1], decoded.firstPad) ||
         !parseChopInteger(tokens[2], decoded.padCount) ||
         !parseChopInteger(tokens[3], decoded.sourceFrame) ||
+        !parseChopInteger(tokens[4], decoded.sourceEndFrame) ||
         decoded.padCount == 0U || decoded.padCount > kPadsPerBank ||
-        decoded.firstPad >= kPadCount || decoded.padCount > kPadCount - decoded.firstPad)
+        decoded.firstPad >= kPadCount || decoded.padCount > kPadCount - decoded.firstPad ||
+        (play != 0U && decoded.sourceEndFrame <= decoded.sourceFrame))
         return false;
     decoded.play = play != 0U;
     request = decoded;

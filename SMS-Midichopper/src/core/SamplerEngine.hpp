@@ -138,9 +138,9 @@ public:
      */
     [[nodiscard]] bool rechopPads(std::uint32_t firstPad, std::uint32_t padCount,
                                   std::span<const std::int64_t> boundaryOffsets);
-    /** Allocation-free raw preview used by the Chop Editor. Audio thread only. */
+    /** Allocation-free raw preview used by the Cut Point Editor. Audio thread only. */
     void startChopPreview(std::uint32_t firstPad, std::uint32_t padCount,
-                          std::uint64_t sourceFrame) noexcept;
+                          std::uint64_t sourceFrame, std::uint64_t sourceEndFrame) noexcept;
     void stopChopPreview() noexcept;
     /** Zero when stopped; otherwise global pad + 1 plus normalized position. */
     [[nodiscard]] float chopPreviewPosition() const noexcept;
@@ -239,6 +239,7 @@ private:
     std::uint32_t chopPreviewPadCount_ = 0;
     std::uint32_t chopPreviewPad_ = 0;
     double chopPreviewFrame_ = 0.0;
+    double chopPreviewRemainingFrames_ = 0.0;
 };
 
 } // namespace midichopper

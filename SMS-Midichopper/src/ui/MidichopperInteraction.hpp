@@ -25,10 +25,8 @@ enum class InteractiveType : int {
     envelopeSlider,
     playOnSelect,
     openEditor,
-    openChopEditor,
     chopBoundary,
-    chopPlay,
-    chopPause,
+    chopPadPreview,
     chopApply,
     chopCancel,
     playMode,
@@ -94,12 +92,15 @@ struct InteractionContext {
     bool armed = false;
     bool fixedCapture = false;
     bool captureActive = false;
+    bool chopReady = false;
+    bool chopApplyEnabled = false;
     int padLayout = 0;
     sms::ui::ContextMenuGeometry padContextMenu;
     std::span<const bool> padContextMenuEnabled;
     const sms::dsp::SamplePlaybackSettings* editorSettings = nullptr;
     const sms::ui::waveform::EnvelopeGeometry* envelope = nullptr;
     std::span<const sms::audio::WaveformSummary> chopWaveforms;
+    std::span<const std::int64_t> chopOffsets;
 };
 
 /** Resolve exactly one enabled interactive target using the same overlay priority as clicks. */
@@ -135,27 +136,18 @@ interactiveTargetAt(const sms::ui::Point point, const InteractionContext& contex
 
     const sms::ui::BankedPadLayout pads(context.padLayout);
     if (context.chopEditorMode) {
-        if (uiLayout::closeEditor.contains(point))
-            return target(InteractiveType::closeEditor);
-        for (int bank = 0; bank < static_cast<int>(kBankCount); ++bank) {
-            if (uiLayout::editorBank(bank).contains(point))
-                return target(InteractiveType::bank, bank);
-        }
-        if (uiLayout::chopPlay.contains(point))
-            return target(InteractiveType::chopPlay);
-        if (uiLayout::chopPause.contains(point))
-            return target(InteractiveType::chopPause);
-        if (uiLayout::chopApply.contains(point))
+        if (context.chopApplyEnabled && uiLayout::chopApply.contains(point))
             return target(InteractiveType::chopApply);
         if (uiLayout::chopCancel.contains(point))
             return target(InteractiveType::chopCancel);
-        const int boundary = chop::boundaryAt(point, context.padLayout, context.chopWaveforms);
+        const int boundary = chop::boundaryAt(
+            point, uiLayout::chopWaveform, context.chopWaveforms, context.chopOffsets);
         if (boundary >= 0)
             return target(InteractiveType::chopBoundary, boundary);
-        const int visualPad = pads.grid(uiLayout::mainPadBounds, 10.0f).hit(point);
-        const int localPad = pads.localIndex(visualPad);
-        if (localPad >= 0)
-            return target(InteractiveType::pad, localPad);
+        for (int pad = 0; context.chopReady && pad < static_cast<int>(chop::kPadCount); ++pad) {
+            if (uiLayout::chopPadButton(pad).contains(point))
+                return target(InteractiveType::chopPadPreview, pad);
+        }
         return sms::ui::kNoInteractiveTarget;
     }
     if (context.editorMode) {
@@ -192,8 +184,6 @@ interactiveTargetAt(const sms::ui::Point point, const InteractionContext& contex
 
     if (!context.armed && uiLayout::openEditor.contains(point))
         return target(InteractiveType::openEditor);
-    if (!context.armed && uiLayout::openChopEditor.contains(point))
-        return target(InteractiveType::openChopEditor);
     if (!context.captureActive) {
         for (int bank = 0; bank < static_cast<int>(kBankCount); ++bank) {
             if (uiLayout::mainBank(bank).contains(point))
