@@ -12,6 +12,8 @@ shared UI and framework-neutral source include paths.
 
 - `DPF/NanoUI.hpp`: logical-canvas scaling and repaint lifecycle.
 - `DPF/Theme.hpp`: semantic colors, drawing metrics, and hover opacity.
+- `DPF/AnalogMaterials.hpp`: scalable chassis, recessed-panel, rubber-pad,
+  physical-control, LED, screw, and powder-coat rendering primitives.
 - `DPF/Controls.hpp`: reusable NanoVG panel, segment, slider, and action
   primitives.
 - `Interaction.hpp`, `ContextMenu.hpp`, and `DPF/ContextMenu.hpp`: reusable

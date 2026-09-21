@@ -15,13 +15,7 @@ inline void drawStereoLedMeter(DGL_NAMESPACE::NanoVG& canvas, const ui::Rect bou
 {
     ScopedCanvasState state(canvas);
     const auto& colors = theme();
-    canvas.beginPath();
-    canvas.roundedRect(bounds.x, bounds.y, bounds.width, bounds.height, 4.0f);
-    canvas.fillColor(colors.surface);
-    canvas.fill();
-    canvas.strokeColor(colors.outline);
-    canvas.strokeWidth(1.0f);
-    canvas.stroke();
+    drawInsetSurface(canvas, bounds, 4.0f);
 
     constexpr std::uint32_t segmentCount = meter::defaultSegmentCount;
     const meter::StereoGeometry geometry(bounds, segmentCount);

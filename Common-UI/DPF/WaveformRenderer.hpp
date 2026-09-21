@@ -16,10 +16,7 @@ inline void drawWaveform(DGL_NAMESPACE::NanoVG& canvas, const ui::Rect bounds,
     const ScopedCanvasState canvasState(canvas);
     const Theme& colors = theme();
     canvas.fontFace(NANOVG_DEJAVU_SANS_TTF);
-    canvas.beginPath();
-    canvas.roundedRect(bounds.x, bounds.y, bounds.width, bounds.height, 4.0f);
-    canvas.fillColor(colors.canvas);
-    canvas.fill();
+    drawInsetSurface(canvas, bounds, 4.0f);
     canvas.beginPath();
     canvas.moveTo(bounds.x, bounds.y + bounds.height * 0.5f);
     canvas.lineTo(bounds.x + bounds.width, bounds.y + bounds.height * 0.5f);
@@ -78,12 +75,7 @@ inline void drawWaveformEditor(DGL_NAMESPACE::NanoVG& canvas, const ui::Rect bou
     const ScopedCanvasState canvasState(canvas);
     const Theme& colors = theme();
     canvas.fontFace(NANOVG_DEJAVU_SANS_TTF);
-    canvas.beginPath();
-    canvas.roundedRect(bounds.x, bounds.y, bounds.width, bounds.height, 8.0f);
-    canvas.fillColor(colors.canvas);
-    canvas.fill();
-    canvas.strokeColor(colors.outline);
-    canvas.stroke();
+    drawInsetSurface(canvas, bounds, 8.0f);
     canvas.beginPath();
     canvas.moveTo(bounds.x, bounds.y + bounds.height * 0.5f);
     canvas.lineTo(bounds.x + bounds.width, bounds.y + bounds.height * 0.5f);
@@ -162,12 +154,7 @@ inline void drawEnvelopeGraph(DGL_NAMESPACE::NanoVG& canvas, const ui::Rect boun
 {
     const ScopedCanvasState canvasState(canvas);
     const Theme& colors = theme();
-    canvas.beginPath();
-    canvas.roundedRect(bounds.x, bounds.y, bounds.width, bounds.height, 7.0f);
-    canvas.fillColor(colors.canvas);
-    canvas.fill();
-    canvas.strokeColor(colors.outline);
-    canvas.stroke();
+    drawInsetSurface(canvas, bounds, 7.0f);
 
     const auto graph = waveform::envelopeGeometry(bounds, summary, settings);
     const float attackWidth = graph.attackX - graph.left;
