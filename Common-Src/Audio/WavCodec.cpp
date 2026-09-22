@@ -272,7 +272,8 @@ bool encodeStereoPcm16Wav(const WavAudio& audio,
 }
 
 WavAudio renderProcessedStereo(const WavAudio& source,
-                               const dsp::SamplePlaybackSettings& requested) noexcept
+                               const dsp::SamplePlaybackSettings& requested,
+                               const dsp::SampleMixerSettings& requestedMixer) noexcept
 {
     WavAudio output;
     if (source.sampleRate == 0U || source.frames == 0U ||
@@ -283,7 +284,14 @@ WavAudio renderProcessedStereo(const WavAudio& source,
         std::floor(static_cast<double>(settings.start) * source.frames)));
     const std::uint32_t end = std::clamp(static_cast<std::uint32_t>(
         std::ceil(static_cast<double>(settings.end) * source.frames)), start + 1U, source.frames);
-    const std::uint32_t frames = end - start;
+    const std::uint32_t sourceFrames = end - start;
+    const auto mixer = dsp::sanitize(requestedMixer);
+    const double ratio = dsp::tuneRatio(mixer);
+    const double requestedFrames = std::ceil(static_cast<double>(sourceFrames) / ratio);
+    if (!std::isfinite(requestedFrames) || requestedFrames < 1.0 ||
+        requestedFrames > static_cast<double>(std::numeric_limits<std::uint32_t>::max()))
+        return output;
+    const auto frames = static_cast<std::uint32_t>(requestedFrames);
     const float seconds = static_cast<float>(frames) / static_cast<float>(source.sampleRate);
     settings.releaseSeconds = std::min(settings.releaseSeconds, seconds * 0.5f);
 
@@ -297,16 +305,28 @@ WavAudio renderProcessedStereo(const WavAudio& source,
     dsp::AdsrEnvelope envelope;
     envelope.configure(source.sampleRate, settings);
     envelope.noteOn();
+    const float mixerGain = dsp::sampleGain(mixer);
+    const float leftGain = mixerGain * (mixer.pan > 0.0f ? 1.0f - mixer.pan : 1.0f);
+    const float rightGain = mixerGain * (mixer.pan < 0.0f ? 1.0f + mixer.pan : 1.0f);
     for (std::uint32_t frame = 0; frame < frames; ++frame) {
         const std::uint32_t remaining = frames - frame;
         if (!envelope.releasing() && envelope.releaseFrames() > 0U &&
             remaining <= envelope.releaseFrames())
             envelope.noteOff();
         const float gain = envelope.next();
-        const std::size_t input = static_cast<std::size_t>(start + frame) * 2U;
+        const double position = std::min(static_cast<double>(sourceFrames - 1U),
+                                         static_cast<double>(frame) * ratio);
+        const auto first = static_cast<std::uint32_t>(position);
+        const auto second = std::min(first + 1U, sourceFrames - 1U);
+        const float fraction = static_cast<float>(position - first);
+        const std::size_t firstInput = static_cast<std::size_t>(start + first) * 2U;
+        const std::size_t secondInput = static_cast<std::size_t>(start + second) * 2U;
         const std::size_t target = static_cast<std::size_t>(frame) * 2U;
-        output.stereo[target] = source.stereo[input] * gain;
-        output.stereo[target + 1U] = source.stereo[input + 1U] * gain;
+        output.stereo[target] = (source.stereo[firstInput] * (1.0f - fraction) +
+                                 source.stereo[secondInput] * fraction) * gain * leftGain;
+        output.stereo[target + 1U] = (source.stereo[firstInput + 1U] * (1.0f - fraction) +
+                                      source.stereo[secondInput + 1U] * fraction) *
+                                     gain * rightGain;
     }
     return output;
 }

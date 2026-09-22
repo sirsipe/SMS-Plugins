@@ -2,10 +2,11 @@
 
 Right-click a pad in Play or Sample Editor:
 
-- **Import WAV...** replaces that pad and resets its cut points and ADSR.
+- **Import WAV...** replaces that pad and resets its cut points, mixer, and ADSR.
 - **Export WAV...** writes the complete stored sample without processing.
-- **Export Processed...** writes the selected region with ADSR applied. It is
-  disabled while both region and ADSR use their defaults.
+- **Export Processed...** writes the selected region with Gain, Pan, Tune
+  varispeed, and ADSR applied. It is disabled while all editor controls use
+  their defaults.
 
 Import accepts mono or stereo WAV files up to 30 seconds long: 16-, 24-, or
 32-bit integer PCM and 32-bit floating point, including common extensible WAV
@@ -23,5 +24,5 @@ available. If Save cannot open, the plug-in explains the requirement and
 disables Export for that UI session; Import and other functions remain usable.
 In the current Linux VST3 build, imported audio plays and exports, but its
 waveform and editor values cannot reliably refresh after selecting another pad
-or reopening the UI. The DSP may retain cut points and ADSR while the UI shows
+or reopening the UI. The DSP may retain editor settings while the UI shows
 defaults, so use the primary LV2 build for the complete Sample Editor workflow.

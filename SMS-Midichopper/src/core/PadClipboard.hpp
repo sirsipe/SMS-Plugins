@@ -14,6 +14,7 @@ public:
 private:
     PadData sample_;
     sms::dsp::SamplePlaybackSettings settings_{};
+    sms::dsp::SampleMixerSettings mixerSettings_{};
 };
 
 } // namespace midichopper

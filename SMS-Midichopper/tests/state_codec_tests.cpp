@@ -92,6 +92,34 @@ void editorStateRoundTrip()
           "waveform summary rejects partially parsed pad field");
 }
 
+void mixerStateRoundTrip()
+{
+    sms::dsp::SampleMixerSettings original;
+    original.gainDecibels = -7.25f;
+    original.pan = 0.375f;
+    original.tuneSemitones = -11.5f;
+    const std::string encoded = midichopper::plugin::encodeMixerSettings(original);
+    sms::dsp::SampleMixerSettings decoded;
+    check(midichopper::plugin::decodeMixerSettings(encoded.c_str(), decoded),
+          "sample mixer settings decode");
+    check(std::abs(decoded.gainDecibels - original.gainDecibels) < 1.0e-6f,
+          "mixer gain round-trips");
+    check(std::abs(decoded.pan - original.pan) < 1.0e-6f,
+          "mixer pan round-trips");
+    check(std::abs(decoded.tuneSemitones - original.tuneSemitones) < 1.0e-6f,
+          "mixer tune round-trips");
+    check(!midichopper::plugin::decodeMixerSettings("MX1;broken", decoded) &&
+          !midichopper::plugin::decodeMixerSettings("SP1;0;0;0", decoded),
+          "malformed and wrong-version mixer state is rejected");
+
+    check(midichopper::plugin::decodeMixerSettings("MX1;-90;2;48", decoded),
+          "finite out-of-range mixer state decodes safely");
+    check(decoded.gainDecibels == sms::dsp::kMinimumSampleGainDecibels &&
+          decoded.pan == sms::dsp::kMaximumSamplePan &&
+          decoded.tuneSemitones == sms::dsp::kMaximumTuneSemitones,
+          "decoded mixer state clamps to supported ranges");
+}
+
 void chopProtocolRoundTrip()
 {
     midichopper::plugin::ChopApplyRequest apply;
@@ -132,6 +160,7 @@ int main()
     roundTrip();
     rejectsDamage();
     editorStateRoundTrip();
+    mixerStateRoundTrip();
     chopProtocolRoundTrip();
     std::cout << "state codec tests passed\n";
 }

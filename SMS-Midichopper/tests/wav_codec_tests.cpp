@@ -179,6 +179,18 @@ void encodeAndRender()
           processed.stereo.front() == 0.0f && processed.stereo.back() < 0.2f,
           "processed render applies region and automatic ADSR release");
 
+    source.frames = 6U;
+    source.stereo = {1,10, 2,20, 3,30, 4,40, 5,50, 6,60};
+    sms::dsp::SamplePlaybackSettings fullRegion;
+    sms::dsp::SampleMixerSettings mixer;
+    mixer.gainDecibels = -6.0205999f;
+    mixer.pan = -1.0f;
+    mixer.tuneSemitones = 12.0f;
+    const auto mixed = sms::audio::renderProcessedStereo(source, fullRegion, mixer);
+    check(mixed.frames == 3U && std::abs(mixed.stereo[0] - 0.5f) < 1.0e-5f &&
+          std::abs(mixed.stereo[2] - 1.5f) < 1.0e-5f && mixed.stereo[1] == 0.0f,
+          "processed render applies gain, stereo balance, and varispeed tune");
+
     check(sms::audio::hasWavExtension("sample.WAV") &&
           !sms::audio::hasWavExtension("sample.aiff") &&
           !sms::audio::hasAnyExtension("folder.name/sample") &&

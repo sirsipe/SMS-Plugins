@@ -1,5 +1,6 @@
 #pragma once
 
+#include "DSP/SampleMixerSettings.hpp"
 #include "DSP/SamplePlaybackSettings.hpp"
 
 #include <cstdint>
@@ -45,7 +46,8 @@ struct WavDecodeResult {
     const WavAudio& audio, std::vector<std::uint8_t>& destination) noexcept;
 
 [[nodiscard]] WavAudio renderProcessedStereo(
-    const WavAudio& source, const dsp::SamplePlaybackSettings& settings) noexcept;
+    const WavAudio& source, const dsp::SamplePlaybackSettings& settings,
+    const dsp::SampleMixerSettings& mixerSettings = {}) noexcept;
 
 [[nodiscard]] const char* wavErrorMessage(WavError error) noexcept;
 [[nodiscard]] bool hasWavExtension(std::string_view path) noexcept;

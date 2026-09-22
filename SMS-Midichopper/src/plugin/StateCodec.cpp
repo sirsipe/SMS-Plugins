@@ -1,4 +1,5 @@
 #include "StateCodec.hpp"
+#include "State/SampleMixerSettingsCodec.hpp"
 #include "State/SamplePlaybackSettingsCodec.hpp"
 
 #include <algorithm>
@@ -232,6 +233,17 @@ bool decodePlaybackSettings(const char* const encoded,
                             sms::dsp::SamplePlaybackSettings& destination) noexcept
 {
     return sms::state::decodeSamplePlaybackSettings(encoded, destination);
+}
+
+std::string encodeMixerSettings(const sms::dsp::SampleMixerSettings& requested)
+{
+    return sms::state::encodeSampleMixerSettings(requested);
+}
+
+bool decodeMixerSettings(const char* const encoded,
+                         sms::dsp::SampleMixerSettings& destination) noexcept
+{
+    return sms::state::decodeSampleMixerSettings(encoded, destination);
 }
 
 } // namespace midichopper::plugin
