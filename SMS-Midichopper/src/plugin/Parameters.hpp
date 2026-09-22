@@ -40,6 +40,9 @@ enum Parameter : std::uint32_t {
     kParameterPadClipboardAvailable,
     kParameterPadClipboardResultEvent,
     kParameterChopPreviewPosition,
+    kParameterPlaybackPosition,
+    kParameterGlobalPan,
+    kParameterGlobalTuneSemitones,
     kParameterCount,
 };
 
@@ -83,6 +86,9 @@ inline constexpr ParameterRange padFileResultEvent{0.0f, 0.0f, 8.0f};
 inline constexpr ParameterRange padClipboardResultEvent{0.0f, 0.0f, 6.0f};
 inline constexpr ParameterRange chopPreviewPosition{
     0.0f, 0.0f, static_cast<float>(kPadCount + 1U)};
+inline constexpr ParameterRange playbackPosition = chopPreviewPosition;
+inline constexpr ParameterRange globalPan{0.0f, -1.0f, 1.0f};
+inline constexpr ParameterRange globalTuneSemitones{0.0f, -24.0f, 24.0f};
 } // namespace parameterRanges
 
 /**
@@ -151,6 +157,9 @@ private:
     case kParameterPadFileResultEvent: return parameterRanges::padFileResultEvent;
     case kParameterPadClipboardResultEvent: return parameterRanges::padClipboardResultEvent;
     case kParameterChopPreviewPosition: return parameterRanges::chopPreviewPosition;
+    case kParameterPlaybackPosition: return parameterRanges::playbackPosition;
+    case kParameterGlobalPan: return parameterRanges::globalPan;
+    case kParameterGlobalTuneSemitones: return parameterRanges::globalTuneSemitones;
     default: return parameterRanges::toggle;
     }
 }

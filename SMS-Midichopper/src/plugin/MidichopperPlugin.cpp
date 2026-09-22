@@ -43,6 +43,7 @@ std::array<std::string, midichopper::kPadCount> makePadStateKeys(const char* con
 
 const auto kPadStateKeys = makePadStateKeys("pad_");
 const auto kPadEditStateKeys = makePadStateKeys("pad_edit_");
+const auto kPadMixerStateKeys = makePadStateKeys("pad_mix_");
 
 constexpr std::uint32_t kAudioStateCount = midichopper::kPadCount;
 constexpr std::uint32_t kEditStateOffset = kAudioStateCount;
@@ -56,7 +57,8 @@ constexpr std::uint32_t kPadClipboardRequestState = kPadFileStatusState + 1U;
 constexpr std::uint32_t kChopApplyRequestState = kPadClipboardRequestState + 1U;
 constexpr std::uint32_t kChopStatusState = kChopApplyRequestState + 1U;
 constexpr std::uint32_t kChopPreviewRequestState = kChopStatusState + 1U;
-constexpr std::uint32_t kStateCount = kChopPreviewRequestState + 1U;
+constexpr std::uint32_t kMixerStateOffset = kChopPreviewRequestState + 1U;
+constexpr std::uint32_t kStateCount = kMixerStateOffset + midichopper::kPadCount;
 constexpr const char* kWaveformRequestKey = "waveform_request";
 constexpr const char* kWaveformDataKey = "waveform_data";
 constexpr const char* kPadClearRequestKey = "pad_clear_request";
@@ -180,8 +182,16 @@ protected:
                            "Pad 1 note; All Banks mode limits the effective base to 64.");
             break;
         case kParameterOutputGainDb:
-            setupParameter(index, parameter, "Output Gain", "output_gain", "dB",
+            setupParameter(index, parameter, "Global Volume", "output_gain", "dB",
                            0, "Gain applied to monitored input and pads.");
+            break;
+        case kParameterGlobalPan:
+            setupParameter(index, parameter, "Global Pan", "global_pan", "",
+                           0, "Stereo balance added to each pad's Pan value.");
+            break;
+        case kParameterGlobalTuneSemitones:
+            setupParameter(index, parameter, "Global Tune", "global_tune", "st",
+                           0, "Varispeed semitones added to each pad's Tune value.");
             break;
         case kParameterFinalize:
             setupParameter(index, parameter, "Finalize", "finalize", "",
@@ -286,6 +296,12 @@ protected:
                            kParameterIsOutput | kParameterIsHidden,
                            "Internal UI playhead for raw Chop Editor preview.");
             break;
+        case kParameterPlaybackPosition:
+            setupParameter(index, parameter, "Sample Playback Position",
+                           "sample_playback_position", "",
+                           kParameterIsOutput | kParameterIsHidden,
+                           "Internal UI playhead for the most recently triggered pad.");
+            break;
         default:
             if (index >= kFirstPadStatusParameter && index < kFirstPadActivityParameter) {
                 const std::uint32_t pad = index - kFirstPadStatusParameter;
@@ -367,11 +383,17 @@ protected:
             state.label = "Chop Editor Status";
             state.defaultValue = "";
             state.hints = kStateIsOnlyForUI;
-        } else {
+        } else if (index == kChopPreviewRequestState) {
             state.key = kChopPreviewRequestKey;
             state.label = "Chop Preview Request";
             state.defaultValue = "";
             state.hints = kStateIsOnlyForDSP;
+        } else {
+            const auto pad = index - kMixerStateOffset;
+            state.key = kPadMixerStateKeys[pad].c_str();
+            state.label = "Pad Sample Mixer Settings";
+            state.defaultValue = "MX1;0;0;0";
+            state.hints = 0;
         }
     }
 
@@ -428,6 +450,11 @@ protected:
                 return String(midichopper::plugin::encodePlaybackSettings(
                     sampler_.padPlaybackSettings(pad)).c_str());
         }
+        for (std::uint32_t pad = 0; pad < midichopper::kPadCount; ++pad) {
+            if (std::strcmp(key, kPadMixerStateKeys[pad].c_str()) == 0)
+                return String(midichopper::plugin::encodeMixerSettings(
+                    sampler_.padMixerSettings(pad)).c_str());
+        }
         if (std::strcmp(key, kWaveformRequestKey) == 0)
             return String("0");
         if (std::strcmp(key, kWaveformDataKey) == 0)
@@ -460,8 +487,16 @@ protected:
             midichopper::plugin::DecodedPadState decoded;
             if (midichopper::plugin::decodePadState(value, decoded))
                 static_cast<void>(withSamplerPaused([&] {
-                    static_cast<void>(sampler_.importPad(pad, decoded.pad));
+                    static_cast<void>(sampler_.importPad(pad, decoded.pad, false));
                 }));
+            return;
+        }
+        for (std::uint32_t pad = 0; pad < midichopper::kPadCount; ++pad) {
+            if (std::strcmp(key, kPadMixerStateKeys[pad].c_str()) != 0)
+                continue;
+            sms::dsp::SampleMixerSettings settings;
+            if (midichopper::plugin::decodeMixerSettings(value, settings))
+                sampler_.setPadMixerSettings(pad, settings);
             return;
         }
         for (std::uint32_t pad = 0; pad < midichopper::kPadCount; ++pad) {
@@ -478,11 +513,18 @@ protected:
             const auto requested = std::strtoul(input, &end, 10);
             if (end != input && *end == '\0' && requested < midichopper::kPadCount) {
                 const auto pad = static_cast<std::uint32_t>(requested);
-                const std::string waveform = makeWaveformState(pad);
-                static_cast<void>(updateStateValue(kWaveformDataKey, waveform.c_str()));
-                const std::string editor = midichopper::plugin::encodePlaybackSettings(
-                    sampler_.padPlaybackSettings(pad));
-                static_cast<void>(updateStateValue(kPadEditStateKeys[pad].c_str(), editor.c_str()));
+                std::string waveform;
+                if (makeWaveformState(pad, waveform)) {
+                    static_cast<void>(updateStateValue(kWaveformDataKey, waveform.c_str()));
+                    const std::string editor = midichopper::plugin::encodePlaybackSettings(
+                        sampler_.padPlaybackSettings(pad));
+                    static_cast<void>(updateStateValue(
+                        kPadEditStateKeys[pad].c_str(), editor.c_str()));
+                    const std::string mixer = midichopper::plugin::encodeMixerSettings(
+                        sampler_.padMixerSettings(pad));
+                    static_cast<void>(updateStateValue(
+                        kPadMixerStateKeys[pad].c_str(), mixer.c_str()));
+                }
             }
             return;
         }
@@ -577,6 +619,8 @@ protected:
         updatePadOutputParameters();
         parameters_[midichopper::plugin::kParameterChopPreviewPosition].store(
             sampler_.chopPreviewPosition(), std::memory_order_relaxed);
+        parameters_[midichopper::plugin::kParameterPlaybackPosition].store(
+            sampler_.playbackPosition(), std::memory_order_relaxed);
     }
 
     void sampleRateChanged(const double newSampleRate) override
@@ -587,16 +631,23 @@ protected:
     }
 
 private:
-    [[nodiscard]] std::string makeWaveformState(const std::uint32_t pad) const
+    [[nodiscard]] bool makeWaveformState(const std::uint32_t pad,
+                                         std::string& waveform) const
     {
         midichopper::PadData snapshot;
         bool exported = false;
         if (!withSamplerPaused([&] {
                 exported = sampler_.exportPad(pad, snapshot);
-            }) || !exported || snapshot.frames == 0U)
-            return sms::audio::encodeWaveformSummary({pad, 0U, sampler_.sampleRate(), {}, {}});
-        return sms::audio::encodeWaveformSummary(sms::audio::summarizeStereo(
-            pad, snapshot.stereo.data(), snapshot.frames, snapshot.sampleRate));
+            }))
+            return false;
+        if (!exported || snapshot.frames == 0U) {
+            waveform = sms::audio::encodeWaveformSummary(
+                {pad, 0U, sampler_.sampleRate(), {}, {}});
+        } else {
+            waveform = sms::audio::encodeWaveformSummary(sms::audio::summarizeStereo(
+                pad, snapshot.stereo.data(), snapshot.frames, snapshot.sampleRate));
+        }
+        return true;
     }
 
     template <class Callback>
@@ -708,8 +759,13 @@ private:
                 sampler_.padPlaybackSettings(request.pad));
             static_cast<void>(updateStateValue(
                 kPadEditStateKeys[request.pad].c_str(), editor.c_str()));
-            const std::string waveform = makeWaveformState(request.pad);
-            static_cast<void>(updateStateValue(kWaveformDataKey, waveform.c_str()));
+            const std::string mixer = midichopper::plugin::encodeMixerSettings(
+                sampler_.padMixerSettings(request.pad));
+            static_cast<void>(updateStateValue(
+                kPadMixerStateKeys[request.pad].c_str(), mixer.c_str()));
+            std::string waveform;
+            if (makeWaveformState(request.pad, waveform))
+                static_cast<void>(updateStateValue(kWaveformDataKey, waveform.c_str()));
         }
         publishClipboardResult(result);
     }
@@ -758,8 +814,6 @@ private:
                 bool imported = false;
                 if (!withSamplerPaused([&] {
                         imported = sampler_.importPad(request.pad, replacement);
-                        if (imported)
-                            sampler_.setPadPlaybackSettings(request.pad, {});
                     })) {
                     status = "Audio did not pause for WAV import";
                 } else if (!imported) {
@@ -770,17 +824,23 @@ private:
                     const std::string editor = midichopper::plugin::encodePlaybackSettings({});
                     static_cast<void>(updateStateValue(
                         kPadEditStateKeys[request.pad].c_str(), editor.c_str()));
-                    const std::string waveform = makeWaveformState(request.pad);
-                    static_cast<void>(updateStateValue(kWaveformDataKey, waveform.c_str()));
+                    const std::string mixer = midichopper::plugin::encodeMixerSettings({});
+                    static_cast<void>(updateStateValue(
+                        kPadMixerStateKeys[request.pad].c_str(), mixer.c_str()));
+                    std::string waveform;
+                    if (makeWaveformState(request.pad, waveform))
+                        static_cast<void>(updateStateValue(kWaveformDataKey, waveform.c_str()));
                 }
             }
         } else {
             midichopper::PadData snapshot;
             sms::dsp::SamplePlaybackSettings settings;
+            sms::dsp::SampleMixerSettings mixerSettings;
             bool exported = false;
             if (!withSamplerPaused([&] {
                     exported = sampler_.exportPad(request.pad, snapshot);
                     settings = sampler_.padPlaybackSettings(request.pad);
+                    mixerSettings = sampler_.padMixerSettings(request.pad);
                 })) {
                 status = "Audio did not pause for WAV export";
             } else if (!exported || snapshot.frames == 0U) {
@@ -792,7 +852,7 @@ private:
                 audio.frames = snapshot.frames;
                 audio.stereo = std::move(snapshot.stereo);
                 if (request.action == PadFileAction::exportProcessed)
-                    audio = sms::audio::renderProcessedStereo(audio, settings);
+                    audio = sms::audio::renderProcessedStereo(audio, settings, mixerSettings);
                 status = midichopper::plugin::writePadWav(pathFromUtf8(request.path), audio);
                 if (status.empty())
                 {
@@ -854,6 +914,8 @@ private:
         settings.monitorInput = parameter(kParameterInputMonitor) >= 0.5f;
         settings.baseNote = static_cast<std::uint8_t>(clampedParameter(kParameterBaseMidiNote));
         settings.gain = decibelsToGain(clampedParameter(kParameterOutputGainDb));
+        settings.pan = clampedParameter(kParameterGlobalPan);
+        settings.tuneSemitones = clampedParameter(kParameterGlobalTuneSemitones);
         settings.maxVoices = static_cast<std::uint8_t>(clampedParameter(kParameterMaxVoices));
         settings.activeBank = static_cast<std::uint8_t>(
             clampedParameter(kParameterActiveBank) - parameterRanges::activeBank.minimum);
