@@ -1,13 +1,16 @@
 #pragma once
 
+#include "Audio/WaveformSummary.hpp"
 #include "Configuration.hpp"
 #include "ChopEditor.hpp"
 #include "ContextMenu.hpp"
+#include "DSP/SampleMixerSettings.hpp"
 #include "Interaction.hpp"
 #include "MidichopperLayout.hpp"
 #include "PadLayout.hpp"
 #include "WaveformEditor.hpp"
 
+#include <cstdint>
 #include <span>
 
 namespace midichopper::ui {
@@ -23,6 +26,8 @@ enum class InteractiveType : int {
     regionHandle,
     envelopeNode,
     envelopeSlider,
+    mixerKnob,
+    globalMixerKnob,
     playOnSelect,
     openEditor,
     chopBoundary,
@@ -71,12 +76,147 @@ private:
     int midiNote_ = -1;
 };
 
+class DoubleClickTracker {
+public:
+    [[nodiscard]] bool press(const sms::ui::InteractiveTarget target,
+                             const sms::ui::Point point,
+                             const std::uint64_t milliseconds) noexcept
+    {
+        const float dx = point.x - point_.x;
+        const float dy = point.y - point_.y;
+        const bool matched = target.valid() && target == target_ &&
+            milliseconds >= milliseconds_ && milliseconds - milliseconds_ <= 350U &&
+            dx * dx + dy * dy <= 36.0f;
+        target_ = matched ? sms::ui::kNoInteractiveTarget : target;
+        point_ = point;
+        milliseconds_ = milliseconds;
+        return matched;
+    }
+
+private:
+    sms::ui::InteractiveTarget target_ = sms::ui::kNoInteractiveTarget;
+    sms::ui::Point point_{};
+    std::uint64_t milliseconds_ = 0U;
+};
+
+[[nodiscard]] constexpr bool isResettableMixerControl(
+    const sms::ui::InteractiveTarget candidate) noexcept
+{
+    return candidate.is(static_cast<int>(InteractiveType::mixerKnob)) ||
+           candidate.is(static_cast<int>(InteractiveType::globalMixerKnob)) ||
+           candidate.is(static_cast<int>(InteractiveType::envelopeSlider));
+}
+
+inline void resetMixerKnob(sms::dsp::SampleMixerSettings& settings,
+                           const int knob) noexcept
+{
+    switch (knob) {
+    case 0: settings.gainDecibels = 0.0f; break;
+    case 1: settings.pan = 0.0f; break;
+    case 2: settings.tuneSemitones = 0.0f; break;
+    default: return;
+    }
+    settings = sms::dsp::sanitize(settings);
+}
+
+[[nodiscard]] inline float knobDragNormalized(const float startValue,
+                                              const float startY,
+                                              const float currentY) noexcept
+{
+    if (!std::isfinite(startValue) || !std::isfinite(startY) || !std::isfinite(currentY))
+        return std::clamp(std::isfinite(startValue) ? startValue : 0.0f, 0.0f, 1.0f);
+    return std::clamp(startValue + (startY - currentY) / 120.0f, 0.0f, 1.0f);
+}
+
+/** Map a bipolar control so its zero value is drawn at twelve o'clock. */
+[[nodiscard]] inline float bipolarKnobPosition(const float value,
+                                              const float minimum,
+                                              const float maximum) noexcept
+{
+    if (!std::isfinite(value) || !std::isfinite(minimum) || !std::isfinite(maximum) ||
+        minimum >= 0.0f || maximum <= 0.0f)
+        return 0.5f;
+    return value < 0.0f
+        ? 0.5f * std::clamp(value / -minimum + 1.0f, 0.0f, 1.0f)
+        : 0.5f + 0.5f * std::clamp(value / maximum, 0.0f, 1.0f);
+}
+
 /** Editor data only needs reloading when the requested pad changes. */
 [[nodiscard]] constexpr bool editorPadSelectionChanged(const int selectedPad,
                                                        const int requestedPad) noexcept
 {
     return selectedPad != requestedPad;
 }
+
+/** Collect the independently delivered parts of one sample-editor response. */
+class EditorSnapshotCollector {
+public:
+    void begin(const int pad) noexcept
+    {
+        pad_ = pad;
+        waveformReady_ = false;
+        playbackReady_ = false;
+        mixerReady_ = false;
+    }
+
+    [[nodiscard]] bool pending() const noexcept { return pad_ >= 0; }
+    [[nodiscard]] int pad() const noexcept { return pad_; }
+    [[nodiscard]] bool readyFor(const int pad) const noexcept
+    {
+        return pad_ == pad && waveformReady_ && playbackReady_ && mixerReady_;
+    }
+
+    bool accept(const sms::audio::WaveformSummary& waveform) noexcept
+    {
+        if (pad_ < 0 || waveform.pad != static_cast<std::uint32_t>(pad_))
+            return false;
+        waveform_ = waveform;
+        waveformReady_ = true;
+        return true;
+    }
+
+    bool accept(const int pad, const sms::dsp::SamplePlaybackSettings& playback) noexcept
+    {
+        if (pad != pad_)
+            return false;
+        playback_ = playback;
+        playbackReady_ = true;
+        return true;
+    }
+
+    bool accept(const int pad, const sms::dsp::SampleMixerSettings& mixer) noexcept
+    {
+        if (pad != pad_)
+            return false;
+        mixer_ = mixer;
+        mixerReady_ = true;
+        return true;
+    }
+
+    void complete() noexcept { pad_ = -1; }
+
+    [[nodiscard]] const sms::audio::WaveformSummary& waveform() const noexcept
+    {
+        return waveform_;
+    }
+    [[nodiscard]] const sms::dsp::SamplePlaybackSettings& playback() const noexcept
+    {
+        return playback_;
+    }
+    [[nodiscard]] const sms::dsp::SampleMixerSettings& mixer() const noexcept
+    {
+        return mixer_;
+    }
+
+private:
+    int pad_ = -1;
+    bool waveformReady_ = false;
+    bool playbackReady_ = false;
+    bool mixerReady_ = false;
+    sms::audio::WaveformSummary waveform_{};
+    sms::dsp::SamplePlaybackSettings playback_{};
+    sms::dsp::SampleMixerSettings mixer_{};
+};
 
 [[nodiscard]] constexpr sms::ui::InteractiveTarget
 target(const InteractiveType type, const int index = -1) noexcept
@@ -185,6 +325,10 @@ interactiveTargetAt(const sms::ui::Point point, const InteractionContext& contex
             if (uiLayout::editorSlider(slider).contains(point))
                 return target(InteractiveType::envelopeSlider, slider);
         }
+        for (int slider = 0; slider < 3; ++slider) {
+            if (uiLayout::mixerKnob(slider).contains(point))
+                return target(InteractiveType::mixerKnob, slider);
+        }
         if (uiLayout::playOnSelect.contains(point))
             return target(InteractiveType::playOnSelect);
         return sms::ui::kNoInteractiveTarget;
@@ -228,12 +372,18 @@ interactiveTargetAt(const sms::ui::Point point, const InteractionContext& contex
     }
     if (uiLayout::monitor.contains(point))
         return target(InteractiveType::monitor);
-    if (uiLayout::finalizeAction.contains(point))
-        return target(InteractiveType::finalizeAction);
-    if (uiLayout::undoAction.contains(point))
-        return target(InteractiveType::undoAction);
-    if (uiLayout::clearAction.contains(point))
-        return target(InteractiveType::clearAction);
+    for (int knob = 0; knob < 3; ++knob) {
+        if (uiLayout::globalMixerKnob(knob).contains(point))
+            return target(InteractiveType::globalMixerKnob, knob);
+    }
+    if (context.armed) {
+        if (uiLayout::finalizeAction.contains(point))
+            return target(InteractiveType::finalizeAction);
+        if (uiLayout::undoAction.contains(point))
+            return target(InteractiveType::undoAction);
+        if (uiLayout::clearAction.contains(point))
+            return target(InteractiveType::clearAction);
+    }
     return sms::ui::kNoInteractiveTarget;
 }
 

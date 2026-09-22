@@ -118,11 +118,14 @@ void interactionTargets()
     check(interaction::isTarget(
               interaction::interactiveTargetAt(center(layout::monitor), context),
               interaction::InteractiveType::monitor) &&
-          interaction::isTarget(
-              interaction::interactiveTargetAt(
-                  center(layout::finalizeAction), context),
-              interaction::InteractiveType::finalizeAction),
-          "play mode resolves bottom-anchored monitor and actions");
+          !interaction::interactiveTargetAt(center(layout::finalizeAction), context).valid(),
+          "play mode keeps the bottom monitor and hides chop actions");
+    for (int knob = 0; knob < 3; ++knob) {
+        check(interaction::isTarget(
+                  interaction::interactiveTargetAt(center(layout::globalMixerKnob(knob)), context),
+                  interaction::InteractiveType::globalMixerKnob, knob),
+              "main view exposes each global mixer knob");
+    }
     check(!interaction::isTarget(
               interaction::interactiveTargetAt(center(layout::fixedLength), context),
               interaction::InteractiveType::fixedLength),
@@ -203,6 +206,15 @@ void interactionTargets()
     check(interaction::isTarget(waveformTarget, interaction::InteractiveType::regionHandle) &&
               waveformTarget.index == static_cast<int>(sms::ui::waveform::EditTarget::regionStart),
           "waveform hover identifies the nearest editable cut handle");
+    for (int slider = 0; slider < 3; ++slider) {
+        check(interaction::isTarget(
+                  interaction::interactiveTargetAt(center(layout::mixerKnob(slider)), context),
+                  interaction::InteractiveType::mixerKnob, slider),
+              "sample editor exposes each mixer knob");
+    }
+    check(!layout::envelopeGraph.contains(center(layout::mixerKnob(0))) &&
+          !layout::editorSlider(0).contains(center(layout::mixerKnob(2))),
+          "mixer controls remain separate from ADSR controls");
 
     context.editorMode = false;
     context.chopEditorMode = true;
@@ -259,6 +271,32 @@ void padPressTracking()
     check(!midichopper::ui::editorPadSelectionChanged(7, 7) &&
               midichopper::ui::editorPadSelectionChanged(7, 8),
           "sample editor reloads data only when pad selection changes");
+}
+
+void editorSnapshotCollection()
+{
+    midichopper::ui::EditorSnapshotCollector snapshot;
+    sms::audio::WaveformSummary waveform;
+    waveform.pad = 7U;
+    waveform.frames = 48000U;
+    sms::dsp::SamplePlaybackSettings playback;
+    playback.start = 0.25f;
+    sms::dsp::SampleMixerSettings mixer;
+    mixer.pan = 0.5f;
+
+    snapshot.begin(7);
+    auto stale = waveform;
+    stale.pad = 6U;
+    check(!snapshot.accept(stale) && snapshot.accept(waveform) &&
+              snapshot.accept(7, playback) && !snapshot.readyFor(7),
+          "sample editor ignores stale responses and waits for every snapshot part");
+    check(snapshot.accept(7, mixer) && snapshot.readyFor(7) &&
+              snapshot.waveform().frames == 48000U &&
+              snapshot.playback().start == 0.25f && snapshot.mixer().pan == 0.5f,
+          "sample editor presents matching waveform and controls as one snapshot");
+    snapshot.begin(8);
+    check(snapshot.pending() && snapshot.pad() == 8 && !snapshot.readyFor(8),
+          "a replacement pad request discards incomplete prior response parts");
 }
 
 void wheelAdjustment()
@@ -341,6 +379,11 @@ void waveformGeometry()
           "waveform display normalizes its largest peak");
     check(std::abs(sms::ui::waveform::regionDuration(summary, settings) - 0.5f) < 1.0e-6f,
           "selected region duration uses frame count and sample rate");
+    check(std::abs(sms::ui::waveform::advancePlaybackFraction(
+              0.25f, 0.25, 48000U, 48000.0, 1.0f, 0.75f) - 0.5f) < 1.0e-6f &&
+          sms::ui::waveform::advancePlaybackFraction(
+              0.70f, 0.25, 48000U, 48000.0, 2.0f, 0.75f) == 0.75f,
+          "UI playhead clock advances by source rate and tune while respecting End");
 
     const auto geometry = sms::ui::waveform::envelopeGeometry(
         {0.0f, 0.0f, 250.0f, 120.0f}, summary, settings);
@@ -368,6 +411,50 @@ void waveformGeometry()
         track.x + track.width * 0.5f, slider);
     check(std::abs(settings.attackSeconds - 1.25f) < 1.0e-6f,
           "envelope slider drawing and interaction share one mapping");
+
+    const float previousEnd = settings.end;
+    sms::ui::waveform::adjustRegionByWheel(
+        settings, sms::ui::waveform::EditTarget::regionEnd, -1.0f,
+        summary.frames, {0.0f, 0.0f, 100.0f, 40.0f});
+    check(settings.end < previousEnd,
+          "wheel editing moves the selected sample-region handle");
+    settings.attackSeconds = 2.0f;
+    settings.decaySeconds = 2.0f;
+    settings.sustainLevel = 0.2f;
+    settings.releaseSeconds = 2.0f;
+    for (int slider = 0; slider < 4; ++slider)
+        sms::ui::waveform::resetEnvelopeSlider(settings, slider);
+    check(settings.attackSeconds == 0.0f && settings.decaySeconds == 0.0f &&
+          settings.sustainLevel == 1.0f && settings.releaseSeconds == 0.0f,
+          "each ADSR slider resets to its default");
+
+    sms::dsp::SampleMixerSettings mixer;
+    mixer.gainDecibels = -12.0f;
+    mixer.pan = 0.5f;
+    mixer.tuneSemitones = 7.0f;
+    for (int slider = 0; slider < 3; ++slider)
+        midichopper::ui::resetMixerKnob(mixer, slider);
+    check(mixer.gainDecibels == 0.0f && mixer.pan == 0.0f &&
+          mixer.tuneSemitones == 0.0f,
+          "each mixer knob resets to its default");
+
+    midichopper::ui::DoubleClickTracker clicks;
+    const auto target = midichopper::ui::target(
+        midichopper::ui::InteractiveType::mixerKnob, 0);
+    check(!clicks.press(target, {10.0f, 10.0f}, 1000U) &&
+          clicks.press(target, {12.0f, 11.0f}, 1250U),
+          "two nearby slider presses within the interval form a double click");
+    check(!clicks.press(target, {10.0f, 10.0f}, 2000U) &&
+          !clicks.press(target, {30.0f, 10.0f}, 2100U),
+          "distant presses do not reset a slider");
+    check(std::abs(midichopper::ui::knobDragNormalized(0.5f, 100.0f, 88.0f) - 0.6f) <
+              1.0e-6f &&
+          midichopper::ui::knobDragNormalized(0.95f, 100.0f, 0.0f) == 1.0f,
+          "mixer knobs use bounded upward drag adjustment");
+    check(midichopper::ui::bipolarKnobPosition(0.0f, -60.0f, 12.0f) == 0.5f &&
+          midichopper::ui::bipolarKnobPosition(-60.0f, -60.0f, 12.0f) == 0.0f &&
+          midichopper::ui::bipolarKnobPosition(12.0f, -60.0f, 12.0f) == 1.0f,
+          "asymmetric gain draws zero at twelve o'clock");
 }
 
 void chopEditorGeometry()
@@ -394,6 +481,11 @@ void chopEditorGeometry()
     check(midichopper::ui::chop::clampBoundaryOffset(waveforms, offsets, 0, -200) == -99 &&
           midichopper::ui::chop::clampBoundaryOffset(waveforms, offsets, 0, 200) == 99,
           "chop boundary retains at least one frame in each neighbor");
+    check(midichopper::ui::chop::wheelAdjustedBoundaryOffset(
+              waveforms, offsets, 0, 1.0f, bounds) == 1 &&
+          midichopper::ui::chop::wheelAdjustedBoundaryOffset(
+              waveforms, offsets, 0, -1.0f, bounds) == -1,
+          "wheel editing moves a cut point by one displayed-pixel step");
 
     auto moved = offsets;
     moved[0] = 50;
@@ -446,6 +538,7 @@ int main()
     contextMenuGeometry();
     interactionTargets();
     padPressTracking();
+    editorSnapshotCollection();
     wheelAdjustment();
     levelMeterGeometry();
     waveformGeometry();

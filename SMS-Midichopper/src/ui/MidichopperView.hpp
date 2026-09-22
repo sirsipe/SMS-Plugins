@@ -4,6 +4,7 @@
 #include "Audio/WaveformSummary.hpp"
 #include "Configuration.hpp"
 #include "ContextMenu.hpp"
+#include "DSP/SampleMixerSettings.hpp"
 #include "DSP/SamplePlaybackSettings.hpp"
 #include "Interaction.hpp"
 
@@ -24,6 +25,8 @@ struct ViewState {
     int baseMidiNote = static_cast<int>(kDefaultBaseMidiNote);
     int midiBankMode = static_cast<int>(kDefaultMidiBankMode);
     float outputGainDb = 0.0f;
+    float globalPan = 0.0f;
+    float globalTuneSemitones = 0.0f;
     int maxVoices = static_cast<int>(kPadsPerBank);
     int bank = 0;
     int layout = 0;
@@ -45,7 +48,9 @@ struct ViewState {
     std::span<const char> padState;
     std::span<const char> padActivity;
     const sms::dsp::SamplePlaybackSettings& editorSettings;
+    const sms::dsp::SampleMixerSettings& mixerSettings;
     const sms::audio::WaveformSummary& waveform;
+    float playbackPosition = 0.0f;
     std::span<const sms::audio::WaveformSummary> chopWaveforms;
     std::span<const std::int64_t> chopOffsets;
     int chopFirstPad = -1;

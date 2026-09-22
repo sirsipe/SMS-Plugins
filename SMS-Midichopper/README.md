@@ -1,14 +1,12 @@
 # SMS-Midichopper
 
-A live stereo chopping sampler for Linux. Arm it and tap a MIDI pad: the first
-tap starts recording; later taps finish a slice and advance.
+A live stereo chopping sampler for Linux. Arm and tap a MIDI pad: the first tap
+starts recording; later taps finish a slice and advance.
 
 > **Disclaimer:** This is an AI-generated project, created under the supervision
 > and testing of [SirSipe](https://github.com/sirsipe/).
 
 ![SMS-Midichopper interface](Docs/SMS-Midichopper-v0.0.3.png)
-
-_Screenshot from version v0.0.3._
 
 ## Vision
 
@@ -63,19 +61,21 @@ from the bottom row. Banks retain 16 slots; smaller layouts hide slots without
 deleting samples. Sequential capture skips hidden slots and continues into the
 next bank in Selected Bank mode. All Banks uses contiguous layout-sized pages.
 
-In Play, open **Sample Editor** for non-destructive region and ADSR editing.
-Side-panel clicks select and load pads. Enable **Play on Select** below the pads
-to audition them as you select them; it defaults to off whenever
-the plug-in UI opens. MIDI playback selects populated pads, including retriggers.
-The editor is unavailable in Arm so capture controls remain visible.
+**Sample Editor** groups waveform and ADSR above per-pad Gain, Pan, and
+varispeed Tune. Main-view global Volume, Pan, and Tune add to pad values.
+Mixer, ADSR, End, and global edits reach active voices next block; Start applies
+on retrigger. Tune changes pitch and duration. Rechopping preserves pad mixer
+settings. **Play on Select** auditions selections and defaults off. MIDI selects
+populated pads. Arm hides the editor.
 
 Right-click a middle pad and choose **Adjust cut points** to edit it with its
 neighbor slots, including empty ones. See the [cut-point guide](Docs/CHOP-EDITOR.md).
 
-Hovering highlights the enabled control under the pointer. The mouse wheel
-adjusts Fixed Length, Max Voices, Pre-roll, and editor ADSR sliders.
-Arm shows Capture Mode and Pre-roll, plus Fixed Length only for Fixed capture.
-Play shows playback mode and Max Voices. Hidden controls retain their values.
+Drag mixer knobs; wheel them or the ADSR sliders. Double- or
+middle-click either to reset it. The wheel also adjusts Fixed Length, Max Voices,
+Pre-roll, Start/End, and cut points.
+Arm shows capture and chop controls. Play shows playback controls and hides
+chop actions. Global mixer and bottom Monitor controls remain available.
 
 In Play or Sample Editor, right-click a pad to copy, paste, import, export, or
 clear it. See
@@ -87,7 +87,7 @@ oldest voice; set it to one for monophonic playback.
 
 Pre-roll moves boundaries slightly earlier to compensate for late taps. Fixed
 mode records one fixed-length slice per note-on. Samples from all four banks are
-stored with the DAW project as compact 16-bit stereo state.
+stored with the DAW project as 16-bit stereo state.
 
 Stereo LED rails show raw input on the left and final output on the right in
 every mode, even with monitoring off. Yellow begins at −18 dBFS and red at

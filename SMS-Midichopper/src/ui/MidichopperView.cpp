@@ -34,8 +34,8 @@ public:
             static_cast<float>(uiLayout::canvasHeight)});
         sms::ui::dpf::drawScrew(canvas_, 20.0f, 20.0f);
         sms::ui::dpf::drawScrew(canvas_, 1020.0f, 20.0f);
-        sms::ui::dpf::drawScrew(canvas_, 20.0f, 660.0f);
-        sms::ui::dpf::drawScrew(canvas_, 1020.0f, 660.0f);
+        sms::ui::dpf::drawScrew(canvas_, 20.0f, uiLayout::canvasHeight - 20.0f);
+        sms::ui::dpf::drawScrew(canvas_, 1020.0f, uiLayout::canvasHeight - 20.0f);
         sms::ui::dpf::drawStereoLedMeter(
             canvas_, uiLayout::inputMeter, state_.inputLevels[0], state_.inputLevels[1], "IN");
         sms::ui::dpf::drawStereoLedMeter(
@@ -69,6 +69,58 @@ private:
     [[nodiscard]] bool hovered(const InteractiveType type, const int index = -1) const noexcept
     {
         return isTarget(state_.hoveredTarget, type, index);
+    }
+
+    void drawMixerKnob(const sms::ui::Rect bounds, const InteractiveType type,
+                       const int index, const char* const label, const float value,
+                       const float minimum, const float maximum, const char* const display)
+    {
+        const auto& colors = sms::ui::dpf::theme();
+        canvas_.fontFace(NANOVG_DEJAVU_SANS_TTF);
+        canvas_.fontSize(9.0f);
+        canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_CENTER |
+                          DGL_NAMESPACE::NanoVG::ALIGN_TOP);
+        canvas_.fillColor(colors.contentSecondary);
+        canvas_.text(bounds.x + bounds.width * 0.5f, bounds.y, label, nullptr);
+        canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_CENTER |
+                          DGL_NAMESPACE::NanoVG::ALIGN_TOP);
+        canvas_.fillColor(colors.contentPrimary);
+        canvas_.text(bounds.x + bounds.width * 0.5f, bounds.y + 56.0f, display, nullptr);
+        const float normalized = bipolarKnobPosition(value, minimum, maximum);
+        sms::ui::dpf::drawKnob(canvas_, bounds.x + bounds.width * 0.5f,
+            bounds.y + 31.0f, 16.0f, normalized, colors.controlAccent,
+            hovered(type, index));
+    }
+
+    void drawGlobalMixer()
+    {
+        const auto& colors = sms::ui::dpf::theme();
+        canvas_.fontFace(NANOVG_DEJAVU_SANS_TTF);
+        canvas_.fontSize(11.0f);
+        canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_LEFT |
+                          DGL_NAMESPACE::NanoVG::ALIGN_TOP);
+        canvas_.fillColor(colors.contentSecondary);
+        canvas_.text(690.0f, uiLayout::globalMixerLabelY, "GLOBAL MIXER", nullptr);
+        char volume[24];
+        char pan[24];
+        char tune[24];
+        std::snprintf(volume, sizeof(volume), "%+.1f dB", state_.outputGainDb);
+        if (std::abs(state_.globalPan) < 0.005f)
+            std::snprintf(pan, sizeof(pan), "CENTER");
+        else
+            std::snprintf(pan, sizeof(pan), "%c%d", state_.globalPan < 0.0f ? 'L' : 'R',
+                static_cast<int>(std::lround(std::abs(state_.globalPan) * 100.0f)));
+        std::snprintf(tune, sizeof(tune), "%+.2f st", state_.globalTuneSemitones);
+        drawMixerKnob(uiLayout::globalMixerKnob(0), InteractiveType::globalMixerKnob,
+            0, "VOLUME", state_.outputGainDb, plugin::parameterRanges::outputGainDb.minimum,
+            plugin::parameterRanges::outputGainDb.maximum, volume);
+        drawMixerKnob(uiLayout::globalMixerKnob(1), InteractiveType::globalMixerKnob,
+            1, "PAN", state_.globalPan, plugin::parameterRanges::globalPan.minimum,
+            plugin::parameterRanges::globalPan.maximum, pan);
+        drawMixerKnob(uiLayout::globalMixerKnob(2), InteractiveType::globalMixerKnob,
+            2, "TUNE", state_.globalTuneSemitones,
+            plugin::parameterRanges::globalTuneSemitones.minimum,
+            plugin::parameterRanges::globalTuneSemitones.maximum, tune);
     }
 
     [[nodiscard]] int globalPad(const int localPad) const noexcept
@@ -285,6 +337,36 @@ private:
                 ? static_cast<sms::ui::waveform::EditTarget>(state_.hoveredTarget.index)
                 : sms::ui::waveform::EditTarget::none);
 
+        const int playbackPad = state_.playbackPosition > 0.0f
+            ? static_cast<int>(std::floor(state_.playbackPosition)) - 1 : -1;
+        if (playbackPad == state_.selectedPad) {
+            const float fraction = state_.playbackPosition -
+                                   std::floor(state_.playbackPosition);
+            const float x = uiLayout::editorWaveform.x +
+                            uiLayout::editorWaveform.width * fraction;
+            canvas_.beginPath();
+            canvas_.moveTo(x, uiLayout::editorWaveform.y + 4.0f);
+            canvas_.lineTo(x, uiLayout::editorWaveform.y +
+                              uiLayout::editorWaveform.height - 4.0f);
+            canvas_.strokeColor(colors.shadow.withAlpha(0.8f));
+            canvas_.strokeWidth(4.0f);
+            canvas_.stroke();
+            canvas_.beginPath();
+            canvas_.moveTo(x, uiLayout::editorWaveform.y + 4.0f);
+            canvas_.lineTo(x, uiLayout::editorWaveform.y +
+                              uiLayout::editorWaveform.height - 4.0f);
+            canvas_.strokeColor(colors.selection);
+            canvas_.strokeWidth(2.0f);
+            canvas_.stroke();
+            canvas_.beginPath();
+            canvas_.moveTo(x - 5.0f, uiLayout::editorWaveform.y + 4.0f);
+            canvas_.lineTo(x + 5.0f, uiLayout::editorWaveform.y + 4.0f);
+            canvas_.lineTo(x, uiLayout::editorWaveform.y + 11.0f);
+            canvas_.closePath();
+            canvas_.fillColor(colors.selection);
+            canvas_.fill();
+        }
+
         char region[112];
         const auto startFrame = static_cast<std::uint32_t>(
             state_.editorSettings.start * state_.waveform.frames);
@@ -294,6 +376,8 @@ private:
                       "REGION  %u — %u frames     %.1f%% of source", startFrame, endFrame,
                       (state_.editorSettings.end - state_.editorSettings.start) * 100.0f);
         canvas_.fontSize(11.0f);
+        canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_LEFT |
+                          DGL_NAMESPACE::NanoVG::ALIGN_TOP);
         canvas_.fillColor(colors.contentSecondary);
         canvas_.text(46.0f, 392.0f, region, nullptr);
         canvas_.text(46.0f, 426.0f, "AMPLITUDE ENVELOPE", nullptr);
@@ -319,6 +403,34 @@ private:
         sms::ui::dpf::drawEnvelopeSlider(canvas_, uiLayout::editorSlider(3),
             "RELEASE", state_.editorSettings.releaseSeconds, false,
             hovered(InteractiveType::envelopeSlider, 3));
+
+        canvas_.fontSize(11.0f);
+        canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_LEFT |
+                          DGL_NAMESPACE::NanoVG::ALIGN_TOP);
+        canvas_.fillColor(colors.contentSecondary);
+        canvas_.text(46.0f, 570.0f, "PAD MIXER", nullptr);
+        char gain[24];
+        char pan[24];
+        char tune[24];
+        std::snprintf(gain, sizeof(gain), "%+.1f dB", state_.mixerSettings.gainDecibels);
+        if (std::abs(state_.mixerSettings.pan) < 0.005f)
+            std::snprintf(pan, sizeof(pan), "CENTER");
+        else
+            std::snprintf(pan, sizeof(pan), "%c%d",
+                state_.mixerSettings.pan < 0.0f ? 'L' : 'R',
+                static_cast<int>(std::lround(std::abs(state_.mixerSettings.pan) * 100.0f)));
+        std::snprintf(tune, sizeof(tune), "%+.2f st", state_.mixerSettings.tuneSemitones);
+        drawMixerKnob(uiLayout::mixerKnob(0), InteractiveType::mixerKnob,
+            0, "GAIN", state_.mixerSettings.gainDecibels,
+            sms::dsp::kMinimumSampleGainDecibels,
+            sms::dsp::kMaximumSampleGainDecibels, gain);
+        drawMixerKnob(uiLayout::mixerKnob(1), InteractiveType::mixerKnob,
+            1, "PAN", state_.mixerSettings.pan,
+            sms::dsp::kMinimumSamplePan, sms::dsp::kMaximumSamplePan, pan);
+        drawMixerKnob(uiLayout::mixerKnob(2), InteractiveType::mixerKnob,
+            2, "TUNE", state_.mixerSettings.tuneSemitones,
+            sms::dsp::kMinimumTuneSemitones,
+            sms::dsp::kMaximumTuneSemitones, tune);
     }
 
     void drawChopEditor()
@@ -579,22 +691,25 @@ private:
                 colors.activityPlayback, hovered(InteractiveType::voiceLimit));
         }
 
+        drawGlobalMixer();
         const char* monitor = state_.monitorInput >= 0.5f ? "MONITOR  ON" : "MONITOR  OFF";
         sms::ui::dpf::drawSegment(canvas_, uiLayout::monitor, monitor,
             state_.monitorInput >= 0.5f, colors.activityPlayback,
             hovered(InteractiveType::monitor));
-        canvas_.fontSize(11.0f);
-        canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_LEFT |
-                          DGL_NAMESPACE::NanoVG::ALIGN_TOP);
-        canvas_.fillColor(colors.contentSecondary);
-        canvas_.text(690.0f, uiLayout::chopLabelY, "CHOP", nullptr);
-        sms::ui::dpf::drawAction(canvas_, uiLayout::finalizeAction, "FINALIZE",
-            colors.activityPlayback, false, hovered(InteractiveType::finalizeAction));
-        sms::ui::dpf::drawAction(canvas_, uiLayout::undoAction, "UNDO",
-            colors.controlAccent, false, hovered(InteractiveType::undoAction));
-        sms::ui::dpf::drawAction(canvas_, uiLayout::clearAction,
-                                 state_.clearArmed ? "CONFIRM" : "CLEAR",
-            colors.intentDanger, state_.clearArmed, hovered(InteractiveType::clearAction));
+        if (state_.armed) {
+            canvas_.fontSize(11.0f);
+            canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_LEFT |
+                              DGL_NAMESPACE::NanoVG::ALIGN_TOP);
+            canvas_.fillColor(colors.contentSecondary);
+            canvas_.text(690.0f, uiLayout::chopLabelY, "CHOP", nullptr);
+            sms::ui::dpf::drawAction(canvas_, uiLayout::finalizeAction, "FINALIZE",
+                colors.activityPlayback, false, hovered(InteractiveType::finalizeAction));
+            sms::ui::dpf::drawAction(canvas_, uiLayout::undoAction, "UNDO",
+                colors.controlAccent, false, hovered(InteractiveType::undoAction));
+            sms::ui::dpf::drawAction(canvas_, uiLayout::clearAction,
+                                     state_.clearArmed ? "CONFIRM" : "CLEAR",
+                colors.intentDanger, state_.clearArmed, hovered(InteractiveType::clearAction));
+        }
     }
 
     void drawFooter()
@@ -610,7 +725,7 @@ private:
                 : "Drag a cut line, then click a pad button to preview its raw slice";
         } else if (state_.editorMode) {
             std::snprintf(liveStatus, sizeof(liveStatus),
-                          "Editing Bank %c Pad %02d — drag cut handles or envelope controls",
+                          "Editing Bank %c Pad %02d — drag region, mixer, or envelope controls",
                           'A' + bankForGlobalPad(state_.selectedPad),
                           localPadForGlobalPad(state_.selectedPad) + 1);
             status = liveStatus;
@@ -625,11 +740,13 @@ private:
             for (int pad = 0; pad < pads_.visiblePadCount(); ++pad)
                 bankFull = bankFull && state_.padState[static_cast<std::size_t>(pad)] != '0' &&
                            state_.padState[static_cast<std::size_t>(pad)] != '.';
-            status = bankFull ? "Bank full — finalize, undo, or clear to continue" :
+            status = bankFull
+                ? (state_.armed ? "Bank full — finalize, undo, or clear to continue"
+                                : "Bank full — right-click a pad to clear or replace it") :
                 (state_.status[0] != '\0' ? state_.status :
                  (state_.armed ? "Press any pad to start" : "Ready to play"));
         }
-        sms::ui::dpf::drawInsetSurface(canvas_, {24.0f, 626.0f, 912.0f, 32.0f}, 7.0f);
+        sms::ui::dpf::drawInsetSurface(canvas_, {24.0f, 706.0f, 912.0f, 32.0f}, 7.0f);
         canvas_.fontFace(NANOVG_DEJAVU_SANS_TTF);
         canvas_.fontSize(12.0f);
         canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_LEFT |
@@ -637,7 +754,7 @@ private:
         canvas_.fillColor((state_.editorMode || state_.chopEditorMode) ? colors.activityPlayback :
                           (state_.currentPad >= 0 ? colors.activityCapture
                                                   : colors.contentSecondary));
-        canvas_.text(38.0f, 642.0f, status, nullptr);
+        canvas_.text(38.0f, 722.0f, status, nullptr);
         char details[96];
         if (state_.chopEditorMode)
             std::snprintf(details, sizeof(details), "%s   %s",
@@ -645,21 +762,19 @@ private:
                           state_.chopApplying ? "WORKING" : "THREE-PAD PREVIEW");
         else if (state_.editorMode)
             std::snprintf(details, sizeof(details),
-                          "REGION %.1f%% — %.1f%%   SUSTAIN %d%%",
-                          state_.editorSettings.start * 100.0f,
-                          state_.editorSettings.end * 100.0f,
-                          static_cast<int>(std::lround(
-                              state_.editorSettings.sustainLevel * 100.0f)));
+                          "GAIN %+.1f dB   PAN %+.0f   TUNE %+.2f st",
+                          state_.mixerSettings.gainDecibels,
+                          state_.mixerSettings.pan * 100.0f,
+                          state_.mixerSettings.tuneSemitones);
         else
-            std::snprintf(details, sizeof(details), "START %02d   PRE %d ms   GAIN %+.1f dB",
-                          state_.startPad + 1, static_cast<int>(std::lround(state_.preRollMs)),
-                          std::clamp(state_.outputGainDb,
-                              plugin::parameterRanges::outputGainDb.minimum,
-                              plugin::parameterRanges::outputGainDb.maximum));
+            std::snprintf(details, sizeof(details),
+                          "START %02d   VOL %+.1f dB   PAN %+.0f   TUNE %+.2f st",
+                          state_.startPad + 1, state_.outputGainDb,
+                          state_.globalPan * 100.0f, state_.globalTuneSemitones);
         canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_RIGHT |
                           DGL_NAMESPACE::NanoVG::ALIGN_MIDDLE);
         canvas_.fillColor(colors.contentSecondary);
-        canvas_.text(922.0f, 642.0f, details, nullptr);
+        canvas_.text(922.0f, 722.0f, details, nullptr);
     }
 
     DGL_NAMESPACE::NanoVG& canvas_;

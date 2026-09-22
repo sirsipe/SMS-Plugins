@@ -15,9 +15,9 @@ For focused iteration, use `ctest --test-dir build --output-on-failure -R NAME`:
 
 | CTest name | Coverage |
 | --- | --- |
-| `sampler-core` | Capture, banks/layouts, storage, voices, regions/ADSR, raw chop preview/repartition, resampling, clipboard snapshots, lifecycle |
+| `sampler-core` | Capture, banks/layouts, storage, voices, region/ADSR, pad/global mixer sums, raw chop preview/repartition, resampling, clipboard, lifecycle |
 | `state-codec` | Audio, editor-state, and Cut Point Editor command round trips; malformed/corrupt state |
-| `ui-geometry` | Pad mapping, waveform/chop geometry, hit testing, hover, wheel adjustment and editing |
+| `ui-geometry` | Pad mapping, editor snapshot assembly, waveform/chop geometry, hit testing, wheel editing |
 | `wav-codec` | WAV formats, validation, file actions, offline render, real-time access gate |
 
 Rebuild affected targets before testing. Run all four before handing off code
@@ -79,12 +79,12 @@ Choose checks matching the change:
 - Playback: return to PLAY; verify expected notes/banks, one-shot/gated behavior,
   voice limits, and stereo output.
 - UI/editor: verify drawing/resizing and input mapping; select pads, adjust
-  region/ADSR by dragging and wheel, retrigger, and check that both waveform
-  and sound match. Sweep the pointer across controls and confirm only the
+  region/mixer/ADSR by dragging and wheel during playback, reset controls, and
+  check sound/playhead. Sweep the pointer and confirm only the
   enabled target under it receives hover emphasis.
 - Cut Point Editor: follow its focused [validation contract](CHOP-EDITOR.md).
 - Pad clipboard: Copy an edited occupied pad, then alter or clear its source and
-  Paste to empty and occupied targets. Confirm stereo audio, cut points, and ADSR
+  Paste to empty and occupied targets. Confirm stereo audio and all editor settings
   match the copy-time snapshot, and that an empty clipboard disables Paste.
 - State: save populated pads and editor settings using the host's state-saving
   facility, close, reload that state, and compare playback/settings. Inspect the

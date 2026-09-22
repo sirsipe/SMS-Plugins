@@ -68,11 +68,11 @@ approximately eight minutes of 48 kHz stereo audio in total. `process()` takes
 sample-offset MIDI events and performs no allocation, locking, file access, or
 exception handling. Each pad is one voice, with a configurable global limit of
 1–16 simultaneous voices and deterministic oldest-voice stealing.
-Playback uses linear interpolation when a restored sample's source rate differs
-from the current host rate. Each pad has normalized, non-destructive start/end
-points and an allocation-free ADSR voice envelope. Editor values use atomics;
-playback snapshots them on the next note trigger. Preserve that boundary when
-changing live-edit behavior.
+Playback uses linear interpolation for source-rate conversion and semitone
+varispeed. Each pad has non-destructive region/ADSR and mixer settings; global
+volume, pan, and tune combine during playback. Active voices refresh mixer,
+ADSR, and End atomics per block; Start remains fixed until retrigger. Output
+updates seed a UI-clocked playhead that briefly holds its final position.
 
 The three-pad raw boundary workflow and its real-time contract are documented
 in [Cut Point Editor](../../Docs/AI/CHOP-EDITOR.md).
@@ -93,11 +93,11 @@ Each pad slot stores a versioned, CRC-checked header and interleaved signed
 PCM16 audio, Base64 encoded for portable DPF state. Decoding has strict size
 and structural checks. Empty pads use empty state values.
 
-Cut points and ADSR values are stored as compact versioned state per pad. The UI
-never receives the full PCM state: it requests the selected pad and the DSP-side
-worker returns a fixed 128-bin min/max waveform summary. This keeps waveform
-drawing and editor interaction away from the audio callback and avoids sending
-large sample blobs through the UI channel.
+Cut/ADSR and mixer values use compact versioned per-pad states. Import resets
+both; rechopping preserves mixer state. The UI retains its previous snapshot
+until matching waveform and control replies arrive, ignoring stale replies and
+retrying transient failures. DSP returns a fixed 128-bin min/max summary,
+keeping PCM blobs and waveform work outside the UI channel and audio callback.
 
 `pad_clear_request` publishes an atomic command consumed at the next block.
 `pad_file_request` carries an action, pad, and UTF-8 path; LV2 handles it on its

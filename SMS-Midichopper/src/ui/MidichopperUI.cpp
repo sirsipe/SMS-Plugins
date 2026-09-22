@@ -7,6 +7,7 @@
  *
  * State contract used by the sample editor:
  *   pad_edit_01..64  compact non-destructive cut-point and ADSR settings
+ *   pad_mix_01..64   independent gain, pan, and tune settings
  *   waveform_request selected pad index sent from UI to DSP
  *   waveform_data    compact 128-bin min/max summary returned by DSP
  *   pad_clear_request one-based pad command consumed at an audio block boundary
@@ -34,8 +35,10 @@
 #include "ContextMenu.hpp"
 #include "DPF/NanoUI.hpp"
 #include "DPF/Theme.hpp"
+#include "DSP/SampleMixerSettings.hpp"
 #include "DSP/SamplePlaybackSettings.hpp"
 #include "LevelMeter.hpp"
+#include "State/SampleMixerSettingsCodec.hpp"
 #include "State/SamplePlaybackSettingsCodec.hpp"
 #include "UI/Geometry.hpp"
 #include "Interaction.hpp"
@@ -68,6 +71,7 @@ using WaveformEditTarget = sms::ui::waveform::EditTarget;
 
 inline constexpr auto kClearConfirmationTimeout = std::chrono::seconds(2);
 inline constexpr auto kMeterFrameInterval = std::chrono::milliseconds(33);
+inline constexpr auto kEditorSnapshotRetryInterval = std::chrono::milliseconds(250);
 
 enum class PadMenuAction : int {
     copy = 0,
@@ -87,18 +91,19 @@ enum class PendingFileDialog : std::uint8_t {
     import,
 };
 
-std::array<std::string, midichopper::kPadCount> makePadEditStateKeys()
+std::array<std::string, midichopper::kPadCount> makePadStateKeys(const char* const prefix)
 {
     std::array<std::string, midichopper::kPadCount> keys;
     for (uint pad = 0; pad < midichopper::kPadCount; ++pad) {
         char key[24];
-        std::snprintf(key, sizeof(key), "pad_edit_%02u", pad + 1U);
+        std::snprintf(key, sizeof(key), "%s%02u", prefix, pad + 1U);
         keys[pad] = key;
     }
     return keys;
 }
 
-const auto kPadEditStateKeys = makePadEditStateKeys();
+const auto kPadEditStateKeys = makePadStateKeys("pad_edit_");
+const auto kPadMixerStateKeys = makePadStateKeys("pad_mix_");
 
 } // namespace
 
@@ -120,6 +125,8 @@ public:
           fBaseNote(static_cast<int>(parameterRanges::baseMidiNote.defaultValue)),
           fMidiBankMode(static_cast<int>(midichopper::kDefaultMidiBankMode)),
           fGain(0.0f),
+          fGlobalPan(0.0f),
+          fGlobalTune(0.0f),
           fMaxVoices(static_cast<int>(parameterRanges::maxVoices.defaultValue)),
           fBank(0),
           fLayout(0),
@@ -136,6 +143,8 @@ public:
           fEditorMode(false),
           fPlayOnSelect(false),
           fDragTarget(WaveformEditTarget::none),
+          fMixerDragIndex(-1),
+          fGlobalMixerDragIndex(-1),
           fDragStartX(0.0f),
           fDragStartY(0.0f),
           fHasWaveform(false),
@@ -192,8 +201,6 @@ protected:
             fActiveFilePad = -1;
             if (wasImport && result == midichopper::plugin::PadFileResultCode::importSucceeded &&
                 completedPad == fSelectedPad) {
-                fEditorSettings = {};
-                fEditorSettingsPad = completedPad;
                 refreshSelectedWaveform();
             }
             requestRepaint();
@@ -227,8 +234,6 @@ protected:
             fActivePadClipboardPad = -1;
             if (result == midichopper::plugin::PadClipboardResultCode::pasted &&
                 completedPad == fSelectedPad) {
-                fEditorSettings = {};
-                fEditorSettingsPad = -1;
                 refreshSelectedWaveform();
             }
             requestRepaint();
@@ -246,6 +251,25 @@ protected:
                 fChopPreviewPad = -1;
             }
             requestRepaint();
+            return;
+        }
+        if (index == kParameterPlaybackPosition)
+        {
+            if (std::isfinite(value) && value > 0.0f) {
+                fPlaybackPosition = value;
+                fLocalPlayheadPad = static_cast<int>(std::floor(value)) - 1;
+                fLocalPlayheadFraction = value - std::floor(value);
+                fLocalPlayheadActive = true;
+                fLocalPlayheadTick = std::chrono::steady_clock::now();
+                fLocalPlayheadClearDeadline = {};
+            } else {
+                fPlaybackPosition = 0.0f;
+                fLocalPlayheadActive = false;
+                fLocalPlayheadPad = -1;
+                fLocalPlayheadClearDeadline = {};
+            }
+            if (fEditorMode)
+                requestRepaint();
             return;
         }
         if (index >= kFirstPadStatusParameter && index < kFirstPadActivityParameter)
@@ -272,6 +296,10 @@ protected:
             if (wasActive == isActive)
                 return;
             fPadStatus[static_cast<std::size_t>(localPad)] = isActive ? '1' : '0';
+            if (isActive && !fArm)
+                startLocalPlayhead(globalPad(localPad));
+            else if (!isActive && globalPad(localPad) == fLocalPlayheadPad)
+                stopLocalPlayhead(true);
             requestRepaint();
             return;
         }
@@ -292,7 +320,9 @@ protected:
                 fEditorMode = false;
                 fChopEditorMode = false;
                 stopChopPreview();
+                stopLocalPlayhead(false);
                 fDragTarget = WaveformEditTarget::none;
+                fMixerDragIndex = -1;
                 selectAutomaticArmTarget();
             }
             break;
@@ -354,6 +384,14 @@ protected:
         case kParameterOutputGainDb:
             changed = fGain != value;
             fGain = value;
+            break;
+        case kParameterGlobalPan:
+            changed = fGlobalPan != value;
+            fGlobalPan = value;
+            break;
+        case kParameterGlobalTuneSemitones:
+            changed = fGlobalTune != value;
+            fGlobalTune = value;
             break;
         case kParameterMaxVoices: {
             const int maxVoices = std::clamp(static_cast<int>(std::lround(value)),
@@ -439,10 +477,13 @@ protected:
                 if (fSelectedPad != fLastPlayedPad) {
                     fEditorSettings = {};
                     fEditorSettingsPad = -1;
+                    fMixerSettings = {};
+                    fMixerSettingsPad = -1;
                 }
                 fSelectedPad = fLastPlayedPad;
                 refreshSelectedWaveform();
             }
+            startLocalPlayhead(fLastPlayedPad);
             break;
         }
         case kParameterCaptureTargetPad: {
@@ -495,13 +536,16 @@ protected:
         else if (std::strcmp(key, "selected_pad") == 0)
         {
             const int selectedPad = clampPad(std::strtof(value, nullptr));
-            if (selectedPad != fSelectedPad) {
-                fEditorSettings = {};
-                fEditorSettingsPad = -1;
-            }
+            const bool selectionChanged = selectedPad != fSelectedPad;
             fSelectedPad = selectedPad;
             fBank = std::clamp(bankForGlobalPad(fSelectedPad), 0,
                                static_cast<int>(midichopper::kBankCount - 1));
+            if (selectionChanged) {
+                if (fEditorMode)
+                    requestWaveform();
+                else
+                    fEditorSnapshot.complete();
+            }
         }
         else if (std::strcmp(key, "status") == 0)
             copyString(fStatus, value);
@@ -527,7 +571,10 @@ protected:
                                 "Non-empty samples must use one sample rate");
                     }
                 }
-                if (summary.pad == static_cast<std::uint32_t>(fSelectedPad)) {
+                if (fEditorSnapshot.accept(summary)) {
+                    commitEditorSnapshotIfReady();
+                } else if (!fEditorSnapshot.pending() &&
+                           summary.pad == static_cast<std::uint32_t>(fSelectedPad)) {
                     fWaveform = summary;
                     fHasWaveform = summary.frames != 0U;
                 }
@@ -554,14 +601,15 @@ protected:
             copyString(fStatus, value);
             if (fActiveFileAction == PendingFileDialog::import &&
                 fActiveFilePad == fSelectedPad && std::strcmp(value, "WAV imported") == 0) {
-                fEditorSettings = {};
-                fEditorSettingsPad = fSelectedPad;
                 refreshSelectedWaveform();
             }
             fActiveFileAction = PendingFileDialog::none;
             fActiveFilePad = -1;
         }
         else if (parseEditorState(key, value))
+        {
+        }
+        else if (parseMixerState(key, value))
         {
         }
         else
@@ -591,6 +639,9 @@ protected:
             fChopWaveformRequestPending = true;
             requestChopWaveform(fChopNextWaveform);
         }
+        if (fEditorSnapshot.pending() && now >= fEditorSnapshotRetryDeadline)
+            sendEditorSnapshotRequest(now);
+        updateLocalPlayhead(now);
     }
 
     void onNanoDisplay() override
@@ -628,14 +679,15 @@ protected:
         };
         const midichopper::ui::ViewState view{
             fArm, fRecordMode, fFixedLength, fPlaybackMode, fMonitor,
-            fStartPad, fPreRoll, fBaseNote, fMidiBankMode, fGain, fMaxVoices, fBank, fLayout,
+            fStartPad, fPreRoll, fBaseNote, fMidiBankMode, fGain, fGlobalPan, fGlobalTune,
+            fMaxVoices, fBank, fLayout,
             fSelectedPad, fCurrentPad, fPadPress.pad(), fClearArmed, fMenuOpen,
             fPadContextMenuOpen, fPadContextMenu,
             std::span<const sms::ui::ContextMenuItemView>{contextMenuItems},
             fHover.target(),
             fEditorMode, fChopEditorMode, fPlayOnSelect, fHasWaveform,
             fInputLevels, fOutputLevels, fPadState, fPadStatus,
-            fEditorSettings, fWaveform,
+            fEditorSettings, fMixerSettings, fWaveform, fPlaybackPosition,
             std::span<const sms::audio::WaveformSummary>{
                 fChopWaveforms.data(), fChopWaveforms.size()},
             std::span<const std::int64_t>{
@@ -655,7 +707,22 @@ protected:
         const float x = position.getX() - uiLayout::contentOffsetX;
         const float y = position.getY();
 
-        if (ev.button == 2)
+        if (ev.button == DGL_NAMESPACE::kMouseButtonMiddle)
+        {
+            if (!ev.press) {
+                const bool captured = fResetPointerCaptured;
+                fResetPointerCaptured = false;
+                return captured;
+            }
+            const auto clicked = resolveInteractiveTarget(x, y);
+            if (resetMixerControl(clicked)) {
+                fResetPointerCaptured = true;
+                return true;
+            }
+            return false;
+        }
+
+        if (ev.button == DGL_NAMESPACE::kMouseButtonRight)
         {
             if (!ev.press)
                 return fPadContextMenuOpen;
@@ -675,6 +742,8 @@ protected:
                     if (fSelectedPad != pad) {
                         fEditorSettings = {};
                         fEditorSettingsPad = -1;
+                        fMixerSettings = {};
+                        fMixerSettingsPad = -1;
                     }
                     fSelectedPad = pad;
                     refreshSelectedWaveform();
@@ -692,7 +761,7 @@ protected:
             return false;
         }
 
-        if (ev.button != 1)
+        if (ev.button != DGL_NAMESPACE::kMouseButtonLeft)
             return false;
 
         if (ev.press)
@@ -768,12 +837,27 @@ protected:
             }
             if (fEditorMode)
             {
+                const auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now().time_since_epoch()).count();
+                if (midichopper::ui::isResettableMixerControl(clicked)) {
+                    if (fDoubleClick.press(clicked, {x, y},
+                            static_cast<std::uint64_t>(now))) {
+                        fDragTarget = WaveformEditTarget::none;
+                        fMixerDragIndex = -1;
+                        fResetPointerCaptured = resetMixerControl(clicked);
+                        return fResetPointerCaptured;
+                    }
+                } else
+                    static_cast<void>(fDoubleClick.press(
+                        sms::ui::kNoInteractiveTarget, {x, y},
+                        static_cast<std::uint64_t>(now)));
                 if (midichopper::ui::isTarget(
                         clicked, midichopper::ui::InteractiveType::closeEditor))
                 {
                     releasePressedPad();
                     fEditorMode = false;
                     fDragTarget = WaveformEditTarget::none;
+                    fMixerDragIndex = -1;
                     restoreLastPlayedSelection();
                     requestRepaint();
                     return true;
@@ -824,7 +908,29 @@ protected:
                     updateEditorDrag(x, y);
                     return true;
                 }
+                if (midichopper::ui::isTarget(
+                        clicked, midichopper::ui::InteractiveType::mixerKnob)) {
+                    fMixerDragIndex = clicked.index;
+                    fMixerDragStartY = y;
+                    fMixerDragStartSettings = fMixerSettings;
+                    return true;
+                }
                 return false;
+            }
+
+            const auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now().time_since_epoch()).count();
+            if (midichopper::ui::isTarget(
+                    clicked, midichopper::ui::InteractiveType::globalMixerKnob)) {
+                if (fDoubleClick.press(clicked, {x, y}, static_cast<std::uint64_t>(now))) {
+                    fGlobalMixerDragIndex = -1;
+                    fResetPointerCaptured = resetMixerControl(clicked);
+                    return fResetPointerCaptured;
+                }
+            } else {
+                static_cast<void>(fDoubleClick.press(
+                    sms::ui::kNoInteractiveTarget, {x, y},
+                    static_cast<std::uint64_t>(now)));
             }
 
             if (midichopper::ui::isTarget(
@@ -932,6 +1038,13 @@ protected:
                 return true;
             }
             if (midichopper::ui::isTarget(
+                    clicked, midichopper::ui::InteractiveType::globalMixerKnob)) {
+                fGlobalMixerDragIndex = clicked.index;
+                fGlobalMixerDragStartY = y;
+                fGlobalMixerDragStart = {fGain, fGlobalPan, fGlobalTune};
+                return true;
+            }
+            if (midichopper::ui::isTarget(
                     clicked, midichopper::ui::InteractiveType::finalizeAction))
             {
                 setParameterValue(kParameterFinalize, 1.0f);
@@ -966,6 +1079,11 @@ protected:
                 return true;
             }
         }
+        else if (fResetPointerCaptured)
+        {
+            fResetPointerCaptured = false;
+            return true;
+        }
         else if (fPadContextPointerCaptured)
         {
             fPadContextPointerCaptured = false;
@@ -981,6 +1099,19 @@ protected:
         {
             commitEditorSettings();
             fDragTarget = WaveformEditTarget::none;
+            requestRepaint();
+            return true;
+        }
+        else if (fEditorMode && fMixerDragIndex >= 0)
+        {
+            commitMixerSettings();
+            fMixerDragIndex = -1;
+            requestRepaint();
+            return true;
+        }
+        else if (fGlobalMixerDragIndex >= 0)
+        {
+            fGlobalMixerDragIndex = -1;
             requestRepaint();
             return true;
         }
@@ -1022,6 +1153,14 @@ protected:
             updateEditorDrag(x, y);
             return true;
         }
+        if (fEditorMode && fMixerDragIndex >= 0) {
+            updateMixerDrag(y);
+            return true;
+        }
+        if (fGlobalMixerDragIndex >= 0) {
+            updateGlobalMixerDrag(y);
+            return true;
+        }
         const auto hovered = resolveInteractiveTarget(x, y);
         if (fHover.update(hovered))
             requestRepaint();
@@ -1048,6 +1187,26 @@ protected:
             return false;
 
         if (midichopper::ui::isTarget(
+                hovered, midichopper::ui::InteractiveType::chopBoundary)) {
+            const auto boundary = static_cast<std::size_t>(hovered.index);
+            fChopOffsets[boundary] = midichopper::ui::chop::wheelAdjustedBoundaryOffset(
+                fChopWaveforms, fChopOffsets, hovered.index, delta,
+                uiLayout::chopWaveform);
+            fStatus[0] = '\0';
+            requestRepaint();
+            return true;
+        }
+        if (midichopper::ui::isTarget(
+                hovered, midichopper::ui::InteractiveType::regionHandle)) {
+            sms::ui::waveform::adjustRegionByWheel(
+                fEditorSettings, static_cast<WaveformEditTarget>(hovered.index), delta,
+                fWaveform.frames, uiLayout::editorWaveform);
+            commitEditorSettings();
+            requestRepaint();
+            return true;
+        }
+
+        if (midichopper::ui::isTarget(
                 hovered, midichopper::ui::InteractiveType::fixedLength)) {
             setControlValueFromWheel(kParameterFixedLengthSeconds,
                 sms::ui::wheelAdjustedValue(fFixedLength, delta, 0.1f,
@@ -1069,6 +1228,60 @@ protected:
                 sms::ui::wheelAdjustedValue(fPreRoll, delta, 1.0f,
                     parameterRanges::preRollMs.minimum,
                     parameterRanges::preRollMs.maximum, true));
+            return true;
+        }
+        if (midichopper::ui::isTarget(
+                hovered, midichopper::ui::InteractiveType::mixerKnob)) {
+            switch (hovered.index) {
+            case 0:
+                fMixerSettings.gainDecibels = sms::ui::wheelAdjustedValue(
+                    fMixerSettings.gainDecibels, delta, 0.5f,
+                    sms::dsp::kMinimumSampleGainDecibels,
+                    sms::dsp::kMaximumSampleGainDecibels);
+                break;
+            case 1:
+                fMixerSettings.pan = sms::ui::wheelAdjustedValue(
+                    fMixerSettings.pan, delta, 0.05f,
+                    sms::dsp::kMinimumSamplePan, sms::dsp::kMaximumSamplePan);
+                break;
+            case 2:
+                fMixerSettings.tuneSemitones = sms::ui::wheelAdjustedValue(
+                    fMixerSettings.tuneSemitones, delta, 0.25f,
+                    sms::dsp::kMinimumTuneSemitones,
+                    sms::dsp::kMaximumTuneSemitones);
+                break;
+            default:
+                return false;
+            }
+            fMixerSettings = sms::dsp::sanitize(fMixerSettings);
+            commitMixerSettings();
+            requestRepaint();
+            return true;
+        }
+        if (midichopper::ui::isTarget(
+                hovered, midichopper::ui::InteractiveType::globalMixerKnob)) {
+            switch (hovered.index) {
+            case 0:
+                setControlValueFromWheel(kParameterOutputGainDb,
+                    sms::ui::wheelAdjustedValue(fGain, delta, 0.5f,
+                        parameterRanges::outputGainDb.minimum,
+                        parameterRanges::outputGainDb.maximum));
+                break;
+            case 1:
+                setControlValueFromWheel(kParameterGlobalPan,
+                    sms::ui::wheelAdjustedValue(fGlobalPan, delta, 0.05f,
+                        parameterRanges::globalPan.minimum,
+                        parameterRanges::globalPan.maximum));
+                break;
+            case 2:
+                setControlValueFromWheel(kParameterGlobalTuneSemitones,
+                    sms::ui::wheelAdjustedValue(fGlobalTune, delta, 0.25f,
+                        parameterRanges::globalTuneSemitones.minimum,
+                        parameterRanges::globalTuneSemitones.maximum));
+                break;
+            default:
+                return false;
+            }
             return true;
         }
         if (!midichopper::ui::isTarget(
@@ -1172,6 +1385,8 @@ private:
     int fBaseNote;
     int fMidiBankMode;
     float fGain;
+    float fGlobalPan;
+    float fGlobalTune;
     int fMaxVoices;
     int fBank;
     int fLayout;
@@ -1190,6 +1405,7 @@ private:
     bool fPadContextClearArmed;
     std::chrono::steady_clock::time_point fPadContextClearDeadline{};
     bool fPadContextPointerCaptured;
+    bool fResetPointerCaptured = false;
     bool fPadFileBusy = false;
     bool fPadClipboardAvailable = false;
     bool fPadClipboardBusy = false;
@@ -1204,9 +1420,18 @@ private:
     bool fChopEditorMode = false;
     bool fPlayOnSelect;
     WaveformEditTarget fDragTarget;
+    int fMixerDragIndex;
+    float fMixerDragStartY = 0.0f;
+    sms::dsp::SampleMixerSettings fMixerDragStartSettings{};
+    int fGlobalMixerDragIndex;
+    float fGlobalMixerDragStartY = 0.0f;
+    sms::dsp::SampleMixerSettings fGlobalMixerDragStart{};
+    midichopper::ui::DoubleClickTracker fDoubleClick;
     float fDragStartX;
     float fDragStartY;
     bool fHasWaveform;
+    midichopper::ui::EditorSnapshotCollector fEditorSnapshot;
+    std::chrono::steady_clock::time_point fEditorSnapshotRetryDeadline{};
     std::array<float, 2> fInputLevels{};
     std::array<float, 2> fOutputLevels{};
     bool fMeterRepaintPending = false;
@@ -1220,6 +1445,8 @@ private:
     sms::dsp::SamplePlaybackSettings fEditorSettings{};
     int fEditorSettingsPad = -1;
     sms::dsp::SamplePlaybackSettings fDragStartSettings{};
+    sms::dsp::SampleMixerSettings fMixerSettings{};
+    int fMixerSettingsPad = -1;
     sms::audio::WaveformSummary fWaveform{};
     std::array<sms::audio::WaveformSummary, midichopper::ui::chop::kPadCount> fChopWaveforms{};
     std::array<std::int64_t, midichopper::ui::chop::kBoundaryCount> fChopOffsets{};
@@ -1233,6 +1460,14 @@ private:
     int fChopPreviewPad = -1;
     bool fChopApplying = false;
     float fChopPreviewPosition = 0.0f;
+    float fPlaybackPosition = 0.0f;
+    bool fLocalPlayheadActive = false;
+    bool fLocalPlayheadAwaitingSettings = false;
+    int fLocalPlayheadPad = -1;
+    float fLocalPlayheadFraction = 0.0f;
+    std::chrono::steady_clock::time_point fLocalPlayheadTick{};
+    std::chrono::steady_clock::time_point fLocalPlayheadStarted{};
+    std::chrono::steady_clock::time_point fLocalPlayheadClearDeadline{};
     char fStatus[160];
 
     [[nodiscard]] sms::ui::InteractiveTarget
@@ -1334,10 +1569,15 @@ private:
             return false;
         if (fEditorSettingsPad != fPadContextTarget)
             return false;
+        if (fMixerSettingsPad != fPadContextTarget)
+            return false;
         const auto settings = sms::dsp::sanitize(fEditorSettings);
+        const auto mixer = sms::dsp::sanitize(fMixerSettings);
         return settings.start != 0.0f || settings.end != 1.0f ||
                settings.attackSeconds != 0.0f || settings.decaySeconds != 0.0f ||
-               settings.sustainLevel != 1.0f || settings.releaseSeconds != 0.0f;
+               settings.sustainLevel != 1.0f || settings.releaseSeconds != 0.0f ||
+               mixer.gainDecibels != 0.0f || mixer.pan != 0.0f ||
+               mixer.tuneSemitones != 0.0f;
     }
 
     [[nodiscard]] bool padMenuActionEnabled(const PadMenuAction action) const noexcept
@@ -1579,6 +1819,7 @@ private:
         }
         fSelectedPad = -1;
         fHasWaveform = false;
+        fEditorSnapshot.complete();
     }
 
     void normalizeSelectionForContext()
@@ -1645,8 +1886,10 @@ private:
 
     void pressPlaybackPad(const int localPad)
     {
-        const int midiNote = mappedMidiNote(globalPad(localPad));
+        const int pad = globalPad(localPad);
+        const int midiNote = mappedMidiNote(pad);
         const int previousMidiNote = fPadPress.press(localPad, midiNote);
+        startLocalPlayhead(pad);
 #if DISTRHO_PLUGIN_WANT_MIDI_INPUT
         if (previousMidiNote >= 0)
             sendNote(0, static_cast<uint8_t>(previousMidiNote), 0);
@@ -1654,6 +1897,78 @@ private:
 #else
         static_cast<void>(previousMidiNote);
 #endif
+    }
+
+    void startLocalPlayhead(const int pad)
+    {
+        if (pad < 0 || pad >= static_cast<int>(midichopper::kPadCount))
+            return;
+        const auto now = std::chrono::steady_clock::now();
+        if (fLocalPlayheadActive && fLocalPlayheadPad == pad &&
+            now - fLocalPlayheadStarted < std::chrono::milliseconds(150))
+            return;
+        fLocalPlayheadPad = pad;
+        fLocalPlayheadAwaitingSettings = fEditorSettingsPad != pad;
+        fLocalPlayheadFraction = fLocalPlayheadAwaitingSettings
+            ? 0.0f : sms::dsp::sanitize(fEditorSettings).start;
+        fLocalPlayheadActive = true;
+        fLocalPlayheadTick = now;
+        fLocalPlayheadStarted = now;
+        fLocalPlayheadClearDeadline = {};
+        fPlaybackPosition = static_cast<float>(pad + 1) + fLocalPlayheadFraction;
+        if (fEditorMode)
+            requestRepaint();
+    }
+
+    void stopLocalPlayhead(const bool holdFinal)
+    {
+        fLocalPlayheadActive = false;
+        fLocalPlayheadAwaitingSettings = false;
+        if (holdFinal && fLocalPlayheadPad >= 0) {
+            fLocalPlayheadFraction = std::min(fLocalPlayheadFraction, 0.985f);
+            fPlaybackPosition = static_cast<float>(fLocalPlayheadPad + 1) +
+                                fLocalPlayheadFraction;
+            fLocalPlayheadClearDeadline = std::chrono::steady_clock::now() +
+                                           std::chrono::milliseconds(100);
+        } else {
+            fLocalPlayheadPad = -1;
+            fPlaybackPosition = 0.0f;
+            fLocalPlayheadClearDeadline = {};
+        }
+        if (fEditorMode)
+            requestRepaint();
+    }
+
+    void updateLocalPlayhead(const std::chrono::steady_clock::time_point now)
+    {
+        if (!fLocalPlayheadActive) {
+            if (fLocalPlayheadClearDeadline.time_since_epoch().count() != 0 &&
+                now >= fLocalPlayheadClearDeadline)
+                stopLocalPlayhead(false);
+            return;
+        }
+        if (fLocalPlayheadAwaitingSettings || fLocalPlayheadPad != fSelectedPad ||
+            !fHasWaveform || fWaveform.frames == 0U || fWaveform.sampleRate <= 1.0) {
+            fLocalPlayheadTick = now;
+            return;
+        }
+        const double elapsed = std::chrono::duration<double>(now - fLocalPlayheadTick).count();
+        fLocalPlayheadTick = now;
+        const auto playback = sms::dsp::sanitize(fEditorSettings);
+        const auto mixer = sms::dsp::sanitize(fMixerSettings);
+        const double tuneRatio = std::exp2(
+            static_cast<double>(mixer.tuneSemitones + fGlobalTune) / 12.0);
+        fLocalPlayheadFraction = sms::ui::waveform::advancePlaybackFraction(
+            fLocalPlayheadFraction, elapsed, fWaveform.frames, fWaveform.sampleRate,
+            tuneRatio, playback.end);
+        fPlaybackPosition = static_cast<float>(fLocalPlayheadPad + 1) +
+                            fLocalPlayheadFraction;
+        if (fLocalPlayheadFraction >= playback.end - 1.0e-6f) {
+            stopLocalPlayhead(true);
+            return;
+        }
+        if (fEditorMode)
+            requestRepaint();
     }
 
     void releasePressedPad()
@@ -1672,10 +1987,43 @@ private:
 #if DISTRHO_PLUGIN_WANT_STATE
         if (!hasSelectedPad())
             return;
-        char pad[8];
-        std::snprintf(pad, sizeof(pad), "%d", fSelectedPad);
-        setState("waveform_request", pad);
+        fEditorSnapshot.begin(fSelectedPad);
+        sendEditorSnapshotRequest(std::chrono::steady_clock::now());
 #endif
+    }
+
+    void sendEditorSnapshotRequest(const std::chrono::steady_clock::time_point now)
+    {
+#if DISTRHO_PLUGIN_WANT_STATE
+        if (!fEditorSnapshot.pending())
+            return;
+        char pad[12];
+        std::snprintf(pad, sizeof(pad), "%d", fEditorSnapshot.pad());
+        setState("waveform_request", pad);
+        fEditorSnapshotRetryDeadline = now + kEditorSnapshotRetryInterval;
+#else
+        static_cast<void>(now);
+#endif
+    }
+
+    void commitEditorSnapshotIfReady()
+    {
+        if (!fEditorSnapshot.readyFor(fSelectedPad))
+            return;
+        fWaveform = fEditorSnapshot.waveform();
+        fHasWaveform = fWaveform.frames != 0U;
+        fEditorSettings = fEditorSnapshot.playback();
+        fEditorSettingsPad = fSelectedPad;
+        fMixerSettings = fEditorSnapshot.mixer();
+        fMixerSettingsPad = fSelectedPad;
+        if (fLocalPlayheadAwaitingSettings && fLocalPlayheadPad == fSelectedPad) {
+            fLocalPlayheadFraction = fEditorSettings.start;
+            fPlaybackPosition = static_cast<float>(fSelectedPad + 1) +
+                                fEditorSettings.start;
+            fLocalPlayheadAwaitingSettings = false;
+            fLocalPlayheadTick = std::chrono::steady_clock::now();
+        }
+        fEditorSnapshot.complete();
     }
 
     [[nodiscard]] bool chopDirty() const noexcept
@@ -1697,6 +2045,7 @@ private:
         stopChopPreview();
         fEditorMode = false;
         fChopEditorMode = true;
+        fEditorSnapshot.complete();
         fSelectedPad = targetPad;
         fChopFirstPad = targetPad - 1;
         fChopWaveforms.fill({});
@@ -1798,7 +2147,6 @@ private:
 
     void refreshSelectedWaveform()
     {
-        fHasWaveform = false;
         requestWaveform();
     }
 
@@ -1809,9 +2157,6 @@ private:
             return;
 
         fSelectedPad = selectedPad;
-        fEditorSettings = {};
-        fEditorSettingsPad = -1;
-        fHasWaveform = false;
         requestWaveform();
         requestRepaint();
     }
@@ -1834,6 +2179,7 @@ private:
         else {
             fSelectedPad = -1;
             fHasWaveform = false;
+            fEditorSnapshot.complete();
             if (!fArm)
                 fLastPlayedPad = -1;
         }
@@ -1887,6 +2233,84 @@ private:
 #endif
     }
 
+    void commitMixerSettings()
+    {
+        fMixerSettings = sms::dsp::sanitize(fMixerSettings);
+        fMixerSettingsPad = fSelectedPad;
+#if DISTRHO_PLUGIN_WANT_STATE
+        const std::string encoded = sms::state::encodeSampleMixerSettings(fMixerSettings);
+        setState(kPadMixerStateKeys[static_cast<std::size_t>(fSelectedPad)].c_str(),
+                 encoded.c_str());
+#endif
+    }
+
+    bool resetMixerControl(const sms::ui::InteractiveTarget clicked)
+    {
+        if (midichopper::ui::isTarget(
+                clicked, midichopper::ui::InteractiveType::globalMixerKnob)) {
+            switch (clicked.index) {
+            case 0: setControlValue(kParameterOutputGainDb, 0.0f); break;
+            case 1: setControlValue(kParameterGlobalPan, 0.0f); break;
+            case 2: setControlValue(kParameterGlobalTuneSemitones, 0.0f); break;
+            default: return false;
+            }
+            requestRepaint();
+            return true;
+        }
+        if (midichopper::ui::isTarget(
+                clicked, midichopper::ui::InteractiveType::mixerKnob)) {
+            midichopper::ui::resetMixerKnob(fMixerSettings, clicked.index);
+            commitMixerSettings();
+            requestRepaint();
+            return true;
+        }
+        if (midichopper::ui::isTarget(
+                clicked, midichopper::ui::InteractiveType::envelopeSlider)) {
+            sms::ui::waveform::resetEnvelopeSlider(fEditorSettings, clicked.index);
+            commitEditorSettings();
+            requestRepaint();
+            return true;
+        }
+        return false;
+    }
+
+    void updateGlobalMixerDrag(const float y)
+    {
+        if (fGlobalMixerDragIndex < 0 || fGlobalMixerDragIndex >= 3)
+            return;
+        float startNormalized = 0.0f;
+        float minimum = 0.0f;
+        float maximum = 1.0f;
+        std::uint32_t parameter = kParameterOutputGainDb;
+        switch (fGlobalMixerDragIndex) {
+        case 0:
+            minimum = parameterRanges::outputGainDb.minimum;
+            maximum = parameterRanges::outputGainDb.maximum;
+            startNormalized = (fGlobalMixerDragStart.gainDecibels - minimum) /
+                              (maximum - minimum);
+            parameter = kParameterOutputGainDb;
+            break;
+        case 1:
+            minimum = parameterRanges::globalPan.minimum;
+            maximum = parameterRanges::globalPan.maximum;
+            startNormalized = (fGlobalMixerDragStart.pan - minimum) / (maximum - minimum);
+            parameter = kParameterGlobalPan;
+            break;
+        case 2:
+            minimum = parameterRanges::globalTuneSemitones.minimum;
+            maximum = parameterRanges::globalTuneSemitones.maximum;
+            startNormalized = (fGlobalMixerDragStart.tuneSemitones - minimum) /
+                              (maximum - minimum);
+            parameter = kParameterGlobalTuneSemitones;
+            break;
+        default:
+            return;
+        }
+        const float normalized = midichopper::ui::knobDragNormalized(
+            startNormalized, fGlobalMixerDragStartY, y);
+        setControlValue(parameter, minimum + normalized * (maximum - minimum));
+    }
+
     bool parseEditorState(const char* const key, const char* const value)
     {
         for (std::size_t pad = 0; pad < kPadEditStateKeys.size(); ++pad)
@@ -1894,14 +2318,95 @@ private:
             if (std::strcmp(key, kPadEditStateKeys[pad].c_str()) != 0)
                 continue;
             sms::dsp::SamplePlaybackSettings decoded;
-            if (sms::state::decodeSamplePlaybackSettings(value, decoded) &&
-                pad == static_cast<std::size_t>(fSelectedPad)) {
-                fEditorSettings = decoded;
-                fEditorSettingsPad = static_cast<int>(pad);
+            if (sms::state::decodeSamplePlaybackSettings(value, decoded)) {
+                const int decodedPad = static_cast<int>(pad);
+                if (fEditorSnapshot.accept(decodedPad, decoded)) {
+                    commitEditorSnapshotIfReady();
+                } else if (!fEditorSnapshot.pending() && decodedPad == fSelectedPad) {
+                    fEditorSettings = decoded;
+                    fEditorSettingsPad = decodedPad;
+                }
+                if (!fEditorSnapshot.pending() && fLocalPlayheadAwaitingSettings &&
+                    fLocalPlayheadPad == decodedPad) {
+                    fLocalPlayheadFraction = decoded.start;
+                    fPlaybackPosition = static_cast<float>(pad + 1U) + decoded.start;
+                    fLocalPlayheadAwaitingSettings = false;
+                    fLocalPlayheadTick = std::chrono::steady_clock::now();
+                }
             }
             return true;
         }
         return false;
+    }
+
+    bool parseMixerState(const char* const key, const char* const value)
+    {
+        for (std::size_t pad = 0; pad < kPadMixerStateKeys.size(); ++pad)
+        {
+            if (std::strcmp(key, kPadMixerStateKeys[pad].c_str()) != 0)
+                continue;
+            sms::dsp::SampleMixerSettings decoded;
+            if (sms::state::decodeSampleMixerSettings(value, decoded)) {
+                const int decodedPad = static_cast<int>(pad);
+                if (fEditorSnapshot.accept(decodedPad, decoded)) {
+                    commitEditorSnapshotIfReady();
+                } else if (!fEditorSnapshot.pending() && decodedPad == fSelectedPad) {
+                    fMixerSettings = decoded;
+                    fMixerSettingsPad = decodedPad;
+                }
+            }
+            return true;
+        }
+        return false;
+    }
+
+    void updateMixerDrag(const float y)
+    {
+        if (fMixerDragIndex < 0 || fMixerDragIndex >= 3)
+            return;
+        float startNormalized = 0.0f;
+        switch (fMixerDragIndex) {
+        case 0:
+            startNormalized = (fMixerDragStartSettings.gainDecibels -
+                sms::dsp::kMinimumSampleGainDecibels) /
+                (sms::dsp::kMaximumSampleGainDecibels -
+                 sms::dsp::kMinimumSampleGainDecibels);
+            break;
+        case 1:
+            startNormalized = (fMixerDragStartSettings.pan - sms::dsp::kMinimumSamplePan) /
+                (sms::dsp::kMaximumSamplePan - sms::dsp::kMinimumSamplePan);
+            break;
+        case 2:
+            startNormalized = (fMixerDragStartSettings.tuneSemitones -
+                sms::dsp::kMinimumTuneSemitones) /
+                (sms::dsp::kMaximumTuneSemitones -
+                 sms::dsp::kMinimumTuneSemitones);
+            break;
+        default:
+            return;
+        }
+        const float normalized = midichopper::ui::knobDragNormalized(
+            startNormalized, fMixerDragStartY, y);
+        switch (fMixerDragIndex) {
+        case 0:
+            fMixerSettings.gainDecibels = sms::dsp::kMinimumSampleGainDecibels + normalized *
+                (sms::dsp::kMaximumSampleGainDecibels -
+                 sms::dsp::kMinimumSampleGainDecibels);
+            break;
+        case 1:
+            fMixerSettings.pan = sms::dsp::kMinimumSamplePan + normalized *
+                (sms::dsp::kMaximumSamplePan - sms::dsp::kMinimumSamplePan);
+            break;
+        case 2:
+            fMixerSettings.tuneSemitones = sms::dsp::kMinimumTuneSemitones + normalized *
+                (sms::dsp::kMaximumTuneSemitones - sms::dsp::kMinimumTuneSemitones);
+            break;
+        default:
+            return;
+        }
+        fMixerSettings = sms::dsp::sanitize(fMixerSettings);
+        commitMixerSettings();
+        requestRepaint();
     }
 
     void updateEditorDrag(const float x, const float y)
@@ -1922,6 +2427,7 @@ private:
                 fEditorSettings, fDragStartSettings, fDragTarget, {x, y},
                 {fDragStartX, fDragStartY}, envelopeGraphGeometry());
         }
+        commitEditorSettings();
         requestRepaint();
     }
 
