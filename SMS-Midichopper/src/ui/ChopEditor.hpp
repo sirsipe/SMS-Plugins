@@ -131,6 +131,23 @@ inline constexpr std::uint32_t kMinimumSliceFrames = 1U;
         next - static_cast<std::int64_t>(kMinimumSliceFrames) - original);
 }
 
+[[nodiscard]] inline std::int64_t wheelAdjustedBoundaryOffset(
+    const std::span<const sms::audio::WaveformSummary> waveforms,
+    const std::span<const std::int64_t> offsets, const int boundary,
+    const float verticalDelta, const sms::ui::Rect waveformBounds) noexcept
+{
+    if (verticalDelta == 0.0f || !std::isfinite(verticalDelta) ||
+        waveformBounds.width <= 0.0f || boundary < 0 ||
+        boundary >= static_cast<int>(offsets.size()))
+        return boundary >= 0 && boundary < static_cast<int>(offsets.size())
+            ? offsets[static_cast<std::size_t>(boundary)] : 0;
+    const auto step = std::max<std::int64_t>(1, static_cast<std::int64_t>(std::llround(
+        static_cast<double>(totalFrames(waveforms)) / waveformBounds.width)));
+    const auto requested = offsets[static_cast<std::size_t>(boundary)] +
+        (verticalDelta > 0.0f ? step : -step);
+    return clampBoundaryOffset(waveforms, offsets, boundary, requested);
+}
+
 [[nodiscard]] inline std::uint64_t adjustedStartFrame(
     const std::span<const sms::audio::WaveformSummary> waveforms,
     const std::span<const std::int64_t> offsets, const int pad) noexcept

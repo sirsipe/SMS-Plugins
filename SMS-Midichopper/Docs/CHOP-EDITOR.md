@@ -7,7 +7,8 @@ neighbor may be empty.
 
 The editor combines the left neighbor, selected pad, and right neighbor into
 one raw waveform. **Cut 1** divides the left and selected pads; **Cut 2** divides
-the selected and right pads. Drag either line to move audio across that cut.
+the selected and right pads. Drag either line, or use the wheel over it, to move
+audio across that cut.
 
 When the left pad is empty, Cut 1 starts at the far left. Drag it right to give
 the empty pad the beginning of the selected sample. When the right pad is empty,
@@ -16,12 +17,13 @@ selected sample. An empty neighbor stays empty if its boundary is not moved.
 
 The three buttons below the waveform represent those three pads. Click one to
 hear only its proposed raw slice. A zero-length pad button is disabled until a
-cut gives it audio. Preview ignores Start/End and ADSR but obeys the two pending
-cut positions.
+cut gives it audio. Preview ignores Start/End, ADSR, and mixer settings but obeys
+the two pending cut positions.
 
 Choose **Apply** to rewrite the three samples at the proposed cuts. Start, End,
-and ADSR return to defaults on pads touching a changed cut. Choose **Cancel** to
-discard the proposed cuts without changing any sample.
+and ADSR return to defaults on pads touching a changed cut. Gain, Pan, and Tune
+are preserved. Choose **Cancel** to discard the proposed cuts without changing
+any sample.
 
 All non-empty samples must use the same sample rate. The plug-in does not store
 capture-session identity, so it cannot prove that neighboring pads came from

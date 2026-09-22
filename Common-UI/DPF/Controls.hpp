@@ -4,6 +4,7 @@
 #include "UI/Geometry.hpp"
 
 #include <algorithm>
+#include <cmath>
 
 namespace sms::ui::dpf {
 
@@ -87,6 +88,43 @@ inline void drawSlider(DGL_NAMESPACE::NanoVG& canvas,
         canvas.strokeWidth(3.0f);
         canvas.stroke();
     }
+}
+
+inline void drawKnob(DGL_NAMESPACE::NanoVG& canvas,
+                     const float centerX, const float centerY, const float radius,
+                     const float value, const DGL_NAMESPACE::Color& accent,
+                     const bool hovered = false)
+{
+    const ScopedCanvasState canvasState(canvas);
+    const Theme& colors = theme();
+    const float normalized = std::clamp(value, 0.0f, 1.0f);
+    constexpr float pi = 3.14159265358979323846f;
+    constexpr float startAngle = pi * 0.75f;
+    constexpr float sweep = pi * 1.5f;
+    const float angle = startAngle + normalized * sweep;
+
+    canvas.beginPath();
+    canvas.circle(centerX + 1.0f, centerY + 2.0f, radius + 2.0f);
+    canvas.fillPaint(canvas.radialGradient(centerX, centerY, radius * 0.35f, radius + 3.0f,
+        colors.shadow.withAlpha(0.72f), colors.shadow.withAlpha(0.02f)));
+    canvas.fill();
+    canvas.beginPath();
+    canvas.circle(centerX, centerY, radius);
+    canvas.fillPaint(canvas.linearGradient(centerX, centerY - radius,
+        centerX, centerY + radius, colors.surfaceRaised.plus(12), colors.recessEdge));
+    canvas.fill();
+    canvas.strokeColor(hovered ? accent : colors.outline.withAlpha(0.8f));
+    canvas.strokeWidth(hovered ? 2.0f : 1.0f);
+    canvas.stroke();
+
+    canvas.beginPath();
+    canvas.moveTo(centerX + std::cos(angle) * radius * 0.35f,
+                  centerY + std::sin(angle) * radius * 0.35f);
+    canvas.lineTo(centerX + std::cos(angle) * radius * 0.78f,
+                  centerY + std::sin(angle) * radius * 0.78f);
+    canvas.strokeColor(accent);
+    canvas.strokeWidth(2.5f);
+    canvas.stroke();
 }
 
 inline void drawAction(DGL_NAMESPACE::NanoVG& canvas,

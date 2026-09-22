@@ -19,7 +19,7 @@ stores PCM per pad without capture-session identity.
 ## Interaction and preview
 
 Cut 1 is the boundary between pads 0 and 1; Cut 2 is between pads 1 and 2.
-Dragging clamps each cut between its neighboring cut or source edge, preserving
+Dragging or wheeling clamps each cut between its neighbor or source edge, preserving
 at least one frame in each slice affected by a drag. An empty left slot starts
 with Cut 1 at the far-left edge; dragging right assigns it the source prefix.
 An empty right slot starts with Cut 2 at the far-right edge; dragging left
@@ -31,6 +31,7 @@ start/exclusive end frame range. The audio callback traverses existing pad
 blocks without allocation or locking, stops at the proposed cut, and bypasses
 per-pad Start/End and ADSR. Global output gain still applies. The hidden
 `chop_preview_position` output drives the playhead on the combined waveform.
+Per-pad mixer settings are also bypassed.
 
 ## Apply
 
@@ -45,8 +46,8 @@ unchanged.
 Apply uses `RealtimeAccessGate` on the control thread. It reconstructs one PCM
 sequence, releases participating storage, and repartitions the same frames at
 the proposed cuts. Pads touching a non-zero cut reset Start, End, and ADSR;
-untouched pads retain their settings. `chop_status` reports completion. Cancel
-only clears UI-local state.
+Gain, Pan, and Tune are always preserved. Untouched pads retain all settings.
+`chop_status` reports completion. Cancel only clears UI-local state.
 
 ## Validation
 
@@ -57,7 +58,7 @@ only clears UI-local state.
 - `state-codec`: apply and bounded-preview commands round-trip and reject bad
   versions, counts, ranges, missing fields, and invalid numbers.
 - `ui-geometry`: both cut handles, edge placement for empty neighbors,
-  one-frame drag clamping, duration transfer, combined-waveform ordering,
+  drag/wheel clamping, duration transfer, combined-waveform ordering,
   playhead mapping, and preview-button enablement.
 - In an LV2 host, right-click a middle pad from the main or Sample Editor view.
   Check empty-neighbor behavior, both drags, preview-button enablement, Cancel,

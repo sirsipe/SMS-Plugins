@@ -85,6 +85,55 @@ inline void updateRegion(dsp::SamplePlaybackSettings& settings, const EditTarget
     settings = dsp::sanitize(settings);
 }
 
+inline void adjustRegionByWheel(dsp::SamplePlaybackSettings& settings,
+                                const EditTarget target, const float verticalDelta,
+                                const std::uint32_t sourceFrames,
+                                const ui::Rect bounds) noexcept
+{
+    if (verticalDelta == 0.0f || !std::isfinite(verticalDelta))
+        return;
+    const float frameStep = sourceFrames == 0U ? 0.0f : 1.0f / sourceFrames;
+    const float pixelStep = bounds.width > 0.0f ? 1.0f / bounds.width : 0.0f;
+    const float step = std::max({frameStep, pixelStep, kInteractiveRegionMinimum});
+    const float change = verticalDelta > 0.0f ? step : -step;
+    if (target == EditTarget::regionStart)
+        settings.start = std::clamp(settings.start + change, 0.0f,
+                                    settings.end - kInteractiveRegionMinimum);
+    else if (target == EditTarget::regionEnd)
+        settings.end = std::clamp(settings.end + change,
+                                  settings.start + kInteractiveRegionMinimum, 1.0f);
+    settings = dsp::sanitize(settings);
+}
+
+inline void resetEnvelopeSlider(dsp::SamplePlaybackSettings& settings,
+                                const int slider) noexcept
+{
+    switch (slider) {
+    case 0: settings.attackSeconds = 0.0f; break;
+    case 1: settings.decaySeconds = 0.0f; break;
+    case 2: settings.sustainLevel = 1.0f; break;
+    case 3: settings.releaseSeconds = 0.0f; break;
+    default: return;
+    }
+    settings = dsp::sanitize(settings);
+}
+
+[[nodiscard]] inline float advancePlaybackFraction(
+    const float current, const double elapsedSeconds,
+    const std::uint32_t sourceFrames, const double sourceSampleRate,
+    const float tuneRatio, const float end) noexcept
+{
+    if (!std::isfinite(current) || !std::isfinite(elapsedSeconds) ||
+        !std::isfinite(sourceSampleRate) || !std::isfinite(tuneRatio) ||
+        sourceFrames == 0U || sourceSampleRate <= 1.0 || tuneRatio <= 0.0f ||
+        elapsedSeconds <= 0.0)
+        return std::clamp(std::isfinite(current) ? current : 0.0f, 0.0f, 1.0f);
+    const double advance = elapsedSeconds * sourceSampleRate * tuneRatio /
+                           static_cast<double>(sourceFrames);
+    return std::clamp(static_cast<float>(static_cast<double>(current) + advance),
+                      0.0f, std::clamp(end, 0.0f, 1.0f));
+}
+
 inline void updateEnvelopeSlider(dsp::SamplePlaybackSettings& settings,
                                  const EditTarget target, const float x,
                                  const ui::Rect bounds) noexcept
