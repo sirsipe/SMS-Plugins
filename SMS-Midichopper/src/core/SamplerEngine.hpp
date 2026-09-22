@@ -2,6 +2,7 @@
 
 #include "Configuration.hpp"
 #include "DSP/AdsrEnvelope.hpp"
+#include "DSP/SampleMixerSettings.hpp"
 #include "DSP/SamplePlaybackSettings.hpp"
 
 #include <array>
@@ -45,6 +46,8 @@ struct EngineSettings {
     std::uint8_t padsPerBank = static_cast<std::uint8_t>(kPadsPerBank);
     float preRollMilliseconds = 0.0f;
     float gain = 1.0f;
+    float pan = 0.0f;
+    float tuneSemitones = 0.0f;
     std::uint8_t maxVoices = static_cast<std::uint8_t>(kPadsPerBank);
 };
 
@@ -130,8 +133,9 @@ public:
     void selectCaptureTarget(std::uint32_t pad) noexcept;
     /** Copy a stable, already-published pad snapshot on the control/UI thread. */
     [[nodiscard]] bool exportPad(std::uint32_t pad, PadData& destination) const;
-    /** Import/replaces a pad on the control thread; stereo must be interleaved. */
-    [[nodiscard]] bool importPad(std::uint32_t pad, const PadData& source);
+    /** Import/replaces a pad; state restoration may opt out of the normal editor reset. */
+    [[nodiscard]] bool importPad(std::uint32_t pad, const PadData& source,
+                                 bool resetEditorSettings = true);
     /**
      * Repartition raw audio across consecutive pad slots. Empty edge slots may
      * receive audio when their boundary moves inward. Boundary offsets are
@@ -145,9 +149,14 @@ public:
     void stopChopPreview() noexcept;
     /** Zero when stopped; otherwise global pad + 1 plus normalized position. */
     [[nodiscard]] float chopPreviewPosition() const noexcept;
+    /** Zero when stopped; otherwise latest triggered pad + 1 plus source position. */
+    [[nodiscard]] float playbackPosition() const noexcept;
     [[nodiscard]] sms::dsp::SamplePlaybackSettings padPlaybackSettings(std::uint32_t pad) const noexcept;
     void setPadPlaybackSettings(std::uint32_t pad,
                                 const sms::dsp::SamplePlaybackSettings& settings) noexcept;
+    [[nodiscard]] sms::dsp::SampleMixerSettings padMixerSettings(std::uint32_t pad) const noexcept;
+    void setPadMixerSettings(std::uint32_t pad,
+                             const sms::dsp::SampleMixerSettings& settings) noexcept;
     void clearPad(std::uint32_t pad) noexcept;
     void clearAllPads() noexcept;
     void finalizeRecording() noexcept;
@@ -163,8 +172,13 @@ private:
         bool playing = false;
         std::uint64_t voiceOrder = 0;
         double playPosition = 0.0;
+        double playStep = 1.0;
+        std::uint32_t voiceStartFrame = 0;
         std::uint32_t voiceEndFrame = 0;
+        bool releaseFromEnd = false;
         float velocityGain = 1.0f;
+        float mixerGainLeft = 1.0f;
+        float mixerGainRight = 1.0f;
         sms::dsp::AdsrEnvelope envelope;
         float recordPeak = 0.0f;
         double recordSumSquares = 0.0;
@@ -182,6 +196,9 @@ private:
         std::atomic<float> decaySeconds{0.0f};
         std::atomic<float> sustainLevel{1.0f};
         std::atomic<float> releaseSeconds{0.0f};
+        std::atomic<float> mixerGainDecibels{0.0f};
+        std::atomic<float> mixerPan{0.0f};
+        std::atomic<float> mixerTuneSemitones{0.0f};
         Pad() = default;
         Pad(const Pad&) = delete;
         Pad& operator=(const Pad&) = delete;
@@ -205,6 +222,8 @@ private:
     void startVoice(std::uint32_t pad, std::uint8_t velocity) noexcept;
     void stopVoice(std::uint32_t pad) noexcept;
     void hardStopVoice(std::uint32_t pad) noexcept;
+    void refreshActiveVoiceSettings(std::uint32_t pad) noexcept;
+    void updatePlaybackPositionOutput(std::uint32_t processedFrames) noexcept;
     void enforceVoiceLimit(std::uint32_t excludedPad = kPadCount) noexcept;
     void mixChopPreview(float& left, float& right) noexcept;
 
@@ -231,6 +250,10 @@ private:
     MidiBankMode captureMidiBankMode_ = kDefaultMidiBankMode;
     std::uint64_t nextVoiceOrder_ = 1;
     PlaybackTrigger lastPlaybackTrigger_{};
+    std::uint64_t playbackPositionGeneration_ = 0;
+    std::uint32_t playbackPositionHoldFrames_ = 0;
+    float playbackPositionOutput_ = 0.0f;
+    bool playbackPositionWasActive_ = false;
     bool previousArmed_ = false;
     bool sessionComplete_ = false;
     std::atomic<bool> finalizeRequested_{false};

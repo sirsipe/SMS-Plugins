@@ -46,11 +46,16 @@ void SamplerEngine::setSampleRate(double sampleRate) {
         std::max(1.0, std::ceil(sampleRate * max_record_seconds_)));
     if (requiredFrames > max_frames_) {
         std::array<PadData, kPadCount> snapshots;
+        std::array<sms::dsp::SamplePlaybackSettings, kPadCount> playbackSettings;
+        std::array<sms::dsp::SampleMixerSettings, kPadCount> mixerSettings;
         std::array<bool, kPadCount> occupied{};
         for (std::uint32_t pad = 0; pad < kPadCount; ++pad) {
             occupied[pad] = pads_[pad].occupied.load(std::memory_order_acquire);
-            if (occupied[pad])
+            if (occupied[pad]) {
                 static_cast<void>(exportPad(pad, snapshots[pad]));
+                playbackSettings[pad] = padPlaybackSettings(pad);
+                mixerSettings[pad] = padMixerSettings(pad);
+            }
         }
 
         max_frames_ = requiredFrames;
@@ -69,8 +74,11 @@ void SamplerEngine::setSampleRate(double sampleRate) {
             pad.occupied.store(false, std::memory_order_release);
         }
         for (std::uint32_t pad = 0; pad < kPadCount; ++pad) {
-            if (occupied[pad])
-                static_cast<void>(importPad(pad, snapshots[pad]));
+            if (occupied[pad]) {
+                static_cast<void>(importPad(pad, snapshots[pad], false));
+                setPadPlaybackSettings(pad, playbackSettings[pad]);
+                setPadMixerSettings(pad, mixerSettings[pad]);
+            }
         }
     }
 
@@ -97,6 +105,10 @@ void SamplerEngine::reset() noexcept {
     ringWritePosition_ = ringCount_ = 0;
     nextVoiceOrder_ = 1;
     lastPlaybackTrigger_ = {};
+    playbackPositionGeneration_ = 0;
+    playbackPositionHoldFrames_ = 0;
+    playbackPositionOutput_ = 0.0f;
+    playbackPositionWasActive_ = false;
     for (std::uint32_t pad = 0; pad < kPadCount; ++pad) {
         releasePadBlocks(pad);
         auto& p = pads_[pad];
@@ -122,6 +134,11 @@ void SamplerEngine::setSettings(const EngineSettings& s) noexcept {
     if (settings_.startPad >= settings_.padsPerBank) settings_.startPad = 0;
     if (settings_.preRollMilliseconds < 0.0f) settings_.preRollMilliseconds = 0.0f;
     if (settings_.preRollMilliseconds > 100.0f) settings_.preRollMilliseconds = 100.0f;
+    settings_.pan = std::clamp(std::isfinite(settings_.pan) ? settings_.pan : 0.0f,
+                               -1.0f, 1.0f);
+    settings_.tuneSemitones = std::clamp(
+        std::isfinite(settings_.tuneSemitones) ? settings_.tuneSemitones : 0.0f,
+        -24.0f, 24.0f);
     settings_.maxVoices = static_cast<std::uint8_t>(
         std::clamp<std::uint32_t>(settings_.maxVoices, 1U, kPadsPerBank));
     if (settings_.armed)
@@ -299,6 +316,7 @@ void SamplerEngine::beginRecord(std::uint32_t pad) noexcept {
     p.occupied.store(false, std::memory_order_release);
     p.publishedRecording.store(true, std::memory_order_release);
     setPadPlaybackSettings(pad, {});
+    setPadMixerSettings(pad, {});
     // The ring contains exactly the audio immediately preceding the trigger.
     const auto copyCount = std::min({preRollFrames_, ringCount_, max_frames_});
     const auto start = (ringWritePosition_ + ringCapacityFrames_ - copyCount) % ringCapacityFrames_;
@@ -379,11 +397,22 @@ void SamplerEngine::startVoice(std::uint32_t pad, std::uint8_t velocity) noexcep
     const auto endFrame = std::clamp(static_cast<std::uint32_t>(
         std::ceil(static_cast<double>(playback.end) * frameCount)), startFrame + 1U, frameCount);
     p.playPosition = static_cast<double>(startFrame);
+    p.voiceStartFrame = startFrame;
     p.voiceEndFrame = endFrame;
+    p.releaseFromEnd = false;
     p.velocityGain = static_cast<float>(velocity) / 127.0f;
     const double sourceRate = p.sourceSampleRate.load(std::memory_order_relaxed);
+    const auto mixer = padMixerSettings(pad);
+    const float gain = sms::dsp::sampleGain(mixer);
+    const float pan = std::clamp(mixer.pan + settings_.pan, -1.0f, 1.0f);
+    const double tuneRatio = std::exp2(
+        static_cast<double>(mixer.tuneSemitones + settings_.tuneSemitones) / 12.0);
+    p.mixerGainLeft = gain * (pan > 0.0f ? 1.0f - pan : 1.0f);
+    p.mixerGainRight = gain * (pan < 0.0f ? 1.0f + pan : 1.0f);
+    p.playStep = (sourceRate / sample_rate_) * tuneRatio;
     const float regionSeconds = static_cast<float>(endFrame - startFrame) /
-                                static_cast<float>(sourceRate > 1.0 ? sourceRate : sample_rate_);
+        static_cast<float>((sourceRate > 1.0 ? sourceRate : sample_rate_) *
+                           tuneRatio);
     playback.releaseSeconds = std::min(playback.releaseSeconds, regionSeconds * 0.5f);
     p.envelope.configure(sample_rate_, playback);
     p.envelope.noteOn();
@@ -397,6 +426,7 @@ void SamplerEngine::startVoice(std::uint32_t pad, std::uint8_t velocity) noexcep
 void SamplerEngine::stopVoice(std::uint32_t pad) noexcept {
     if (pad < kPadCount) {
         auto& voice = pads_[pad];
+        voice.releaseFromEnd = false;
         voice.envelope.noteOff();
         if (!voice.envelope.active()) {
             voice.playing = false;
@@ -411,8 +441,52 @@ void SamplerEngine::hardStopVoice(const std::uint32_t pad) noexcept {
     voice.playing = false;
     voice.held = false;
     voice.voiceOrder = 0;
+    voice.releaseFromEnd = false;
     voice.envelope.reset();
     voice.publishedPlaying.store(false, std::memory_order_release);
+}
+
+void SamplerEngine::refreshActiveVoiceSettings(const std::uint32_t pad) noexcept {
+    if (pad >= kPadCount || !pads_[pad].playing)
+        return;
+    auto& voice = pads_[pad];
+    const auto frames = voice.publishedFrames.load(std::memory_order_acquire);
+    if (frames == 0U) {
+        hardStopVoice(pad);
+        return;
+    }
+
+    auto playback = padPlaybackSettings(pad);
+    voice.voiceEndFrame = std::clamp(static_cast<std::uint32_t>(
+        std::ceil(static_cast<double>(playback.end) * frames)),
+        std::min(voice.voiceStartFrame + 1U, frames), frames);
+    if (voice.playPosition >= static_cast<double>(voice.voiceEndFrame)) {
+        hardStopVoice(pad);
+        return;
+    }
+
+    const auto mixer = padMixerSettings(pad);
+    const float gain = sms::dsp::sampleGain(mixer);
+    const float pan = std::clamp(mixer.pan + settings_.pan, -1.0f, 1.0f);
+    const double tuneRatio = std::exp2(
+        static_cast<double>(mixer.tuneSemitones + settings_.tuneSemitones) / 12.0);
+    voice.mixerGainLeft = gain * (pan > 0.0f ? 1.0f - pan : 1.0f);
+    voice.mixerGainRight = gain * (pan < 0.0f ? 1.0f + pan : 1.0f);
+    const double sourceRate = voice.sourceSampleRate.load(std::memory_order_relaxed);
+    voice.playStep = (sourceRate / sample_rate_) * tuneRatio;
+    const float regionSeconds = static_cast<float>(voice.voiceEndFrame - voice.voiceStartFrame) /
+        static_cast<float>((sourceRate > 1.0 ? sourceRate : sample_rate_) *
+                           tuneRatio);
+    playback.releaseSeconds = std::min(playback.releaseSeconds, regionSeconds * 0.5f);
+    voice.envelope.updateSettings(playback);
+
+    const double remainingOutputFrames =
+        (static_cast<double>(voice.voiceEndFrame) - voice.playPosition) / voice.playStep;
+    if (voice.releaseFromEnd &&
+        remainingOutputFrames > static_cast<double>(voice.envelope.releaseFrames())) {
+        voice.envelope.resumeAfterAutomaticRelease();
+        voice.releaseFromEnd = false;
+    }
 }
 
 void SamplerEngine::enforceVoiceLimit(const std::uint32_t excludedPad) noexcept {
@@ -510,6 +584,8 @@ void SamplerEngine::process(const float* inputLeft, const float* inputRight,
         }
         sessionComplete_ = false;
     }
+    for (std::uint32_t pad = 0; pad < kPadCount; ++pad)
+        refreshActiveVoiceSettings(pad);
     std::uint32_t eventIndex = 0;
     for (std::uint32_t frame = 0; frame < frames; ++frame) {
         while (events && eventIndex < eventCount && events[eventIndex].frameOffset <= frame) handleEvent(events[eventIndex++]);
@@ -528,17 +604,19 @@ void SamplerEngine::process(const float* inputLeft, const float* inputRight,
             if (i >= n) { p.playing = false; p.publishedPlaying.store(false, std::memory_order_release); continue; }
             const auto j = (i + 1U < n) ? i + 1U : i;
             const auto frac = static_cast<float>(pos - static_cast<double>(i));
-            const double step = p.sourceSampleRate.load(std::memory_order_relaxed) / sample_rate_;
+            const double step = p.playStep;
             const double remainingOutputFrames = (static_cast<double>(n) - pos) / step;
             if (!p.envelope.releasing() && p.envelope.releaseFrames() > 0U &&
-                remainingOutputFrames <= static_cast<double>(p.envelope.releaseFrames()))
+                remainingOutputFrames <= static_cast<double>(p.envelope.releaseFrames())) {
                 p.envelope.noteOff();
+                p.releaseFromEnd = true;
+            }
             const float envelopeGain = p.envelope.next();
             const float voiceGain = p.velocityGain * envelopeGain;
             outL += ((sampleAt(pad, i, 0U) * (1.0f - frac)) +
-                     sampleAt(pad, j, 0U) * frac) * voiceGain;
+                     sampleAt(pad, j, 0U) * frac) * voiceGain * p.mixerGainLeft;
             outR += ((sampleAt(pad, i, 1U) * (1.0f - frac)) +
-                     sampleAt(pad, j, 1U) * frac) * voiceGain;
+                     sampleAt(pad, j, 1U) * frac) * voiceGain * p.mixerGainRight;
             p.playPosition += step;
             if (p.playPosition >= n || !p.envelope.active()) {
                 p.playing = false;
@@ -554,6 +632,40 @@ void SamplerEngine::process(const float* inputLeft, const float* inputRight,
             ringWritePosition_ = (ringWritePosition_ + 1U) % ringCapacityFrames_;
             ringCount_ = std::min(ringCount_ + 1U, ringCapacityFrames_);
         }
+    }
+    updatePlaybackPositionOutput(frames);
+}
+
+float SamplerEngine::playbackPosition() const noexcept {
+    return playbackPositionOutput_;
+}
+
+void SamplerEngine::updatePlaybackPositionOutput(const std::uint32_t processedFrames) noexcept {
+    const auto pad = lastPlaybackTrigger_.pad;
+    const bool valid = pad < kPadCount;
+    const bool active = valid && pads_[pad].playing;
+    const bool newlyTriggered =
+        lastPlaybackTrigger_.generation != playbackPositionGeneration_;
+    if (valid && (active || newlyTriggered || playbackPositionWasActive_)) {
+        const auto frames = pads_[pad].publishedFrames.load(std::memory_order_acquire);
+        if (frames != 0U) {
+            const float fraction = std::clamp(
+                static_cast<float>(pads_[pad].playPosition / static_cast<double>(frames)),
+                0.0f, active ? 0.999999f : 0.985f);
+            playbackPositionOutput_ = static_cast<float>(pad + 1U) + fraction;
+            playbackPositionHoldFrames_ = static_cast<std::uint32_t>(std::clamp(
+                std::llround(sample_rate_ * 0.1), 1LL,
+                static_cast<long long>(0xffffffffU)));
+        }
+        playbackPositionGeneration_ = lastPlaybackTrigger_.generation;
+        playbackPositionWasActive_ = active;
+        return;
+    }
+    if (playbackPositionHoldFrames_ > processedFrames) {
+        playbackPositionHoldFrames_ -= processedFrames;
+    } else {
+        playbackPositionHoldFrames_ = 0U;
+        playbackPositionOutput_ = 0.0f;
     }
 }
 
@@ -597,7 +709,8 @@ bool SamplerEngine::exportPad(std::uint32_t pad, PadData& destination) const {
     return true;
 }
 
-bool SamplerEngine::importPad(std::uint32_t pad, const PadData& source) {
+bool SamplerEngine::importPad(std::uint32_t pad, const PadData& source,
+                              const bool resetEditorSettings) {
     if (pad >= kPadCount || !std::isfinite(source.sampleRate) || source.sampleRate <= 1.0 ||
         source.frames == 0 || !std::isfinite(source.peak) || source.peak < 0.0f ||
         !std::isfinite(source.rms) || source.rms < 0.0f ||
@@ -661,6 +774,10 @@ bool SamplerEngine::importPad(std::uint32_t pad, const PadData& source) {
     p.publishedRms.store(source.rms, std::memory_order_relaxed);
     p.publishedFrames.store(storedFrames, std::memory_order_release);
     p.occupied.store(true, std::memory_order_release);
+    if (resetEditorSettings) {
+        setPadPlaybackSettings(pad, {});
+        setPadMixerSettings(pad, {});
+    }
     p.generation.fetch_add(1, std::memory_order_release);
     return true;
 }
@@ -899,6 +1016,29 @@ void SamplerEngine::setPadPlaybackSettings(
     p.releaseSeconds.store(settings.releaseSeconds, std::memory_order_release);
 }
 
+sms::dsp::SampleMixerSettings SamplerEngine::padMixerSettings(
+    const std::uint32_t pad) const noexcept
+{
+    if (pad >= kPadCount) return {};
+    const auto& p = pads_[pad];
+    return sms::dsp::sanitize(sms::dsp::SampleMixerSettings{
+        p.mixerGainDecibels.load(std::memory_order_acquire),
+        p.mixerPan.load(std::memory_order_acquire),
+        p.mixerTuneSemitones.load(std::memory_order_acquire),
+    });
+}
+
+void SamplerEngine::setPadMixerSettings(
+    const std::uint32_t pad, const sms::dsp::SampleMixerSettings& requested) noexcept
+{
+    if (pad >= kPadCount) return;
+    const auto settings = sms::dsp::sanitize(requested);
+    auto& p = pads_[pad];
+    p.mixerGainDecibels.store(settings.gainDecibels, std::memory_order_release);
+    p.mixerPan.store(settings.pan, std::memory_order_release);
+    p.mixerTuneSemitones.store(settings.tuneSemitones, std::memory_order_release);
+}
+
 void SamplerEngine::clearPad(std::uint32_t pad) noexcept {
     if (pad >= kPadCount) return;
     stopChopPreview();
@@ -919,6 +1059,7 @@ void SamplerEngine::clearPad(std::uint32_t pad) noexcept {
     p.publishedPeak.store(0.0f, std::memory_order_relaxed);
     p.publishedRms.store(0.0f, std::memory_order_relaxed);
     setPadPlaybackSettings(pad, {});
+    setPadMixerSettings(pad, {});
     p.generation.fetch_add(1, std::memory_order_release);
 }
 

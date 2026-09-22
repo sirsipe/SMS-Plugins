@@ -52,8 +52,11 @@ void live_peak_meter() {
     check(kParameterInputLevelLeft == kParameterCaptureTargetRequest + 1U &&
           kParameterPadClipboardAvailable == kParameterPadFileResultEvent + 1U &&
           kParameterChopPreviewPosition == kParameterPadClipboardResultEvent + 1U &&
-          kParameterChopPreviewPosition + 1U == kParameterCount,
-          "meter outputs remain appended after released parameters");
+          kParameterPlaybackPosition == kParameterChopPreviewPosition + 1U &&
+          kParameterGlobalPan == kParameterPlaybackPosition + 1U &&
+          kParameterGlobalTuneSemitones == kParameterGlobalPan + 1U &&
+          kParameterGlobalTuneSemitones + 1U == kParameterCount,
+          "new controls remain appended after released and hidden parameters");
 }
 
 void sequential_boundaries_and_preroll() {
@@ -102,6 +105,11 @@ void rechop_and_raw_preview() {
     shaped.attackSeconds = 0.1f;
     engine.setPadPlaybackSettings(0, shaped);
     engine.setPadPlaybackSettings(2, shaped);
+    sms::dsp::SampleMixerSettings mix;
+    mix.gainDecibels = -6.0f;
+    mix.pan = -0.25f;
+    mix.tuneSemitones = 7.0f;
+    engine.setPadMixerSettings(0, mix);
 
     const std::array<std::int64_t, 2> later{{2, 0}};
     check(engine.rechopPads(0, 3, later), "move a boundary later");
@@ -118,6 +126,12 @@ void rechop_and_raw_preview() {
     check(engine.padPlaybackSettings(2).start == shaped.start &&
           engine.padPlaybackSettings(2).attackSeconds == shaped.attackSeconds,
           "rechop preserves shaping on pads untouched by moved boundaries");
+    const auto preservedMix = engine.padMixerSettings(0);
+    close(preservedMix.gainDecibels, mix.gainDecibels,
+          "rechop preserves mixer gain on an affected pad");
+    close(preservedMix.pan, mix.pan, "rechop preserves mixer pan on an affected pad");
+    close(preservedMix.tuneSemitones, mix.tuneSemitones,
+          "rechop preserves mixer tune on an affected pad");
 
     engine.startChopPreview(0, 2, 5U, 8U);
     check(engine.chopPreviewPosition() > 1.0f && engine.chopPreviewPosition() < 2.0f,
@@ -708,6 +722,179 @@ void sample_region_and_adsr() {
     close(shaped[6], 0.0f, "ADSR voice becomes idle after release");
 }
 
+void sample_mixer_and_varispeed() {
+    midichopper::SamplerEngine engine(1000.0, 1.0);
+    auto engineSettings = engine.settings();
+    engineSettings.monitorInput = false;
+    engine.setSettings(engineSettings);
+
+    midichopper::PadData source;
+    source.sampleRate = 1000.0;
+    source.frames = 6;
+    source.stereo = {1,10, 2,20, 3,30, 4,40, 5,50, 6,60};
+    source.peak = 60.0f;
+    source.rms = 20.0f;
+    check(engine.importPad(0, source), "import mixer source");
+
+    sms::dsp::SampleMixerSettings mixer;
+    mixer.gainDecibels = -6.0205999f;
+    mixer.pan = -1.0f;
+    mixer.tuneSemitones = 12.0f;
+    engine.setPadMixerSettings(0, mixer);
+    const auto stored = engine.padMixerSettings(0);
+    close(stored.gainDecibels, mixer.gainDecibels, "mixer gain round-trips");
+    close(stored.pan, mixer.pan, "mixer pan round-trips");
+    close(stored.tuneSemitones, mixer.tuneSemitones, "mixer tune round-trips");
+
+    float left[5]{};
+    float right[5]{};
+    const midichopper::MidiEvent on{0, 36, 127, midichopper::MidiEventType::NoteOn};
+    engine.process(nullptr, nullptr, left, right, 5U, &on, 1U);
+    close(left[0], 0.5f, "per-pad gain applies to playback");
+    close(left[1], 1.5f, "one octave up advances the source by two frames");
+    close(left[2], 2.5f, "varispeed keeps gain while advancing");
+    close(left[3], 0.0f, "one octave up halves playback duration");
+    close(right[0], 0.0f, "full-left stereo balance mutes the right channel");
+
+    mixer = {};
+    mixer.pan = 1.0f;
+    mixer.tuneSemitones = -12.0f;
+    engine.setPadMixerSettings(0, mixer);
+    std::fill(std::begin(left), std::end(left), 0.0f);
+    std::fill(std::begin(right), std::end(right), 0.0f);
+    engine.process(nullptr, nullptr, left, right, 5U, &on, 1U);
+    close(left[0], 0.0f, "full-right stereo balance mutes the left channel");
+    close(right[0], 10.0f, "full-right balance retains the right source");
+    close(right[1], 15.0f, "one octave down interpolates at half speed");
+    close(right[4], 30.0f, "one octave down doubles playback duration");
+
+    midichopper::SamplerEngine combined(1000.0, 1.0);
+    auto combinedSettings = combined.settings();
+    combinedSettings.monitorInput = false;
+    combinedSettings.gain = 0.5f;
+    combinedSettings.pan = 1.0f;
+    combinedSettings.tuneSemitones = 5.0f;
+    combined.setSettings(combinedSettings);
+    check(combined.importPad(0, source), "import global mixer source");
+    mixer = {};
+    mixer.pan = -0.25f;
+    mixer.tuneSemitones = 7.0f;
+    combined.setPadMixerSettings(0, mixer);
+    std::fill(std::begin(left), std::end(left), 0.0f);
+    std::fill(std::begin(right), std::end(right), 0.0f);
+    combined.process(nullptr, nullptr, left, right, 2U, &on, 1U);
+    close(left[0], 0.125f, "global volume multiplies per-pad gain");
+    close(right[0], 5.0f, "global and per-pad pan values add before balance");
+    close(right[1], 15.0f, "global and per-pad tune values add before varispeed");
+
+    mixer.gainDecibels = -12.0f;
+    engine.setPadMixerSettings(0, mixer);
+    sms::dsp::SamplePlaybackSettings editedPlayback;
+    editedPlayback.start = 0.25f;
+    engine.setPadPlaybackSettings(0, editedPlayback);
+    check(engine.importPad(0, source), "replacement import succeeds");
+    const auto reset = engine.padMixerSettings(0);
+    close(reset.gainDecibels, 0.0f, "import resets mixer gain");
+    close(reset.pan, 0.0f, "import resets mixer pan");
+    close(reset.tuneSemitones, 0.0f, "import resets mixer tune");
+    close(engine.padPlaybackSettings(0).start, 0.0f,
+          "import continues to reset cut and ADSR settings");
+
+    mixer.gainDecibels = -4.0f;
+    mixer.pan = -0.5f;
+    mixer.tuneSemitones = 3.0f;
+    engine.setPadMixerSettings(0, mixer);
+    editedPlayback.start = 0.125f;
+    engine.setPadPlaybackSettings(0, editedPlayback);
+    check(engine.importPad(0, source, false), "project-state audio restore succeeds");
+    close(engine.padPlaybackSettings(0).start, editedPlayback.start,
+          "project-state audio restore preserves cut and ADSR state ordering");
+    close(engine.padMixerSettings(0).gainDecibels, mixer.gainDecibels,
+          "project-state audio restore preserves mixer state ordering");
+}
+
+void live_sample_editor_updates() {
+    midichopper::SamplerEngine engine(1000.0, 1.0);
+    auto settings = engine.settings();
+    settings.monitorInput = false;
+    engine.setSettings(settings);
+
+    midichopper::PadData source;
+    source.sampleRate = 1000.0;
+    source.frames = 100U;
+    source.stereo.assign(200U, 1.0f);
+    source.peak = source.rms = 1.0f;
+    check(engine.importPad(0, source), "import live editor source");
+
+    const midichopper::MidiEvent on{0, 36, 127, midichopper::MidiEventType::NoteOn};
+    float left[4]{};
+    float right[4]{};
+    engine.process(nullptr, nullptr, left, right, 2U, &on, 1U);
+    const float initialPosition = engine.playbackPosition();
+    check(initialPosition > 1.0f && initialPosition < 2.0f,
+          "active sample reports an encoded waveform playhead");
+
+    sms::dsp::SampleMixerSettings mixer;
+    mixer.gainDecibels = -6.0205999f;
+    mixer.pan = 1.0f;
+    mixer.tuneSemitones = 12.0f;
+    engine.setPadMixerSettings(0, mixer);
+    engine.process(nullptr, nullptr, left, right, 1U);
+    close(left[0], 0.0f, "live pan update reaches an active voice on the next block");
+    close(right[0], 0.5f, "live gain update reaches an active voice on the next block");
+    check(engine.playbackPosition() > initialPosition + 0.015f,
+          "live tune update changes active voice speed");
+
+    settings.gain = 0.5f;
+    settings.pan = -1.0f;
+    settings.tuneSemitones = -12.0f;
+    engine.setSettings(settings);
+    engine.process(nullptr, nullptr, left, right, 1U);
+    close(left[0], 0.25f, "live global pan adds to the active pad on the next block");
+    close(right[0], 0.25f, "live global volume reaches the active pad on the next block");
+    settings.gain = 1.0f;
+    settings.pan = 0.0f;
+    settings.tuneSemitones = 0.0f;
+    engine.setSettings(settings);
+
+    sms::dsp::SamplePlaybackSettings playback;
+    playback.sustainLevel = 0.25f;
+    engine.setPadPlaybackSettings(0, playback);
+    engine.process(nullptr, nullptr, left, right, 1U);
+    close(right[0], 0.125f, "live sustain update preserves phase and changes level");
+
+    playback.end = 0.04f;
+    engine.setPadPlaybackSettings(0, playback);
+    engine.process(nullptr, nullptr, left, right, 1U);
+    close(right[0], 0.0f, "moving End before the playhead stops the active voice");
+    check(engine.playbackPosition() > 1.0f,
+          "stopped short voice retains a terminal playhead long enough for the UI");
+    std::array<float, 101> silentLeft{};
+    std::array<float, 101> silentRight{};
+    engine.process(nullptr, nullptr, silentLeft.data(), silentRight.data(),
+                   static_cast<std::uint32_t>(silentLeft.size()));
+    close(engine.playbackPosition(), 0.0f,
+          "terminal waveform playhead clears after its display hold");
+
+    midichopper::SamplerEngine extended(1000.0, 1.0);
+    extended.setSettings(settings);
+    check(extended.importPad(0, source), "import source for live End extension");
+    playback = {};
+    playback.end = 0.1f;
+    playback.releaseSeconds = 0.004f;
+    extended.setPadPlaybackSettings(0, playback);
+    float extensionLeft[8]{};
+    float extensionRight[8]{};
+    extended.process(nullptr, nullptr, extensionLeft, extensionRight, 7U, &on, 1U);
+    playback.end = 1.0f;
+    extended.setPadPlaybackSettings(0, playback);
+    extended.process(nullptr, nullptr, extensionLeft, extensionRight, 1U);
+    close(extensionLeft[0], 1.0f,
+          "extending End resumes a voice that entered its automatic release");
+    check(extended.playbackPosition() > 1.0f,
+          "extended voice keeps advancing its waveform playhead");
+}
+
 void pad_replacement_hardening() {
     midichopper::SamplerEngine e(1000.0, 1.0);
     auto settings = e.settings();
@@ -752,6 +939,11 @@ void pad_clipboard_snapshot() {
     settings.sustainLevel = 0.6f;
     settings.releaseSeconds = 0.03f;
     engine.setPadPlaybackSettings(0, settings);
+    sms::dsp::SampleMixerSettings mixerSettings;
+    mixerSettings.gainDecibels = -9.0f;
+    mixerSettings.pan = 0.4f;
+    mixerSettings.tuneSemitones = -5.0f;
+    engine.setPadMixerSettings(0, mixerSettings);
 
     midichopper::PadClipboard clipboard;
     check(!clipboard.pasteTo(engine, 17),
@@ -778,6 +970,12 @@ void pad_clipboard_snapshot() {
     close(pastedSettings.decaySeconds, settings.decaySeconds, "paste restores decay");
     close(pastedSettings.sustainLevel, settings.sustainLevel, "paste restores sustain");
     close(pastedSettings.releaseSeconds, settings.releaseSeconds, "paste restores release");
+    const auto pastedMixer = engine.padMixerSettings(17);
+    close(pastedMixer.gainDecibels, mixerSettings.gainDecibels,
+          "paste restores mixer gain");
+    close(pastedMixer.pan, mixerSettings.pan, "paste restores mixer pan");
+    close(pastedMixer.tuneSemitones, mixerSettings.tuneSemitones,
+          "paste restores mixer tune");
 }
 
 void fixed_duration() {
@@ -810,9 +1008,20 @@ void disarm_note_off_gain_and_rate_change() {
     check(e.padMetadata(0).occupied && e.padMetadata(0).frames == 4,
           "disarming finalizes the open slice");
 
+    sms::dsp::SampleMixerSettings mixer;
+    mixer.gainDecibels = -3.0f;
+    mixer.pan = 0.25f;
+    mixer.tuneSemitones = 5.0f;
+    e.setPadMixerSettings(0, mixer);
     e.setSampleRate(2000.0);
     check(e.padMetadata(0).occupied && e.padMetadata(0).frames == 4,
           "host sample-rate change preserves captured pads");
+    const auto preservedMixer = e.padMixerSettings(0);
+    close(preservedMixer.gainDecibels, mixer.gainDecibels,
+          "host sample-rate change preserves mixer gain");
+    close(preservedMixer.pan, mixer.pan, "host sample-rate change preserves mixer pan");
+    close(preservedMixer.tuneSemitones, mixer.tuneSemitones,
+          "host sample-rate change preserves mixer tune");
 }
 }
 
@@ -831,6 +1040,8 @@ int main() {
     shared_storage_blocks();
     maximum_voice_limit();
     sample_region_and_adsr();
+    sample_mixer_and_varispeed();
+    live_sample_editor_updates();
     pad_replacement_hardening();
     pad_clipboard_snapshot();
     fixed_duration();
