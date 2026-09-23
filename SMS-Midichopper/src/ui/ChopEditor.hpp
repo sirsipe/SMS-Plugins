@@ -26,6 +26,17 @@ inline constexpr std::uint32_t kBoundaryCount = kPadCount - 1U;
     return next > 0 && next + 1 < visiblePadCount ? next : -1;
 }
 
+/** Center the two new split pads in a normal three-pad editor window. */
+[[nodiscard]] constexpr int postSplitEditorTarget(const int sourcePad,
+                                                  const int visiblePadCount) noexcept
+{
+    if (sourcePad < 0 || sourcePad + 1 >= visiblePadCount)
+        return -1;
+    if (sourcePad + 2 < visiblePadCount)
+        return sourcePad + 1;
+    return sourcePad > 0 ? sourcePad : -1;
+}
+
 [[nodiscard]] inline bool ready(
     const std::span<const sms::audio::WaveformSummary> waveforms) noexcept
 {

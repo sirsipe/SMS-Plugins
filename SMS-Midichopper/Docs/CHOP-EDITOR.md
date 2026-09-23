@@ -32,7 +32,29 @@ the current bank. Pending, unapplied cuts are discarded when you navigate. Use
 the round **Exit** button between the arrows to discard pending cuts and leave
 the view.
 
-All non-empty samples must use the same sample rate. The plug-in does not store
+## Split a sample and insert a pad
+
+Right-click an occupied pad and choose **Split Sample...** when an empty slot is
+available later in the visible bank. The editor shows the selected raw sample
+split at its midpoint. Drag the single **SPLIT** line and use the two pad buttons
+to preview the proposed halves.
+
+Choose **Apply** to insert both halves. Occupied pads between the sample and the
+nearest empty slot move right by one. Their audio and settings move together.
+The new halves keep the original Gain, Pan, and Tune, while Start/End and ADSR
+return to defaults. Apply performs the shift and split together, then exits the
+split view and opens Adjust Cut Points with both new halves visible. **Exit** or
+Escape cancels the complete operation without moving pads.
+If an affected pad changed while the editor was open, Apply is rejected.
+Using an arrow also cancels the split before opening the neighboring cut view.
+
+To close holes without splitting, right-click an empty pad and choose
+**Collapse Gap**. Confirm the action to move the following uninterrupted group
+of occupied pads left into the complete empty gap. Collapse stops at the next
+empty pad and never crosses the visible bank.
+
+Adjust Cut Points requires all non-empty samples in its three-pad window to use
+the same sample rate. The plug-in does not store
 capture-session identity, so it cannot prove that neighboring pads came from
 one sequential recording. Do not combine unrelated imports or fixed-length
 captures merely because their sample rates match.

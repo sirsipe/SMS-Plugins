@@ -297,6 +297,159 @@ void rechop_empty_neighbors()
           "unchanged empty neighbor remains empty after Apply");
 }
 
+void pad_structure_edits()
+{
+    auto sample = [](const double rate, const std::initializer_list<float> values) {
+        midichopper::PadData result;
+        result.sampleRate = rate;
+        result.frames = static_cast<std::uint32_t>(values.size());
+        result.stereo.reserve(values.size() * 2U);
+        for (const float value : values) {
+            result.stereo.push_back(value);
+            result.stereo.push_back(value);
+            result.peak = std::max(result.peak, std::abs(value));
+        }
+        result.rms = 1.0f;
+        return result;
+    };
+    sms::dsp::SamplePlaybackSettings shaped;
+    shaped.start = 0.2f;
+    shaped.end = 0.8f;
+    shaped.attackSeconds = 0.1f;
+    shaped.decaySeconds = 0.2f;
+    shaped.sustainLevel = 0.6f;
+    shaped.releaseSeconds = 0.3f;
+    sms::dsp::SampleMixerSettings mixed;
+    mixed.gainDecibels = -4.0f;
+    mixed.pan = 0.35f;
+    mixed.tuneSemitones = -3.0f;
+
+    midichopper::SamplerEngine collapse(1000.0, 10.0);
+    const auto first = sample(1000.0, {1.0f, 2.0f});
+    const auto second = sample(2000.0, {3.0f, 4.0f, 5.0f});
+    const auto third = sample(32000.0, {6.0f});
+    const auto later = sample(44100.0, {9.0f, 10.0f});
+    check(collapse.importPad(0, first) && collapse.importPad(3, second) &&
+          collapse.importPad(4, third) && collapse.importPad(6, later),
+          "populate separated runs for gap collapse");
+    collapse.setPadPlaybackSettings(3, shaped);
+    collapse.setPadMixerSettings(3, mixed);
+    check(collapse.collapsePadGap(0U, 16U, 2U),
+          "collapse the complete empty run containing the selected pad");
+    midichopper::PadData moved;
+    check(collapse.exportPad(1, moved) && moved.stereo == second.stereo &&
+          moved.sampleRate == second.sampleRate,
+          "collapse moves PCM and source rate into the gap");
+    check(collapse.exportPad(2, moved) && moved.stereo == third.stereo,
+          "collapse preserves the following occupied-run order");
+    check(!collapse.padMetadata(3).occupied && !collapse.padMetadata(4).occupied,
+          "collapse leaves vacated slots empty");
+    check(collapse.exportPad(6, moved) && moved.stereo == later.stereo,
+          "collapse stops at the next empty slot");
+    const auto movedPlayback = collapse.padPlaybackSettings(1);
+    const auto movedMixer = collapse.padMixerSettings(1);
+    close(movedPlayback.start, shaped.start, "collapse moves playback settings");
+    close(movedPlayback.attackSeconds, shaped.attackSeconds,
+          "collapse moves envelope settings");
+    close(movedMixer.gainDecibels, mixed.gainDecibels,
+          "collapse moves mixer gain");
+    close(movedMixer.pan, mixed.pan, "collapse moves mixer pan");
+    close(movedMixer.tuneSemitones, mixed.tuneSemitones,
+          "collapse moves mixer tune");
+    check(!collapse.collapsePadGap(0U, 16U, 15U),
+          "collapse rejects a gap with no following occupied run");
+
+    midichopper::SamplerEngine split(1000.0, 10.0);
+    const auto source = sample(1000.0, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f});
+    check(split.importPad(0, source) && split.importPad(1, second) &&
+          split.importPad(2, third), "populate a run for inserted split");
+    split.setPadPlaybackSettings(0, shaped);
+    split.setPadMixerSettings(0, mixed);
+    sms::dsp::SamplePlaybackSettings shiftedPlayback = shaped;
+    shiftedPlayback.start = 0.1f;
+    split.setPadPlaybackSettings(1, shiftedPlayback);
+    sms::dsp::SampleMixerSettings shiftedMixer = mixed;
+    shiftedMixer.pan = -0.5f;
+    split.setPadMixerSettings(1, shiftedMixer);
+    std::array<std::uint64_t, 4> generations{};
+    for (std::uint32_t pad = 0; pad < generations.size(); ++pad)
+        generations[pad] = split.padMetadata(pad).generation;
+    check(split.splitPadAndShiftRight(0U, 3U, 2U, generations),
+          "split a sample and shift the occupied suffix right");
+    midichopper::PadData prefix, suffix, shifted;
+    check(split.exportPad(0, prefix) && split.exportPad(1, suffix) &&
+          prefix.stereo == sample(1000.0, {1.0f, 2.0f}).stereo &&
+          suffix.stereo == sample(1000.0, {3.0f, 4.0f, 5.0f}).stereo,
+          "split preserves both source halves exactly");
+    check(split.exportPad(2, shifted) && shifted.stereo == second.stereo &&
+          split.exportPad(3, moved) && moved.stereo == third.stereo,
+          "split shifts later pads without rechopping them");
+    check(split.padPlaybackSettings(0).start == 0.0f &&
+          split.padPlaybackSettings(0).end == 1.0f &&
+          split.padPlaybackSettings(0).attackSeconds == 0.0f &&
+          split.padPlaybackSettings(1).start == 0.0f &&
+          split.padPlaybackSettings(1).end == 1.0f &&
+          split.padPlaybackSettings(1).attackSeconds == 0.0f,
+          "split halves reset playback and envelope settings");
+    const auto prefixMixer = split.padMixerSettings(0);
+    const auto suffixMixer = split.padMixerSettings(1);
+    close(prefixMixer.pan, mixed.pan, "split prefix keeps source mixer");
+    close(suffixMixer.pan, mixed.pan, "split suffix duplicates source mixer");
+    close(split.padPlaybackSettings(2).start, shiftedPlayback.start,
+          "shifted pad keeps playback settings");
+    close(split.padMixerSettings(2).pan, shiftedMixer.pan,
+          "shifted pad keeps mixer settings");
+
+    midichopper::SamplerEngine stale(1000.0, 10.0);
+    check(stale.importPad(0, source) && stale.importPad(1, second),
+          "populate a stale split plan");
+    std::array<std::uint64_t, 3> staleGenerations{};
+    for (std::uint32_t pad = 0; pad < staleGenerations.size(); ++pad)
+        staleGenerations[pad] = stale.padMetadata(pad).generation;
+    stale.setPadMixerSettings(1, shiftedMixer);
+    check(!stale.splitPadAndShiftRight(0U, 2U, 2U, staleGenerations),
+          "split rejects a plan invalidated by a settings edit");
+    check(stale.padMetadata(0).frames == source.frames &&
+          stale.padMetadata(1).frames == second.frames &&
+          !stale.padMetadata(2).occupied,
+          "failed stale split leaves the pad layout unchanged");
+    auto armed = stale.settings();
+    armed.armed = true;
+    stale.setSettings(armed);
+    for (std::uint32_t pad = 0; pad < staleGenerations.size(); ++pad)
+        staleGenerations[pad] = stale.padMetadata(pad).generation;
+    check(!stale.splitPadAndShiftRight(0U, 2U, 2U, staleGenerations) &&
+          !stale.collapsePadGap(0U, 16U, 2U),
+          "pad structure edits are unavailable while armed");
+
+    midichopper::SamplerEngine banked(1000.0, 10.0);
+    auto bankSettings = banked.settings();
+    bankSettings.activeBank = 1U;
+    bankSettings.midiBankMode = midichopper::MidiBankMode::SelectedBank;
+    bankSettings.padsPerBank = 12U;
+    banked.setSettings(bankSettings);
+    check(banked.importPad(26U, source), "populate the end of a 12-pad visible bank");
+    std::array<std::uint64_t, 2> bankGenerations{
+        banked.padMetadata(26U).generation, banked.padMetadata(27U).generation};
+    check(banked.splitPadAndShiftRight(26U, 27U, 2U, bankGenerations),
+          "split stays inside a selected-bank 12-pad page");
+    check(!banked.splitPadAndShiftRight(27U, 28U, 1U, bankGenerations),
+          "split rejects a hidden slot beyond the visible bank");
+
+    midichopper::SamplerEngine paged(1000.0, 10.0);
+    auto pageSettings = paged.settings();
+    pageSettings.activeBank = 2U;
+    pageSettings.midiBankMode = midichopper::MidiBankMode::AllBanks;
+    pageSettings.padsPerBank = 8U;
+    paged.setSettings(pageSettings);
+    check(paged.importPad(22U, source), "populate the end of an eight-pad page");
+    std::array<std::uint64_t, 2> pageGenerations{
+        paged.padMetadata(22U).generation, paged.padMetadata(23U).generation};
+    check(paged.splitPadAndShiftRight(22U, 23U, 2U, pageGenerations) &&
+          !paged.splitPadAndShiftRight(23U, 24U, 1U, pageGenerations),
+          "all-bank split stays inside an eight-pad page");
+}
+
 void full_bank_and_undo() {
     midichopper::SamplerEngine e(1000.0, 1.0);
     auto s = e.settings(); s.armed = true; s.monitorInput = false; e.setSettings(s);
@@ -1093,6 +1246,7 @@ int main() {
     sequential_boundaries_and_preroll();
     rechop_and_raw_preview();
     rechop_empty_neighbors();
+    pad_structure_edits();
     full_bank_and_undo();
     bank_and_layout_mapping();
     all_bank_midi_mapping();

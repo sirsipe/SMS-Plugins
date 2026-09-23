@@ -443,38 +443,54 @@ private:
                           DGL_NAMESPACE::NanoVG::ALIGN_TOP);
         canvas_.fillColor(colors.contentSecondary);
         char heading[48];
-        std::snprintf(heading, sizeof(heading), "ADJUST CUT POINTS  /  PAD %02d",
+        std::snprintf(heading, sizeof(heading), "%s  /  PAD %02d",
+                      state_.chopSplitMode ? "SPLIT SAMPLE" : "ADJUST CUT POINTS",
                       localPadForGlobalPad(state_.chopTargetPad) + 1);
         canvas_.text(46.0f, 120.0f, heading, nullptr);
         canvas_.fontSize(9.0f);
         canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_RIGHT |
                           DGL_NAMESPACE::NanoVG::ALIGN_TOP);
         char neighbors[64];
-        std::snprintf(neighbors, sizeof(neighbors), "PADS %02d + %02d + %02d  /  DRAG CUT LINES",
-                      localPadForGlobalPad(state_.chopFirstPad) + 1,
-                      localPadForGlobalPad(state_.chopFirstPad + 1) + 1,
-                      localPadForGlobalPad(state_.chopFirstPad + 2) + 1);
+        if (state_.chopSplitMode) {
+            std::snprintf(neighbors, sizeof(neighbors), "PADS %02d + %02d  /  DRAG SPLIT LINE",
+                          localPadForGlobalPad(state_.chopFirstPad) + 1,
+                          localPadForGlobalPad(state_.chopFirstPad + 1) + 1);
+        } else {
+            std::snprintf(neighbors, sizeof(neighbors),
+                          "PADS %02d + %02d + %02d  /  DRAG CUT LINES",
+                          localPadForGlobalPad(state_.chopFirstPad) + 1,
+                          localPadForGlobalPad(state_.chopFirstPad + 1) + 1,
+                          localPadForGlobalPad(state_.chopFirstPad + 2) + 1);
+        }
         canvas_.text(632.0f, 122.0f, neighbors, nullptr);
 
         const auto combined = chop::combinedWaveform(state_.chopWaveforms);
         sms::ui::dpf::drawWaveform(canvas_, uiLayout::chopWaveform, combined,
             state_.chopReady, colors.activityPlayback);
         if (state_.chopReady) {
-            const float selectedStart = chop::boundaryX(
-                uiLayout::chopWaveform, state_.chopWaveforms, state_.chopOffsets, 0);
+            const float selectedStart = state_.chopSplitMode ? uiLayout::chopWaveform.x :
+                chop::boundaryX(
+                    uiLayout::chopWaveform, state_.chopWaveforms, state_.chopOffsets, 0);
             const float selectedEnd = chop::boundaryX(
-                uiLayout::chopWaveform, state_.chopWaveforms, state_.chopOffsets, 1);
+                uiLayout::chopWaveform, state_.chopWaveforms, state_.chopOffsets,
+                state_.chopSplitMode ? 0 : 1);
             canvas_.beginPath();
             canvas_.rect(selectedStart, uiLayout::chopWaveform.y,
                          selectedEnd - selectedStart, uiLayout::chopWaveform.height);
             canvas_.fillColor(colors.selection.withAlpha(0.08f));
             canvas_.fill();
-            sms::ui::dpf::drawCutHandle(canvas_, selectedStart,
-                uiLayout::chopWaveform.y, uiLayout::chopWaveform.height, "CUT 1",
-                hovered(InteractiveType::chopBoundary, 0));
-            sms::ui::dpf::drawCutHandle(canvas_, selectedEnd,
-                uiLayout::chopWaveform.y, uiLayout::chopWaveform.height, "CUT 2",
-                hovered(InteractiveType::chopBoundary, 1));
+            if (state_.chopSplitMode) {
+                sms::ui::dpf::drawCutHandle(canvas_, selectedEnd,
+                    uiLayout::chopWaveform.y, uiLayout::chopWaveform.height, "SPLIT",
+                    hovered(InteractiveType::chopBoundary, 0));
+            } else {
+                sms::ui::dpf::drawCutHandle(canvas_, selectedStart,
+                    uiLayout::chopWaveform.y, uiLayout::chopWaveform.height, "CUT 1",
+                    hovered(InteractiveType::chopBoundary, 0));
+                sms::ui::dpf::drawCutHandle(canvas_, selectedEnd,
+                    uiLayout::chopWaveform.y, uiLayout::chopWaveform.height, "CUT 2",
+                    hovered(InteractiveType::chopBoundary, 1));
+            }
         } else {
             canvas_.fontSize(13.0f);
             canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_CENTER |
@@ -482,7 +498,8 @@ private:
             canvas_.fillColor(colors.contentSecondary);
             canvas_.text(uiLayout::chopWaveform.x + uiLayout::chopWaveform.width * 0.5f,
                          uiLayout::chopWaveform.y + uiLayout::chopWaveform.height * 0.5f,
-                         "LOADING THREE COMPATIBLE RAW SAMPLES...", nullptr);
+                         state_.chopSplitMode ? "LOADING RAW SAMPLE..." :
+                                               "LOADING THREE COMPATIBLE RAW SAMPLES...", nullptr);
         }
 
         const int encodedPlayPad = state_.chopPreviewPosition > 0.0f
@@ -504,7 +521,8 @@ private:
             canvas_.stroke();
         }
 
-        for (int pad = 0; pad < 3; ++pad) {
+        const int displayedPads = state_.chopSplitMode ? 2 : 3;
+        for (int pad = 0; pad < displayedPads; ++pad) {
             char label[48];
             const auto frames = chop::adjustedFrames(
                 state_.chopWaveforms, state_.chopOffsets, pad);
@@ -516,7 +534,8 @@ private:
                           localPadForGlobalPad(state_.chopFirstPad + pad) + 1, seconds);
             sms::ui::dpf::drawSegment(canvas_, uiLayout::chopPadButton(pad), label,
                 state_.chopPreviewPad == pad,
-                pad == 1 ? colors.selection : colors.activityPlayback,
+                pad == (state_.chopSplitMode ? 0 : 1)
+                    ? colors.selection : colors.activityPlayback,
                 hovered(InteractiveType::chopPadPreview, pad), previewEnabled);
         }
     }
@@ -530,17 +549,24 @@ private:
         canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_LEFT |
                           DGL_NAMESPACE::NanoVG::ALIGN_TOP);
         canvas_.fillColor(colors.contentPrimary);
-        canvas_.text(690.0f, 120.0f, "THREE-PAD CUT EDIT", nullptr);
+        canvas_.text(690.0f, 120.0f,
+                     state_.chopSplitMode ? "INSERT SAMPLE SPLIT" : "THREE-PAD CUT EDIT", nullptr);
         canvas_.fontSize(10.0f);
         canvas_.fillColor(colors.contentSecondary);
         canvas_.textBox(690.0f, 164.0f, 222.0f,
-            "The waveform combines the selected pad with its immediate left and right neighbors.",
+            state_.chopSplitMode
+                ? "The selected sample is provisionally split in half. Later occupied pads will shift right."
+                : "The waveform combines the selected pad with its immediate left and right neighbors.",
             nullptr);
         canvas_.textBox(690.0f, 254.0f, 222.0f,
-            "Drag CUT 1 or CUT 2. Click a pad button below the waveform to hear that raw slice using the pending cuts.",
+            state_.chopSplitMode
+                ? "Drag SPLIT. Click either pad button below the waveform to hear its pending raw slice."
+                : "Drag CUT 1 or CUT 2. Click a pad button below the waveform to hear that raw slice using the pending cuts.",
             nullptr);
         canvas_.textBox(690.0f, 382.0f, 222.0f,
-            "Apply saves cuts and stays here. A zero-length pad is cleared. Arrows discard unapplied cuts.",
+            state_.chopSplitMode
+                ? "Apply inserts both halves and shifts pads atomically. Exit cancels the entire operation."
+                : "Apply saves cuts and stays here. A zero-length pad is cleared. Arrows discard unapplied cuts.",
             nullptr);
         sms::ui::dpf::drawSegment(canvas_, uiLayout::chopApply,
                                   state_.chopApplying ? "APPLYING..." : "APPLY",
@@ -776,9 +802,11 @@ private:
         if ((state_.editorMode || state_.chopEditorMode) && state_.status[0] != '\0') {
             status = state_.status;
         } else if (state_.chopEditorMode) {
-            status = state_.chopDirty
-                ? "Cut points changed — Apply rewrites the three raw pad samples"
-                : "Drag a cut line, then click a pad button to preview its raw slice";
+            status = state_.chopSplitMode
+                ? "Adjust the split, preview both halves, then Apply or Exit"
+                : (state_.chopDirty
+                    ? "Cut points changed — Apply rewrites the three raw pad samples"
+                    : "Drag a cut line, then click a pad button to preview its raw slice");
         } else if (state_.editorMode) {
             std::snprintf(liveStatus, sizeof(liveStatus),
                           "Editing Bank %c Pad %02d — drag region, mixer, or envelope controls",
@@ -814,8 +842,10 @@ private:
         char details[96];
         if (state_.chopEditorMode)
             std::snprintf(details, sizeof(details), "%s   %s",
-                          state_.chopDirty ? "UNAPPLIED CUTS" : "CUTS UNCHANGED",
-                          state_.chopApplying ? "WORKING" : "THREE-PAD PREVIEW");
+                          state_.chopSplitMode ? "UNAPPLIED SPLIT" :
+                              (state_.chopDirty ? "UNAPPLIED CUTS" : "CUTS UNCHANGED"),
+                          state_.chopApplying ? "WORKING" :
+                              (state_.chopSplitMode ? "SPLIT PREVIEW" : "THREE-PAD PREVIEW"));
         else if (state_.editorMode)
             std::snprintf(details, sizeof(details),
                           "GAIN %+.1f dB   PAN %+.0f   TUNE %+.2f st",

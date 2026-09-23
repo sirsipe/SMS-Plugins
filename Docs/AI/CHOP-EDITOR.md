@@ -57,6 +57,24 @@ retain all settings. `chop_status` reports completion. A successful Apply stays
 in the editor, reloads the three waveforms as the new baseline, and disables
 Apply until another cut changes.
 
+## Split Sample mode
+
+The **Split Sample...** context action reuses this view as a two-pad insertion
+editor when an occupied target has a later empty visible slot. The DSP first
+records a non-mutating plan through the nearest empty slot.
+
+Only the target's raw waveform is shown. The first boundary starts at
+`frames / 2`; the second virtual slot is its suffix. Only the split line and two
+preview buttons work. Bounded preview reads the unchanged source, excluding its
+physical neighbor. Navigation cancels the split plan and opens the neighboring
+ordinary three-pad window.
+
+Apply revalidates all planned pad generations, then atomically shifts the
+whole pads right and stores both non-empty halves. Their Start/End and ADSR
+reset; both inherit source mixer settings. Shifted pads keep all content and
+settings. Apply opens the ordinary three-pad editor around the new halves. Exit,
+Escape, stale plans, and failures do not mutate.
+
 ## Validation
 
 - `sampler-core`: positive and negative cut moves preserve PCM order and total
@@ -68,12 +86,19 @@ Apply until another cut changes.
 - `ui-geometry`: both cut handles, edge placement for empty neighbors,
   drag/wheel clamping, duration transfer, combined-waveform ordering,
   playhead mapping, preview-button enablement, navigation bounds and action hit
-  testing.
+  testing; split mode exposes one handle and two previews.
+- Pad structure: single/multiple empty-gap collapse, nearest-empty split shifts,
+  mixed source rates, settings movement, midpoint and adjusted splits, stale
+  generation rejection, and 8/12/16-pad visible boundaries.
 - In an LV2 host, right-click a middle pad from the main or Sample Editor view.
   Check empty-neighbor behavior, zeroing each pad position, both drags,
   preview-button enablement, arrows, Exit, and Apply. Confirm Apply stays open
   and becomes disabled after its refresh. Listen across both edited cuts and
   confirm shaping resets only on non-empty pads touching a changed cut.
+- Right-click an occupied pad with a later empty slot and choose **Split
+  Sample...**. Preview both midpoint halves, adjust the split, cancel once, then
+  Apply. Confirm later pads shift once, settings follow them, the editor exits,
+  and no hidden or next-bank slot changes.
 
 ## Limitation
 

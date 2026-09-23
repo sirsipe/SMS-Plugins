@@ -9,6 +9,7 @@
 #include "PadClipboardProtocol.hpp"
 #include "PadFileActionProtocol.hpp"
 #include "PadFileActions.hpp"
+#include "PadStructureProtocol.hpp"
 #include "Parameters.hpp"
 #include "StateCodec.hpp"
 #include "SamplerEngine.hpp"
@@ -22,6 +23,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <mutex>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -58,7 +60,10 @@ constexpr std::uint32_t kChopApplyRequestState = kPadClipboardRequestState + 1U;
 constexpr std::uint32_t kChopStatusState = kChopApplyRequestState + 1U;
 constexpr std::uint32_t kChopPreviewRequestState = kChopStatusState + 1U;
 constexpr std::uint32_t kMixerStateOffset = kChopPreviewRequestState + 1U;
-constexpr std::uint32_t kStateCount = kMixerStateOffset + midichopper::kPadCount;
+constexpr std::uint32_t kPadStructureRequestState =
+    kMixerStateOffset + midichopper::kPadCount;
+constexpr std::uint32_t kPadStructureStatusState = kPadStructureRequestState + 1U;
+constexpr std::uint32_t kStateCount = kPadStructureStatusState + 1U;
 constexpr const char* kWaveformRequestKey = "waveform_request";
 constexpr const char* kWaveformDataKey = "waveform_data";
 constexpr const char* kPadClearRequestKey = "pad_clear_request";
@@ -69,6 +74,8 @@ constexpr const char* kPadClipboardRequestKey = "pad_clipboard_request";
 constexpr const char* kChopApplyRequestKey = "chop_apply_request";
 constexpr const char* kChopStatusKey = "chop_status";
 constexpr const char* kChopPreviewRequestKey = "chop_preview_request";
+constexpr const char* kPadStructureRequestKey = "pad_structure_request";
+constexpr const char* kPadStructureStatusKey = "pad_structure_status";
 static_assert(midichopper::kPadCount <= 64U,
               "pending clear requests use one bit per pad");
 
@@ -388,12 +395,22 @@ protected:
             state.label = "Chop Preview Request";
             state.defaultValue = "";
             state.hints = kStateIsOnlyForDSP;
-        } else {
+        } else if (index < kPadStructureRequestState) {
             const auto pad = index - kMixerStateOffset;
             state.key = kPadMixerStateKeys[pad].c_str();
             state.label = "Pad Sample Mixer Settings";
             state.defaultValue = "MX1;0;0;0";
             state.hints = 0;
+        } else if (index == kPadStructureRequestState) {
+            state.key = kPadStructureRequestKey;
+            state.label = "Pad Structure Request";
+            state.defaultValue = "";
+            state.hints = kStateIsOnlyForDSP;
+        } else {
+            state.key = kPadStructureStatusKey;
+            state.label = "Pad Structure Status";
+            state.defaultValue = "";
+            state.hints = kStateIsOnlyForUI;
         }
     }
 
@@ -472,6 +489,9 @@ protected:
             std::strcmp(key, kChopStatusKey) == 0 ||
             std::strcmp(key, kChopPreviewRequestKey) == 0)
             return String();
+        if (std::strcmp(key, kPadStructureRequestKey) == 0 ||
+            std::strcmp(key, kPadStructureStatusKey) == 0)
+            return String();
         return String();
     }
 
@@ -495,16 +515,20 @@ protected:
             if (std::strcmp(key, kPadMixerStateKeys[pad].c_str()) != 0)
                 continue;
             sms::dsp::SampleMixerSettings settings;
-            if (midichopper::plugin::decodeMixerSettings(value, settings))
+            if (midichopper::plugin::decodeMixerSettings(value, settings)) {
+                const std::lock_guard lock(padMutationMutex_);
                 sampler_.setPadMixerSettings(pad, settings);
+            }
             return;
         }
         for (std::uint32_t pad = 0; pad < midichopper::kPadCount; ++pad) {
             if (std::strcmp(key, kPadEditStateKeys[pad].c_str()) != 0)
                 continue;
             sms::dsp::SamplePlaybackSettings settings;
-            if (midichopper::plugin::decodePlaybackSettings(value, settings))
+            if (midichopper::plugin::decodePlaybackSettings(value, settings)) {
+                const std::lock_guard lock(padMutationMutex_);
                 sampler_.setPadPlaybackSettings(pad, settings);
+            }
             return;
         }
         if (std::strcmp(key, kWaveformRequestKey) == 0) {
@@ -573,6 +597,12 @@ protected:
             }
             return;
         }
+        if (std::strcmp(key, kPadStructureRequestKey) == 0) {
+            handlePadStructureRequest(value != nullptr ? value : "");
+            return;
+        }
+        if (std::strcmp(key, kPadStructureStatusKey) == 0)
+            return;
     }
 
     void run(const float** const inputs, float** const outputs, const uint32_t frames,
@@ -631,6 +661,186 @@ protected:
     }
 
 private:
+    struct PendingSplitPlan {
+        bool active = false;
+        std::uint64_t id = 0U;
+        std::uint32_t visibleFirst = 0U;
+        std::uint32_t visibleCount = 0U;
+        std::uint32_t firstPad = 0U;
+        std::uint32_t emptyPad = 0U;
+        std::uint32_t generationCount = 0U;
+        std::array<std::uint64_t, midichopper::kPadsPerBank> generations{};
+    };
+
+    void publishPadSettings(const std::uint32_t firstPad,
+                            const std::uint32_t padCount)
+    {
+        for (std::uint32_t index = 0; index < padCount; ++index) {
+            const std::uint32_t pad = firstPad + index;
+            const std::string editor = midichopper::plugin::encodePlaybackSettings(
+                sampler_.padPlaybackSettings(pad));
+            static_cast<void>(updateStateValue(
+                kPadEditStateKeys[pad].c_str(), editor.c_str()));
+            const std::string mixer = midichopper::plugin::encodeMixerSettings(
+                sampler_.padMixerSettings(pad));
+            static_cast<void>(updateStateValue(
+                kPadMixerStateKeys[pad].c_str(), mixer.c_str()));
+        }
+    }
+
+    void publishPadStructureError(const std::uint64_t planId,
+                                  const char* const message)
+    {
+        const std::string status = "PS1;E;" + std::to_string(planId) + ";" + message;
+        static_cast<void>(updateStateValue(kPadStructureStatusKey, status.c_str()));
+    }
+
+    void handlePadStructureRequest(const std::string_view encoded)
+    {
+        bool committed = false;
+        std::uint64_t attemptedPlanId = 0U;
+        std::string committedStatus;
+        try {
+            midichopper::plugin::PadStructureRequest request;
+            if (!midichopper::plugin::decodePadStructureRequest(encoded, request)) {
+                publishPadStructureError(0U, "Invalid pad operation");
+                return;
+            }
+            attemptedPlanId = request.planId;
+            std::unique_lock mutationLock(padMutationMutex_);
+            using midichopper::plugin::PadStructureAction;
+            if (request.action == PadStructureAction::cancelSplit) {
+                if (pendingSplitPlan_.active && pendingSplitPlan_.id == request.planId)
+                    pendingSplitPlan_ = {};
+                return;
+            }
+            if (request.action == PadStructureAction::collapse) {
+                committedStatus = "PS1;O;0;C";
+                pendingSplitPlan_ = {};
+                bool collapsed = false;
+                const bool accessed = withSamplerPaused([&] {
+                    collapsed = sampler_.collapsePadGap(
+                        request.firstPad, request.padCount, request.targetPad);
+                });
+                if (!accessed || !collapsed) {
+                    publishPadStructureError(0U, "Could not collapse this gap");
+                    return;
+                }
+                committed = true;
+                mutationLock.unlock();
+                publishPadSettings(request.firstPad, request.padCount);
+                static_cast<void>(updateStateValue(
+                    kPadStructureStatusKey, committedStatus.c_str()));
+                return;
+            }
+            if (request.action == PadStructureAction::prepareSplit) {
+                pendingSplitPlan_ = {};
+                PendingSplitPlan prepared;
+                sms::audio::WaveformSummary preparedWaveform;
+                bool valid = false;
+                const bool accessed = withSamplerPaused([&] {
+                    const auto settings = sampler_.settings();
+                    if (settings.armed)
+                        return;
+                    const std::uint32_t visibleFirst =
+                        static_cast<std::uint32_t>(settings.activeBank) *
+                        midichopper::bankStride(settings.padsPerBank, settings.midiBankMode);
+                    if (request.firstPad != visibleFirst ||
+                        request.padCount != settings.padsPerBank ||
+                        request.targetPad < visibleFirst ||
+                        request.targetPad >= visibleFirst + request.padCount)
+                        return;
+                    const auto source = sampler_.padMetadata(request.targetPad);
+                    if (!source.occupied || source.frames < 2U)
+                        return;
+                    midichopper::PadData waveformSource;
+                    if (!sampler_.exportPad(request.targetPad, waveformSource) ||
+                        waveformSource.frames != source.frames)
+                        return;
+                    preparedWaveform = sms::audio::summarizeStereo(
+                        request.targetPad, waveformSource.stereo.data(),
+                        waveformSource.frames, waveformSource.sampleRate);
+                    std::uint32_t empty = request.targetPad + 1U;
+                    const std::uint32_t end = visibleFirst + request.padCount;
+                    while (empty < end && sampler_.padMetadata(empty).occupied)
+                        ++empty;
+                    if (empty == end)
+                        return;
+                    prepared.active = true;
+                    prepared.id = nextSplitPlanId_++;
+                    if (prepared.id == 0U)
+                        prepared.id = nextSplitPlanId_++;
+                    prepared.visibleFirst = visibleFirst;
+                    prepared.visibleCount = request.padCount;
+                    prepared.firstPad = request.targetPad;
+                    prepared.emptyPad = empty;
+                    prepared.generationCount = empty - request.targetPad + 1U;
+                    for (std::uint32_t index = 0; index < prepared.generationCount; ++index)
+                        prepared.generations[index] =
+                            sampler_.padMetadata(request.targetPad + index).generation;
+                    valid = true;
+                });
+                if (!accessed || !valid) {
+                    publishPadStructureError(0U, "Sample cannot be split in this pad range");
+                    return;
+                }
+                pendingSplitPlan_ = prepared;
+                mutationLock.unlock();
+                const auto ready = midichopper::plugin::encodeSplitPlanReady(
+                    {prepared.id, prepared.firstPad, prepared.emptyPad, preparedWaveform});
+                static_cast<void>(updateStateValue(kPadStructureStatusKey, ready.c_str()));
+                return;
+            }
+
+            if (!pendingSplitPlan_.active ||
+                pendingSplitPlan_.id != request.planId) {
+                publishPadStructureError(request.planId, "Split plan expired");
+                return;
+            }
+            const PendingSplitPlan plan = pendingSplitPlan_;
+            committedStatus = "PS1;O;" + std::to_string(request.planId) + ";S";
+            pendingSplitPlan_ = {};
+            bool applied = false;
+            const bool accessed = withSamplerPaused([&] {
+                const auto settings = sampler_.settings();
+                const std::uint32_t visibleFirst =
+                    static_cast<std::uint32_t>(settings.activeBank) *
+                    midichopper::bankStride(settings.padsPerBank, settings.midiBankMode);
+                if (visibleFirst != plan.visibleFirst ||
+                    settings.padsPerBank != plan.visibleCount)
+                    return;
+                applied = sampler_.splitPadAndShiftRight(
+                    plan.firstPad, plan.emptyPad, request.splitFrame,
+                    std::span<const std::uint64_t>{
+                        plan.generations.data(), plan.generationCount});
+            });
+            if (!accessed || !applied) {
+                publishPadStructureError(
+                    request.planId, "Pads changed; reopen Split Sample");
+                return;
+            }
+            committed = true;
+            mutationLock.unlock();
+            publishPadSettings(plan.firstPad, plan.emptyPad - plan.firstPad + 1U);
+            static_cast<void>(updateStateValue(
+                kPadStructureStatusKey, committedStatus.c_str()));
+        } catch (...) {
+            pendingSplitPlan_ = {};
+            if (committed) {
+                try {
+                    static_cast<void>(updateStateValue(
+                        kPadStructureStatusKey, committedStatus.c_str()));
+                } catch (...) {
+                }
+                return;
+            }
+            try {
+                publishPadStructureError(attemptedPlanId, "Pad operation failed");
+            } catch (...) {
+            }
+        }
+    }
+
     [[nodiscard]] bool makeWaveformState(const std::uint32_t pad,
                                          std::string& waveform) const
     {
@@ -1091,6 +1301,9 @@ private:
     bool playbackPadEventAlternateHalf_ = false;
     bool padFileResultAlternateHalf_ = false;
     bool padClipboardResultAlternateHalf_ = false;
+    std::mutex padMutationMutex_;
+    PendingSplitPlan pendingSplitPlan_{};
+    std::uint64_t nextSplitPlanId_ = 1U;
 
     DISTRHO_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MidichopperPlugin)
 };

@@ -1,7 +1,8 @@
 # Pad context menu
 
-Audience: agents changing pad interactions. The shared menu, Clear Pad, WAV, and
-Copy/Paste actions are implemented; later actions remain approved direction. It
+Audience: agents changing pad interactions. The shared menu, Clear Pad, WAV,
+Copy/Paste, Collapse Gap, and Split Sample actions are implemented; later
+actions remain approved direction. It
 is related to
 [issue #10](https://github.com/sirsipe/SMS-Plugins/issues/10), which requests
 copy, delete, MIDI assignment, and optional color. The menu is a general pad
@@ -85,3 +86,21 @@ editor and waveform state through the same path as WAV Import. Consequently the
 documented [DPF VST3 DSP-to-UI limitation](DPF-VST3-CONSTRAINTS.md) also applies:
 VST3 playback receives the pasted data, but its open editor may not refresh;
 LV2 is the supported reference workflow.
+
+**Collapse Gap** is enabled on an empty visible pad when an occupied pad follows
+in the current bank/page. **Confirm Collapse** finds the complete containing gap
+and shifts the next contiguous occupied run left into it, stopping at the next
+empty slot. All audio metadata and settings move; vacated slots are empty. It
+never crosses the visible boundary or consumes hidden slots.
+
+**Split Sample...** is enabled on an occupied pad when a later empty visible
+slot exists. The DSP prepares a non-mutating, generation-stamped plan through
+the nearest empty slot. The editor shows two virtual halves and one midpoint
+split. Apply revalidates the plan, shifts intervening pads right, and writes
+both halves atomically. The halves reset Start/End and ADSR and inherit mixer
+settings; shifted pads retain everything. Exit, Escape, or failure changes no
+pads. Navigation cancels the plan before opening the neighboring cut window.
+
+`pad_structure_request/status` carries transient commands outside the audio
+callback under the real-time access gate. Generations cover audio and settings
+edits. The commands are neither saved state nor host parameters.

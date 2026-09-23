@@ -77,6 +77,11 @@ void contextMenuGeometry()
     check(edge.bounds().x + edge.bounds().width <= canvas.x + canvas.width &&
           edge.bounds().y + edge.bounds().height <= canvas.y + canvas.height,
           "context menu clamps to the logical canvas");
+    const sms::ui::ContextMenuGeometry expanded({955.0f, 675.0f}, 9, canvas);
+    check(expanded.hit({expanded.item(8).x + 1.0f, expanded.item(8).y + 1.0f}) == 8 &&
+          expanded.bounds().x + expanded.bounds().width <= canvas.x + canvas.width &&
+          expanded.bounds().y + expanded.bounds().height <= canvas.y + canvas.height,
+          "expanded pad menu remains fully clamped to the canvas");
 
     sms::ui::HoverState hover;
     const auto item = midichopper::ui::target(midichopper::ui::InteractiveType::pad, 0);
@@ -235,6 +240,17 @@ void interactionTargets()
               interaction::interactiveTargetAt(center(layout::chopPadButton(1)), context),
               interaction::InteractiveType::chopPadPreview, 1),
           "cut-point editor exposes both handles and three-pad raw preview");
+    context.chopSplitMode = true;
+    check(!interaction::interactiveTargetAt(
+              center(interaction::chop::boundaryHandle(
+                  layout::chopWaveform, chopWaveforms, chopOffsets, 1)), context).valid() &&
+          !interaction::interactiveTargetAt(
+              center(layout::chopPadButton(2)), context).valid() &&
+          interaction::isTarget(
+              interaction::interactiveTargetAt(center(layout::chopPadButton(1)), context),
+              interaction::InteractiveType::chopPadPreview, 1),
+          "split editor exposes one boundary and two raw previews");
+    context.chopSplitMode = false;
     check(interaction::isTarget(
               interaction::interactiveTargetAt(center(layout::chopExit), context),
               interaction::InteractiveType::chopExit) &&
@@ -502,6 +518,11 @@ void chopEditorGeometry()
           midichopper::ui::chop::navigationTarget(6, 1, 8) == -1 &&
           midichopper::ui::chop::navigationTarget(6, -1, 8) == 5,
           "cut editor navigation keeps a neighbor on both sides");
+    check(midichopper::ui::chop::postSplitEditorTarget(0, 8) == 1 &&
+          midichopper::ui::chop::postSplitEditorTarget(3, 8) == 4 &&
+          midichopper::ui::chop::postSplitEditorTarget(6, 8) == 6 &&
+          midichopper::ui::chop::postSplitEditorTarget(7, 8) == -1,
+          "split Apply opens a three-pad window around both new halves");
     std::array<sms::audio::WaveformSummary, 3> waveforms{};
     for (std::size_t index = 0; index < waveforms.size(); ++index) {
         waveforms[index].pad = static_cast<std::uint32_t>(index);

@@ -16,6 +16,7 @@
  *   pad_clipboard_request internal per-instance Copy or Paste command
  *   chop_apply_request/status transactional rolling-boundary edit and result
  *   chop_preview_request raw allocation-free play/pause/seek command
+ *   pad_structure_request/status atomic gap collapse and planned sample split
  *
  * The UI sends C1 + pad as MIDI note-on/off in PLAY mode only. In ARM mode a
  * clicked pad selects the first destination and the next incoming MIDI note is
@@ -49,6 +50,7 @@
 #include "MidichopperView.hpp"
 #include "PadClipboardProtocol.hpp"
 #include "PadFileActionProtocol.hpp"
+#include "PadStructureProtocol.hpp"
 #include "Parameters.hpp"
 
 #include <algorithm>
@@ -77,6 +79,8 @@ enum class PadMenuAction : int {
     copy = 0,
     paste,
     adjustCutPoints,
+    splitSample,
+    collapseGap,
     exportRaw,
     exportProcessed,
     import,
@@ -312,13 +316,20 @@ protected:
             if (!changed)
                 break;
             closePadContextMenu();
+            if (armed && fChopEditorMode)
+                cancelChopEditor();
+            if (armed) {
+                fPendingSplitTarget = -1;
+                fPendingSplitFirst = -1;
+                fPendingSplitCount = 0;
+                fPadStructureBusy = false;
+            }
             fArm = armed;
             fStatus[0] = '\0';
             fSelectedPad = -1;
             fLastPlayedPad = -1;
             if (fArm) {
                 fEditorMode = false;
-                fChopEditorMode = false;
                 stopChopPreview();
                 stopLocalPlayhead(false);
                 fDragTarget = WaveformEditTarget::none;
@@ -553,7 +564,7 @@ protected:
         {
             sms::audio::WaveformSummary summary;
             if (sms::audio::decodeWaveformSummary(value, summary)) {
-                if (fChopEditorMode && fChopFirstPad >= 0 &&
+                if (fChopEditorMode && !fChopSplitMode && fChopFirstPad >= 0 &&
                     summary.pad >= static_cast<std::uint32_t>(fChopFirstPad) &&
                     summary.pad < static_cast<std::uint32_t>(fChopFirstPad + 3)) {
                     const auto localPad = static_cast<std::size_t>(
@@ -589,6 +600,63 @@ protected:
                 copyString(fStatus, "Cut points applied");
             } else if (std::strncmp(value, "CH1;ERROR;", 10U) == 0) {
                 copyString(fStatus, value + 10U);
+            }
+        }
+        else if (std::strcmp(key, "pad_structure_status") == 0)
+        {
+            midichopper::plugin::SplitPlanReady plan;
+            if (midichopper::plugin::decodeSplitPlanReady(value, plan)) {
+                const bool expected = fPadStructureBusy && fPendingSplitTarget >= 0 &&
+                    plan.targetPad == static_cast<std::uint32_t>(fPendingSplitTarget) &&
+                    !fArm && globalPad(0) == fPendingSplitFirst &&
+                    visiblePadCount() == fPendingSplitCount;
+                fPadStructureBusy = false;
+                fPendingSplitTarget = -1;
+                fPendingSplitFirst = -1;
+                fPendingSplitCount = 0;
+                if (expected) {
+                    beginSplitEditor(plan);
+                } else {
+                    cancelSplitPlan(plan.planId);
+                    copyString(fStatus, "Split cancelled because pad context changed");
+                }
+            } else if (std::strcmp(value, "PS1;O;0;C") == 0) {
+                fPadStructureBusy = false;
+                copyString(fStatus, "Pad gap collapsed");
+                if (fEditorMode)
+                    refreshSelectedWaveform();
+            } else if (const std::string expected = "PS1;O;" +
+                           std::to_string(fSplitPlanId) + ";S";
+                       fSplitPlanId != 0U && expected == value) {
+                fPadStructureBusy = false;
+                const int cutTarget = midichopper::ui::chop::postSplitEditorTarget(
+                    localPadForGlobalPad(fSelectedPad), visiblePadCount());
+                if (cutTarget >= 0)
+                    beginChopEditor(globalPad(cutTarget));
+                else
+                    cancelChopEditor();
+                copyString(fStatus, "Sample split applied");
+            } else if (std::strncmp(value, "PS1;E;", 6U) == 0) {
+                char* idEnd = nullptr;
+                const auto errorPlanId = std::strtoull(value + 6U, &idEnd, 10);
+                if (idEnd == value + 6U || idEnd == nullptr || *idEnd != ';')
+                    return;
+                const bool activeSplitError = fChopSplitMode &&
+                    errorPlanId == fSplitPlanId;
+                const bool pendingError = errorPlanId == 0U && fPadStructureBusy;
+                if (!activeSplitError && !pendingError)
+                    return;
+                fPadStructureBusy = false;
+                fPendingSplitTarget = -1;
+                fPendingSplitFirst = -1;
+                fPendingSplitCount = 0;
+                if (activeSplitError) {
+                    fSplitPlanId = 0U;
+                    fChopSplitMode = false;
+                    cancelChopEditor();
+                }
+                fChopApplying = false;
+                copyString(fStatus, idEnd + 1U);
             }
         }
         else if (std::strcmp(key, "pad_file_busy") == 0)
@@ -627,6 +695,10 @@ protected:
             fPadContextClearArmed = false;
             requestRepaint();
         }
+        if (fPadContextCollapseArmed && now >= fPadContextCollapseDeadline) {
+            fPadContextCollapseArmed = false;
+            requestRepaint();
+        }
         if (fMeterRepaintPending && now >= fNextMeterRepaint) {
             fMeterRepaintPending = false;
             fNextMeterRepaint = now + kMeterFrameInterval;
@@ -658,6 +730,14 @@ protected:
         fill();
 
         beginLogicalDisplay();
+        char collapseLabel[48];
+        const int collapsingPads = collapseShiftCount();
+        if (collapsingPads == 0) {
+            std::snprintf(collapseLabel, sizeof(collapseLabel), "COLLAPSE GAP");
+        } else {
+            std::snprintf(collapseLabel, sizeof(collapseLabel), "COLLAPSE GAP (%d %s)",
+                          collapsingPads, collapsingPads == 1 ? "PAD" : "PADS");
+        }
         const std::array contextMenuItems{
             sms::ui::ContextMenuItemView{
                 "COPY PAD", padCopyEnabled(), false},
@@ -665,6 +745,11 @@ protected:
                 "PASTE PAD", padPasteEnabled(), false},
             sms::ui::ContextMenuItemView{
                 "ADJUST CUT POINTS", padCutPointsEnabled(), false},
+            sms::ui::ContextMenuItemView{
+                "SPLIT SAMPLE...", padSplitEnabled(), false},
+            sms::ui::ContextMenuItemView{
+                fPadContextCollapseArmed ? "CONFIRM COLLAPSE" : collapseLabel,
+                padCollapseEnabled(), false},
             sms::ui::ContextMenuItemView{
                 "EXPORT WAV...", padExportEnabled(), false},
             sms::ui::ContextMenuItemView{
@@ -683,7 +768,7 @@ protected:
             fPadContextMenuOpen, fPadContextMenu,
             std::span<const sms::ui::ContextMenuItemView>{contextMenuItems},
             fHover.target(),
-            fEditorMode, fChopEditorMode, fPlayOnSelect, fHasWaveform,
+            fEditorMode, fChopEditorMode, fChopSplitMode, fPlayOnSelect, fHasWaveform,
             fInputLevels, fOutputLevels, fPadState, fPadStatus,
             fEditorSettings, fMixerSettings, fWaveform, fPlaybackPosition,
             std::span<const sms::audio::WaveformSummary>{
@@ -1150,8 +1235,7 @@ protected:
                 (x - fChopDragStartX) * static_cast<double>(total) /
                 uiLayout::chopWaveform.width));
             const auto requested = fChopDragStartOffset + delta;
-            fChopOffsets[boundary] = midichopper::ui::chop::clampBoundaryOffset(
-                fChopWaveforms, fChopOffsets,
+            fChopOffsets[boundary] = clampChopBoundaryOffset(
                 fChopActiveBoundary, requested);
             fStatus[0] = '\0';
             requestRepaint();
@@ -1197,9 +1281,10 @@ protected:
         if (midichopper::ui::isTarget(
                 hovered, midichopper::ui::InteractiveType::chopBoundary)) {
             const auto boundary = static_cast<std::size_t>(hovered.index);
-            fChopOffsets[boundary] = midichopper::ui::chop::wheelAdjustedBoundaryOffset(
+            const auto requested = midichopper::ui::chop::wheelAdjustedBoundaryOffset(
                 fChopWaveforms, fChopOffsets, hovered.index, delta,
                 uiLayout::chopWaveform);
+            fChopOffsets[boundary] = clampChopBoundaryOffset(hovered.index, requested);
             fStatus[0] = '\0';
             requestRepaint();
             return true;
@@ -1327,12 +1412,18 @@ protected:
 
     bool onKeyboard(const KeyboardEvent& ev) override
     {
-        if (!ev.press || ev.key != DGL_NAMESPACE::kKeyEscape ||
-            !fPadContextMenuOpen)
+        if (!ev.press || ev.key != DGL_NAMESPACE::kKeyEscape)
             return false;
-        closePadContextMenu();
-        requestRepaint();
-        return true;
+        if (fPadContextMenuOpen) {
+            closePadContextMenu();
+            requestRepaint();
+            return true;
+        }
+        if (fChopEditorMode && !fChopApplying) {
+            cancelChopEditor();
+            return true;
+        }
+        return false;
     }
 
 #if DISTRHO_UI_FILE_BROWSER
@@ -1412,11 +1503,17 @@ private:
     sms::ui::HoverState fHover;
     bool fPadContextClearArmed;
     std::chrono::steady_clock::time_point fPadContextClearDeadline{};
+    bool fPadContextCollapseArmed = false;
+    std::chrono::steady_clock::time_point fPadContextCollapseDeadline{};
     bool fPadContextPointerCaptured;
     bool fResetPointerCaptured = false;
     bool fPadFileBusy = false;
     bool fPadClipboardAvailable = false;
     bool fPadClipboardBusy = false;
+    bool fPadStructureBusy = false;
+    int fPendingSplitTarget = -1;
+    int fPendingSplitFirst = -1;
+    int fPendingSplitCount = 0;
     PadClipboardAction fActivePadClipboardAction = PadClipboardAction::copy;
     int fActivePadClipboardPad = -1;
     bool fSaveDialogAvailable = true;
@@ -1426,6 +1523,8 @@ private:
     int fActiveFilePad = -1;
     bool fEditorMode;
     bool fChopEditorMode = false;
+    bool fChopSplitMode = false;
+    std::uint64_t fSplitPlanId = 0U;
     bool fPlayOnSelect;
     WaveformEditTarget fDragTarget;
     int fMixerDragIndex;
@@ -1488,6 +1587,7 @@ private:
         midichopper::ui::InteractionContext context;
         context.editorMode = fEditorMode;
         context.chopEditorMode = fChopEditorMode;
+        context.chopSplitMode = fChopSplitMode;
         context.menuOpen = fMenuOpen;
         context.padContextMenuOpen = fPadContextMenuOpen;
         context.armed = fArm;
@@ -1514,6 +1614,17 @@ private:
         return std::clamp((x - bounds.x) / bounds.width, 0.0f, 1.0f);
     }
 
+    [[nodiscard]] std::int64_t clampChopBoundaryOffset(
+        const int boundary, const std::int64_t requested) const noexcept
+    {
+        const auto clamped = midichopper::ui::chop::clampBoundaryOffset(
+            fChopWaveforms, fChopOffsets, boundary, requested);
+        if (!fChopSplitMode || boundary != 0 || fChopWaveforms[0].frames < 2U)
+            return clamped;
+        const auto original = static_cast<std::int64_t>(fChopWaveforms[0].frames);
+        return std::clamp(clamped, 1 - original, std::int64_t{-1});
+    }
+
     void openPadContextMenu(const int pad, const sms::ui::Point anchor)
     {
         fPadContextTarget = pad;
@@ -1521,6 +1632,7 @@ private:
             anchor, static_cast<int>(PadMenuAction::count), uiLayout::contentBounds);
         static_cast<void>(fHover.clear());
         fPadContextClearArmed = false;
+        fPadContextCollapseArmed = false;
         fPadContextMenuOpen = true;
     }
 
@@ -1530,6 +1642,7 @@ private:
         fPadContextTarget = -1;
         static_cast<void>(fHover.clear());
         fPadContextClearArmed = false;
+        fPadContextCollapseArmed = false;
     }
 
     [[nodiscard]] bool padContextTargetOccupied() const noexcept
@@ -1551,7 +1664,7 @@ private:
 
     [[nodiscard]] bool padActionBusy() const noexcept
     {
-        return fPadFileBusy || fPadClipboardBusy;
+        return fPadFileBusy || fPadClipboardBusy || fPadStructureBusy;
     }
 
     [[nodiscard]] bool padCopyEnabled() const noexcept
@@ -1573,6 +1686,48 @@ private:
         if (localPad <= 0 || localPad + 1 >= visiblePadCount())
             return false;
         return true;
+    }
+
+    [[nodiscard]] bool localPadOccupied(const int localPad) const noexcept
+    {
+        if (localPad < 0 || localPad >= visiblePadCount())
+            return false;
+        const char state = fPadState[static_cast<std::size_t>(localPad)];
+        return state != '0' && state != '.';
+    }
+
+    [[nodiscard]] bool padSplitEnabled() const noexcept
+    {
+        if (padActionBusy() || !padContextTargetOccupied())
+            return false;
+        const int target = localPadForGlobalPad(fPadContextTarget);
+        for (int pad = target + 1; pad < visiblePadCount(); ++pad) {
+            if (!localPadOccupied(pad))
+                return true;
+        }
+        return false;
+    }
+
+    [[nodiscard]] int collapseShiftCount() const noexcept
+    {
+        if (!fPadContextMenuOpen || fPadContextTarget < 0 ||
+            padContextTargetOccupied())
+            return 0;
+        int pad = localPadForGlobalPad(fPadContextTarget) + 1;
+        while (pad < visiblePadCount() && !localPadOccupied(pad))
+            ++pad;
+        int count = 0;
+        while (pad < visiblePadCount() && localPadOccupied(pad)) {
+            ++pad;
+            ++count;
+        }
+        return count;
+    }
+
+    [[nodiscard]] bool padCollapseEnabled() const noexcept
+    {
+        return !padActionBusy() && fPadContextMenuOpen &&
+               !padContextTargetOccupied() && collapseShiftCount() > 0;
     }
 
     [[nodiscard]] bool padProcessedExportEnabled() const noexcept
@@ -1598,6 +1753,8 @@ private:
         case PadMenuAction::copy: return padCopyEnabled();
         case PadMenuAction::paste: return padPasteEnabled();
         case PadMenuAction::adjustCutPoints: return padCutPointsEnabled();
+        case PadMenuAction::splitSample: return padSplitEnabled();
+        case PadMenuAction::collapseGap: return padCollapseEnabled();
         case PadMenuAction::exportRaw: return padExportEnabled();
         case PadMenuAction::exportProcessed: return padProcessedExportEnabled();
         case PadMenuAction::import: return !padActionBusy();
@@ -1625,6 +1782,24 @@ private:
             beginChopEditor(pad);
             return;
         }
+        case PadMenuAction::splitSample: {
+            const int pad = fPadContextTarget;
+            closePadContextMenu();
+            requestSplitPlan(pad);
+            return;
+        }
+        case PadMenuAction::collapseGap:
+            if (!fPadContextCollapseArmed) {
+                fPadContextCollapseArmed = true;
+                fPadContextCollapseDeadline = std::chrono::steady_clock::now() +
+                                               kClearConfirmationTimeout;
+                setLocalStatus("Click COLLAPSE GAP again to confirm");
+            } else {
+                requestCollapseGap(fPadContextTarget);
+                closePadContextMenu();
+            }
+            requestRepaint();
+            return;
         case PadMenuAction::exportRaw:
             openPadFileDialog(PendingFileDialog::exportRaw);
             return;
@@ -1650,6 +1825,46 @@ private:
         case PadMenuAction::count:
             return;
         }
+    }
+
+    void requestSplitPlan(const int pad)
+    {
+#if DISTRHO_PLUGIN_WANT_STATE
+        midichopper::plugin::PadStructureRequest request;
+        request.action = PadStructureAction::prepareSplit;
+        request.firstPad = static_cast<std::uint32_t>(globalPad(0));
+        request.padCount = static_cast<std::uint32_t>(visiblePadCount());
+        request.targetPad = static_cast<std::uint32_t>(pad);
+        fPendingSplitTarget = pad;
+        fPendingSplitFirst = static_cast<int>(request.firstPad);
+        fPendingSplitCount = static_cast<int>(request.padCount);
+        fPadStructureBusy = true;
+        setLocalStatus("Preparing sample split...");
+        const auto encoded = encodePadStructureRequest(request);
+        setState("pad_structure_request", encoded.c_str());
+#else
+        static_cast<void>(pad);
+#endif
+    }
+
+    void requestCollapseGap(const int pad)
+    {
+#if DISTRHO_PLUGIN_WANT_STATE
+        midichopper::plugin::PadStructureRequest request;
+        request.action = PadStructureAction::collapse;
+        request.firstPad = static_cast<std::uint32_t>(globalPad(0));
+        request.padCount = static_cast<std::uint32_t>(visiblePadCount());
+        request.targetPad = static_cast<std::uint32_t>(pad);
+        fPendingSplitTarget = -1;
+        fPendingSplitFirst = -1;
+        fPendingSplitCount = 0;
+        fPadStructureBusy = true;
+        setLocalStatus("Collapsing pad gap...");
+        const auto encoded = encodePadStructureRequest(request);
+        setState("pad_structure_request", encoded.c_str());
+#else
+        static_cast<void>(pad);
+#endif
     }
 
     void openPadFileDialog(const PendingFileDialog action)
@@ -2040,6 +2255,8 @@ private:
 
     [[nodiscard]] bool chopDirty() const noexcept
     {
+        if (fChopSplitMode)
+            return chopReady();
         return std::any_of(fChopOffsets.begin(), fChopOffsets.end(),
             [](const std::int64_t offset) { return offset != 0; });
     }
@@ -2076,10 +2293,41 @@ private:
         stopChopPreview();
         fEditorMode = false;
         fChopEditorMode = true;
+        fChopSplitMode = false;
+        fSplitPlanId = 0U;
         fEditorSnapshot.complete();
         fSelectedPad = targetPad;
         fChopFirstPad = targetPad - 1;
         resetChopWaveforms();
+        fChopApplying = false;
+        fStatus[0] = '\0';
+        requestRepaint();
+    }
+
+    void beginSplitEditor(const midichopper::plugin::SplitPlanReady& plan)
+    {
+        if (plan.targetPad >= midichopper::kPadCount ||
+            plan.emptyPad <= plan.targetPad || plan.emptyPad >= midichopper::kPadCount ||
+            plan.waveform.pad != plan.targetPad || plan.waveform.frames < 2U)
+            return;
+        stopChopPreview();
+        fEditorMode = false;
+        fChopEditorMode = true;
+        fChopSplitMode = true;
+        fEditorSnapshot.complete();
+        fSelectedPad = static_cast<int>(plan.targetPad);
+        fChopFirstPad = static_cast<int>(plan.targetPad);
+        fSplitPlanId = plan.planId;
+        resetChopWaveforms();
+        fChopWaveforms[0] = plan.waveform;
+        fChopWaveforms[1] = {plan.targetPad + 1U, 0U,
+                             plan.waveform.sampleRate, {}, {}};
+        fChopWaveforms[2] = {plan.targetPad + 1U, 0U,
+                             plan.waveform.sampleRate, {}, {}};
+        const auto midpoint = static_cast<std::int64_t>(plan.waveform.frames / 2U);
+        fChopOffsets[0] = midpoint - static_cast<std::int64_t>(plan.waveform.frames);
+        fChopNextWaveform = 3;
+        fChopWaveformRequestPending = false;
         fChopApplying = false;
         fStatus[0] = '\0';
         requestRepaint();
@@ -2091,13 +2339,34 @@ private:
             return;
         const int nextLocalPad = midichopper::ui::chop::navigationTarget(
             localPadForGlobalPad(fSelectedPad), direction, visiblePadCount());
+        if (fChopSplitMode)
+            cancelSplitPlan(fSplitPlanId);
         beginChopEditor(globalPad(nextLocalPad));
+    }
+
+    void cancelSplitPlan(const std::uint64_t planId)
+    {
+#if DISTRHO_PLUGIN_WANT_STATE
+        if (planId != 0U) {
+            midichopper::plugin::PadStructureRequest request;
+            request.action = PadStructureAction::cancelSplit;
+            request.planId = planId;
+            const auto encoded = encodePadStructureRequest(request);
+            setState("pad_structure_request", encoded.c_str());
+        }
+#else
+        static_cast<void>(planId);
+#endif
     }
 
     void cancelChopEditor()
     {
+        if (fChopSplitMode)
+            cancelSplitPlan(fSplitPlanId);
         stopChopPreview();
         fChopEditorMode = false;
+        fChopSplitMode = false;
+        fSplitPlanId = 0U;
         fChopFirstPad = -1;
         fChopNextWaveform = -1;
         fChopWaveformRequestPending = false;
@@ -2136,7 +2405,8 @@ private:
             return;
         const auto end = start + frames;
         const auto request = midichopper::plugin::encodeChopPreviewRequest(
-            {true, static_cast<std::uint32_t>(fChopFirstPad), 3U, start, end});
+            {true, static_cast<std::uint32_t>(fChopFirstPad),
+             fChopSplitMode ? 1U : 3U, start, end});
         setState("chop_preview_request", request.c_str());
         fChopPlaying = true;
         fChopPreviewPad = padInEditor;
@@ -2150,7 +2420,8 @@ private:
     {
 #if DISTRHO_PLUGIN_WANT_STATE
         const auto request = midichopper::plugin::encodeChopPreviewRequest(
-            {false, static_cast<std::uint32_t>(std::max(fChopFirstPad, 0)), 3U, 0U, 0U});
+            {false, static_cast<std::uint32_t>(std::max(fChopFirstPad, 0)),
+             fChopSplitMode ? 1U : 3U, 0U, 0U});
         setState("chop_preview_request", request.c_str());
 #endif
         fChopPlaying = false;
@@ -2163,6 +2434,26 @@ private:
 #if DISTRHO_PLUGIN_WANT_STATE
         if (!chopReady()) {
             setLocalStatus("Non-empty samples must use one sample rate");
+            return;
+        }
+        if (fChopSplitMode) {
+            const auto splitFrame = midichopper::ui::chop::adjustedBoundary(
+                fChopWaveforms, fChopOffsets, 0);
+            if (fSplitPlanId == 0U || splitFrame <= 0 ||
+                splitFrame >= static_cast<std::int64_t>(fChopWaveforms[0].frames)) {
+                setLocalStatus("Both split halves must contain audio");
+                return;
+            }
+            midichopper::plugin::PadStructureRequest request;
+            request.action = PadStructureAction::applySplit;
+            request.planId = fSplitPlanId;
+            request.splitFrame = static_cast<std::uint32_t>(splitFrame);
+            stopChopPreview();
+            fChopApplying = true;
+            fPadStructureBusy = true;
+            setLocalStatus("Applying sample split...");
+            const auto encoded = encodePadStructureRequest(request);
+            setState("pad_structure_request", encoded.c_str());
             return;
         }
         midichopper::plugin::ChopApplyRequest request;

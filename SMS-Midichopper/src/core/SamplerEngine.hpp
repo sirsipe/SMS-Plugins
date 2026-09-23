@@ -143,6 +143,25 @@ public:
      */
     [[nodiscard]] bool rechopPads(std::uint32_t firstPad, std::uint32_t padCount,
                                   std::span<const std::int64_t> boundaryOffsets);
+    /**
+     * Close the empty run containing targetPad by moving the immediately
+     * following occupied run left. Complete pad contents and settings move
+     * together. The supplied range is one visible bank/page. Control thread
+     * only; no pad changes when validation fails.
+     */
+    [[nodiscard]] bool collapsePadGap(std::uint32_t firstPad,
+                                      std::uint32_t padCount,
+                                      std::uint32_t targetPad) noexcept;
+    /**
+     * Split firstPad at splitFrame and insert the suffix into firstPad + 1.
+     * Occupied pads through emptyPad shift right by one, preserving their
+     * complete contents and settings. expectedGenerations covers the inclusive
+     * [firstPad, emptyPad] range and rejects stale UI plans. Control thread only.
+     */
+    [[nodiscard]] bool splitPadAndShiftRight(
+        std::uint32_t firstPad, std::uint32_t emptyPad,
+        std::uint32_t splitFrame,
+        std::span<const std::uint64_t> expectedGenerations);
     /** Allocation-free raw preview used by the Cut Point Editor. Audio thread only. */
     void startChopPreview(std::uint32_t firstPad, std::uint32_t padCount,
                           std::uint64_t sourceFrame, std::uint64_t sourceEndFrame) noexcept;
@@ -215,6 +234,10 @@ private:
                                  std::uint32_t channel) const noexcept;
     [[nodiscard]] bool storeSample(std::uint32_t pad, std::uint32_t frame,
                                    float left, float right) noexcept;
+    void movePadContents(std::uint32_t source, std::uint32_t destination) noexcept;
+    void storeSplitHalf(std::uint32_t pad, const std::vector<float>& source,
+                        std::uint32_t sourceStart, std::uint32_t frames,
+                        double sourceRate) noexcept;
     void beginRecord(std::uint32_t pad) noexcept;
     void finishRecord(std::uint32_t pad, std::uint32_t trimFrames = 0) noexcept;
     void handleEvent(const MidiEvent& event) noexcept;

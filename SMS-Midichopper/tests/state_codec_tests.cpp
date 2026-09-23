@@ -1,6 +1,7 @@
 #include "StateCodec.hpp"
 #include "Audio/WaveformSummary.hpp"
 #include "ChopEditorProtocol.hpp"
+#include "PadStructureProtocol.hpp"
 
 #include <cmath>
 #include <cstdlib>
@@ -153,6 +154,73 @@ void chopProtocolRoundTrip()
           "invalid chop preview command is rejected");
 }
 
+void padStructureProtocolRoundTrip()
+{
+    using midichopper::plugin::PadStructureAction;
+    using midichopper::plugin::PadStructureRequest;
+    PadStructureRequest decoded;
+
+    PadStructureRequest collapse;
+    collapse.action = PadStructureAction::collapse;
+    collapse.firstPad = 16U;
+    collapse.padCount = 12U;
+    collapse.targetPad = 19U;
+    check(midichopper::plugin::decodePadStructureRequest(
+              midichopper::plugin::encodePadStructureRequest(collapse), decoded) &&
+          decoded.action == PadStructureAction::collapse &&
+          decoded.firstPad == 16U && decoded.padCount == 12U &&
+          decoded.targetPad == 19U,
+          "collapse request round-trips");
+
+    collapse.action = PadStructureAction::prepareSplit;
+    check(midichopper::plugin::decodePadStructureRequest(
+              midichopper::plugin::encodePadStructureRequest(collapse), decoded) &&
+          decoded.action == PadStructureAction::prepareSplit,
+          "split preparation request round-trips");
+
+    PadStructureRequest apply;
+    apply.action = PadStructureAction::applySplit;
+    apply.planId = 42U;
+    apply.splitFrame = 1234U;
+    check(midichopper::plugin::decodePadStructureRequest(
+              midichopper::plugin::encodePadStructureRequest(apply), decoded) &&
+          decoded.action == PadStructureAction::applySplit &&
+          decoded.planId == 42U && decoded.splitFrame == 1234U,
+          "split apply request round-trips");
+
+    apply.action = PadStructureAction::cancelSplit;
+    check(midichopper::plugin::decodePadStructureRequest(
+              midichopper::plugin::encodePadStructureRequest(apply), decoded) &&
+          decoded.action == PadStructureAction::cancelSplit && decoded.planId == 42U,
+          "split cancellation request round-trips");
+
+    sms::audio::WaveformSummary splitWaveform;
+    splitWaveform.pad = 20U;
+    splitWaveform.frames = 200U;
+    splitWaveform.sampleRate = 48000.0;
+    splitWaveform.minimum.fill(-0.5f);
+    splitWaveform.maximum.fill(0.5f);
+    midichopper::plugin::SplitPlanReady ready{42U, 20U, 24U, splitWaveform};
+    midichopper::plugin::SplitPlanReady decodedReady;
+    check(midichopper::plugin::decodeSplitPlanReady(
+              midichopper::plugin::encodeSplitPlanReady(ready), decodedReady) &&
+          decodedReady.planId == ready.planId &&
+          decodedReady.targetPad == ready.targetPad &&
+          decodedReady.emptyPad == ready.emptyPad &&
+          decodedReady.waveform.frames == ready.waveform.frames &&
+          decodedReady.waveform.minimum.front() < -0.49f,
+          "split plan response round-trips");
+
+    check(!midichopper::plugin::decodePadStructureRequest("PS2;C;0;16;1", decoded) &&
+          !midichopper::plugin::decodePadStructureRequest("PS1;C;63;2;63", decoded) &&
+          !midichopper::plugin::decodePadStructureRequest("PS1;A;0;20", decoded) &&
+          !midichopper::plugin::decodePadStructureRequest("PS1;A;1;0", decoded) &&
+          !midichopper::plugin::decodePadStructureRequest("PS1;X;1;", decoded) &&
+          !midichopper::plugin::decodePadStructureRequest("PS1;X;1;extra", decoded) &&
+          !midichopper::plugin::decodeSplitPlanReady("PS1;R;1;20;20;broken", decodedReady),
+          "malformed pad structure messages are rejected");
+}
+
 } // namespace
 
 int main()
@@ -162,5 +230,6 @@ int main()
     editorStateRoundTrip();
     mixerStateRoundTrip();
     chopProtocolRoundTrip();
+    padStructureProtocolRoundTrip();
     std::cout << "state codec tests passed\n";
 }

@@ -236,6 +236,7 @@ target(const InteractiveType type, const int index = -1) noexcept
 struct InteractionContext {
     bool editorMode = false;
     bool chopEditorMode = false;
+    bool chopSplitMode = false;
     bool menuOpen = false;
     bool padContextMenuOpen = false;
     bool armed = false;
@@ -301,9 +302,10 @@ interactiveTargetAt(const sms::ui::Point point, const InteractionContext& contex
             return sms::ui::kNoInteractiveTarget;
         const int boundary = chop::boundaryAt(
             point, uiLayout::chopWaveform, context.chopWaveforms, context.chopOffsets);
-        if (boundary >= 0)
+        if (boundary >= 0 && (!context.chopSplitMode || boundary == 0))
             return target(InteractiveType::chopBoundary, boundary);
-        for (int pad = 0; context.chopReady && pad < static_cast<int>(chop::kPadCount); ++pad) {
+        const int previewPads = context.chopSplitMode ? 2 : static_cast<int>(chop::kPadCount);
+        for (int pad = 0; context.chopReady && pad < previewPads; ++pad) {
             if (chop::adjustedFrames(context.chopWaveforms, context.chopOffsets, pad) != 0U &&
                 uiLayout::chopPadButton(pad).contains(point))
                 return target(InteractiveType::chopPadPreview, pad);

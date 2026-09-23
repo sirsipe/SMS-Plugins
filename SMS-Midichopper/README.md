@@ -62,11 +62,10 @@ deleting samples. Sequential capture skips hidden slots and continues into the
 next bank in Selected Bank mode. All Banks uses contiguous layout-sized pages.
 
 **Sample Editor** groups waveform and ADSR above per-pad Gain, Pan, and
-varispeed Tune. Main-view global Volume, Pan, and Tune add to pad values.
-Mixer, ADSR, End, and global edits reach active voices next block; Start applies
-on retrigger. Tune changes pitch/duration. Rechopping keeps mixer settings
-unless a zero-length result empties the pad. **Play on Select** auditions
-selections. MIDI selects pads. Arm hides the editor.
+varispeed Tune; main-view controls add global values. Edits reach active voices
+next block except Start, which applies on retrigger. Rechopping keeps mixer
+settings unless it empties a pad. **Play on Select** auditions selections. MIDI
+selects pads. Arm hides the editor.
 
 Right-click a middle pad and choose **Adjust cut points** to edit it with its
 neighbor slots, including empty ones. See the [cut-point guide](Docs/CHOP-EDITOR.md).
@@ -77,10 +76,10 @@ Pre-roll, Start/End, and cut points.
 Arm shows capture and chop controls. Play shows playback controls and hides
 chop actions. Global mixer and bottom Monitor controls remain available.
 
-In Play or Sample Editor, right-click a pad to copy, paste, import, export, or
-clear it. See
-[WAV files](Docs/WAV-FILES.md) for formats and Linux requirements. **Clear Pad**
-requires confirmation.
+Right-click pads to copy, paste, import, export, clear, split, or collapse a gap.
+Split shifts pads right on Apply; Exit cancels. Confirmed Collapse shifts the
+next run left. Both stay within the bank. See
+[WAV files](Docs/WAV-FILES.md) for formats and Linux requirements.
 
 Max Voices limits simultaneous pads. At the limit, a new trigger stops the
 oldest voice; set it to one for monophonic playback.

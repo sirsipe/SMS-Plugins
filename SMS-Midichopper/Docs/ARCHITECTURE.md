@@ -5,15 +5,12 @@ behavior; [VISION.md](VISION.md) covers intent.
 
 SMS-Midichopper separates sampler, plug-in format, and UI:
 
-- `src/core` is a C++20 capture/playback engine with no DPF,
-  LV2, window-system, or DAW dependencies.
-- `src/plugin` adapts DPF parameters, audio, MIDI, and project state to the
-  engine. Start with `Parameters.hpp` for parameter indices/ranges,
-  `MidichopperPlugin.cpp` for host callbacks and symbols, `StateCodec.*` for
-  sample serialization, and `DistrhoPluginInfo.h` for plugin identity/ports.
-- `src/ui/MidichopperUI.cpp` owns host communication,
-  `MidichopperInteraction.hpp` resolves one enabled hover/click target, and
-  `MidichopperView.cpp` draws it.
+- `src/core` is the framework-free C++20 capture/playback engine.
+- `src/plugin` adapts DPF parameters, audio, MIDI, and state. Start with
+  `Parameters.hpp`, `MidichopperPlugin.cpp`, `StateCodec.*`, and
+  `DistrhoPluginInfo.h` respectively.
+- `src/ui/MidichopperUI.cpp` owns host communication;
+  `MidichopperInteraction.hpp` resolves input and `MidichopperView.cpp` draws.
 - `tests` covers engine behavior, state, WAV handling, and host-free UI geometry.
 - `../Common-Src` contains plug-in-independent sample-region, ADSR, waveform
   summary, state-codec, and UI geometry components intended for reuse by future
@@ -24,11 +21,10 @@ SMS-Midichopper separates sampler, plug-in format, and UI:
 
 ## MIDI mapping
 
-The saved `midi_bank_mode` selects two mappings. All Banks maps exposed storage
-slots from the base note as a gapless sequence, grouped into four layout-sized
-pages. A valid note-on updates the active bank; note-off does not. The DSP asks
-supporting hosts to save this `active_bank` change. Layout changes regroup slots
-without changing their MIDI notes.
+The saved `midi_bank_mode` selects two mappings. All Banks maps storage from the
+base note as four gapless layout-sized pages. Note-on updates the active bank;
+note-off does not. Supporting hosts save this change. Layout changes regroup
+slots without changing notes.
 Every successful playback note-on also advances a hidden output event that
 encodes the global pad index in alternating halves of its range. Both UI views
 follow that event, so bank, MIDI labels, and the single last-played selection
@@ -41,13 +37,11 @@ bank organization.
 
 ## Capture model
 
-Arming chooses the first empty visible pad in the selected bank, or its first
-pad when full. An idle mouse selection overrides that target. A hidden output
-reports the engine's actual target to the UI. The first Sequential note-on
-begins capture there. Each later note-on is a sample-accurate
-boundary: the active slice is published and capture continues at the next
-visible pad. Capture advances from Bank A through Bank D and stops rather than
-silently wrapping or overwriting earlier material. The 12- and 8-pad layouts
+Arming chooses the first empty visible pad, or the first when full; idle mouse
+selection overrides it. A hidden output reports the target. The first
+Sequential note-on begins capture; later note-ons publish sample-accurate
+boundaries and advance. Capture runs Bank A through D and stops without
+wrapping. The 12- and 8-pad layouts
 skip hidden storage slots at the end of each bank in Selected Bank mode. All
 Banks instead advances through contiguous layout-sized pages. Note-off does not
 affect capture. Active recording ignores manual retargeting. Disarming or
@@ -81,6 +75,13 @@ Pad storage mutations are control-thread work. A shared gate makes `run()`
 output silence while control code copies or replaces storage at a block
 boundary; its audio side only checks lock-free atomics. File access, codecs, and
 offline rendering never run in the callback. See `SamplerEngine.hpp`.
+
+Collapse Gap moves shared-pool block mappings and complete pad settings without
+copying PCM. Split Sample stages only the selected PCM, snapshots generations
+for the affected suffix, and atomically shifts whole pads before writing the two
+halves. Pad generations cover audio and settings changes so a pending split is
+rejected if its plan becomes stale. Both operations are confined to the active
+visible bank/page.
 
 Four hidden outputs carry raw-input and final-output peaks.
 Meter redraws are 30-FPS capped, change only at LED boundaries, and batch

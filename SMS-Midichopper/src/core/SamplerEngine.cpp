@@ -903,6 +903,195 @@ bool SamplerEngine::rechopPads(const std::uint32_t firstPad,
     return true;
 }
 
+void SamplerEngine::movePadContents(const std::uint32_t source,
+                                    const std::uint32_t destination) noexcept {
+    auto& from = pads_[source];
+    auto& to = pads_[destination];
+    const auto playback = padPlaybackSettings(source);
+    const auto mixer = padMixerSettings(source);
+
+    hardStopVoice(source);
+    hardStopVoice(destination);
+    to.recording = false;
+    from.recording = false;
+    to.publishedRecording.store(false, std::memory_order_release);
+    from.publishedRecording.store(false, std::memory_order_release);
+    for (std::uint32_t block = 0; block < blocks_per_pad_; ++block) {
+        std::swap(pad_blocks_[static_cast<std::size_t>(source) * blocks_per_pad_ + block],
+                  pad_blocks_[static_cast<std::size_t>(destination) * blocks_per_pad_ + block]);
+    }
+
+    to.recordedFrames = from.recordedFrames;
+    to.recordPosition = from.recordPosition;
+    to.allocatedBlocks = from.allocatedBlocks;
+    to.recordPeak = from.recordPeak;
+    to.recordSumSquares = from.recordSumSquares;
+    to.sourceSampleRate.store(
+        from.sourceSampleRate.load(std::memory_order_acquire), std::memory_order_release);
+    to.publishedFrames.store(
+        from.publishedFrames.load(std::memory_order_acquire), std::memory_order_release);
+    to.publishedPeak.store(
+        from.publishedPeak.load(std::memory_order_relaxed), std::memory_order_relaxed);
+    to.publishedRms.store(
+        from.publishedRms.load(std::memory_order_relaxed), std::memory_order_relaxed);
+    to.occupied.store(true, std::memory_order_release);
+    setPadPlaybackSettings(destination, playback);
+    setPadMixerSettings(destination, mixer);
+
+    from.recordedFrames = 0U;
+    from.recordPosition = 0U;
+    from.allocatedBlocks = 0U;
+    from.recordPeak = 0.0f;
+    from.recordSumSquares = 0.0;
+    from.sourceSampleRate.store(sample_rate_, std::memory_order_release);
+    from.publishedFrames.store(0U, std::memory_order_release);
+    from.publishedPeak.store(0.0f, std::memory_order_relaxed);
+    from.publishedRms.store(0.0f, std::memory_order_relaxed);
+    from.occupied.store(false, std::memory_order_release);
+    setPadPlaybackSettings(source, {});
+    setPadMixerSettings(source, {});
+    from.generation.fetch_add(1U, std::memory_order_release);
+    to.generation.fetch_add(1U, std::memory_order_release);
+}
+
+bool SamplerEngine::collapsePadGap(const std::uint32_t firstPad,
+                                   const std::uint32_t padCount,
+                                   const std::uint32_t targetPad) noexcept {
+    const std::uint32_t visibleFirst = static_cast<std::uint32_t>(settings_.activeBank) *
+        bankStride(settings_.padsPerBank, settings_.midiBankMode);
+    if (settings_.armed || activePad_ >= 0 || firstPad != visibleFirst ||
+        padCount != settings_.padsPerBank || padCount == 0U || padCount > kPadsPerBank ||
+        firstPad >= kPadCount || padCount > kPadCount - firstPad ||
+        targetPad < firstPad || targetPad >= firstPad + padCount ||
+        pads_[targetPad].occupied.load(std::memory_order_acquire))
+        return false;
+
+    std::uint32_t gapStart = targetPad;
+    while (gapStart > firstPad &&
+           !pads_[gapStart - 1U].occupied.load(std::memory_order_acquire))
+        --gapStart;
+    std::uint32_t runStart = targetPad + 1U;
+    const std::uint32_t end = firstPad + padCount;
+    while (runStart < end &&
+           !pads_[runStart].occupied.load(std::memory_order_acquire))
+        ++runStart;
+    if (runStart == end)
+        return false;
+    std::uint32_t runEnd = runStart;
+    while (runEnd < end && pads_[runEnd].occupied.load(std::memory_order_acquire))
+        ++runEnd;
+
+    stopChopPreview();
+    const std::uint32_t gapSize = runStart - gapStart;
+    for (std::uint32_t source = runStart; source < runEnd; ++source)
+        movePadContents(source, source - gapSize);
+    lastCommittedPad_ = -1;
+    playbackPositionOutput_ = 0.0f;
+    playbackPositionHoldFrames_ = 0U;
+    playbackPositionWasActive_ = false;
+    return true;
+}
+
+void SamplerEngine::storeSplitHalf(const std::uint32_t pad,
+                                   const std::vector<float>& source,
+                                   const std::uint32_t sourceStart,
+                                   const std::uint32_t frames,
+                                   const double sourceRate) noexcept {
+    auto& destination = pads_[pad];
+    float peak = 0.0f;
+    double sumSquares = 0.0;
+    for (std::uint32_t frame = 0; frame < frames; ++frame) {
+        const auto sourceOffset = static_cast<std::size_t>(sourceStart + frame) * 2U;
+        const float left = source[sourceOffset];
+        const float right = source[sourceOffset + 1U];
+        static_cast<void>(storeSample(pad, frame, left, right));
+        peak = std::max(peak, std::max(std::abs(left), std::abs(right)));
+        sumSquares += static_cast<double>(left) * left +
+                      static_cast<double>(right) * right;
+    }
+    destination.sourceSampleRate.store(sourceRate, std::memory_order_release);
+    destination.recording = false;
+    destination.publishedRecording.store(false, std::memory_order_release);
+    destination.recordedFrames = destination.recordPosition = frames;
+    destination.recordPeak = peak;
+    destination.recordSumSquares = sumSquares;
+    destination.publishedPeak.store(peak, std::memory_order_relaxed);
+    destination.publishedRms.store(static_cast<float>(std::sqrt(
+        sumSquares / (2.0 * static_cast<double>(frames)))), std::memory_order_relaxed);
+    destination.publishedFrames.store(frames, std::memory_order_release);
+    destination.occupied.store(true, std::memory_order_release);
+    destination.generation.fetch_add(1U, std::memory_order_release);
+}
+
+bool SamplerEngine::splitPadAndShiftRight(
+    const std::uint32_t firstPad, const std::uint32_t emptyPad,
+    const std::uint32_t splitFrame,
+    const std::span<const std::uint64_t> expectedGenerations) {
+    const std::uint32_t visibleFirst = static_cast<std::uint32_t>(settings_.activeBank) *
+        bankStride(settings_.padsPerBank, settings_.midiBankMode);
+    const std::uint32_t visibleEnd = visibleFirst + settings_.padsPerBank;
+    if (settings_.armed || activePad_ >= 0 || firstPad < visibleFirst ||
+        firstPad >= visibleEnd || emptyPad >= visibleEnd ||
+        firstPad >= kPadCount || emptyPad <= firstPad ||
+        emptyPad >= kPadCount || emptyPad - firstPad >= kPadsPerBank ||
+        expectedGenerations.size() != emptyPad - firstPad + 1U)
+        return false;
+
+    for (std::uint32_t pad = firstPad; pad <= emptyPad; ++pad) {
+        const auto& current = pads_[pad];
+        if (current.generation.load(std::memory_order_acquire) !=
+            expectedGenerations[pad - firstPad])
+            return false;
+        const bool shouldBeOccupied = pad < emptyPad;
+        if (current.occupied.load(std::memory_order_acquire) != shouldBeOccupied)
+            return false;
+    }
+
+    auto& sourcePad = pads_[firstPad];
+    const std::uint32_t sourceFrames =
+        sourcePad.publishedFrames.load(std::memory_order_acquire);
+    if (splitFrame == 0U || splitFrame >= sourceFrames)
+        return false;
+    const std::uint32_t suffixFrames = sourceFrames - splitFrame;
+    const std::uint32_t requiredBlocks =
+        (splitFrame + kSampleBlockFrames - 1U) / kSampleBlockFrames +
+        (suffixFrames + kSampleBlockFrames - 1U) / kSampleBlockFrames;
+    if (requiredBlocks > free_block_count_ + sourcePad.allocatedBlocks)
+        return false;
+
+    std::vector<float> source(static_cast<std::size_t>(sourceFrames) * 2U);
+    for (std::uint32_t frame = 0; frame < sourceFrames; ++frame) {
+        const auto offset = static_cast<std::size_t>(frame) * 2U;
+        source[offset] = sampleAt(firstPad, frame, 0U);
+        source[offset + 1U] = sampleAt(firstPad, frame, 1U);
+    }
+    const double sourceRate =
+        sourcePad.sourceSampleRate.load(std::memory_order_acquire);
+    const auto mixer = padMixerSettings(firstPad);
+
+    stopChopPreview();
+    for (std::uint32_t pad = emptyPad; pad > firstPad + 1U; --pad)
+        movePadContents(pad - 1U, pad);
+
+    hardStopVoice(firstPad);
+    hardStopVoice(firstPad + 1U);
+    releasePadBlocks(firstPad);
+    releasePadBlocks(firstPad + 1U);
+    sourcePad.publishedFrames.store(0U, std::memory_order_release);
+    sourcePad.occupied.store(false, std::memory_order_release);
+    storeSplitHalf(firstPad, source, 0U, splitFrame, sourceRate);
+    storeSplitHalf(firstPad + 1U, source, splitFrame, suffixFrames, sourceRate);
+    setPadPlaybackSettings(firstPad, {});
+    setPadPlaybackSettings(firstPad + 1U, {});
+    setPadMixerSettings(firstPad, mixer);
+    setPadMixerSettings(firstPad + 1U, mixer);
+    lastCommittedPad_ = -1;
+    playbackPositionOutput_ = 0.0f;
+    playbackPositionHoldFrames_ = 0U;
+    playbackPositionWasActive_ = false;
+    return true;
+}
+
 void SamplerEngine::startChopPreview(const std::uint32_t firstPad,
                                      const std::uint32_t padCount,
                                      const std::uint64_t sourceFrame,
@@ -1008,12 +1197,21 @@ void SamplerEngine::setPadPlaybackSettings(
     if (pad >= kPadCount) return;
     const auto settings = sms::dsp::sanitize(requested);
     auto& p = pads_[pad];
+    const bool changed =
+        p.regionStart.load(std::memory_order_acquire) != settings.start ||
+        p.regionEnd.load(std::memory_order_acquire) != settings.end ||
+        p.attackSeconds.load(std::memory_order_acquire) != settings.attackSeconds ||
+        p.decaySeconds.load(std::memory_order_acquire) != settings.decaySeconds ||
+        p.sustainLevel.load(std::memory_order_acquire) != settings.sustainLevel ||
+        p.releaseSeconds.load(std::memory_order_acquire) != settings.releaseSeconds;
     p.regionStart.store(settings.start, std::memory_order_release);
     p.regionEnd.store(settings.end, std::memory_order_release);
     p.attackSeconds.store(settings.attackSeconds, std::memory_order_release);
     p.decaySeconds.store(settings.decaySeconds, std::memory_order_release);
     p.sustainLevel.store(settings.sustainLevel, std::memory_order_release);
     p.releaseSeconds.store(settings.releaseSeconds, std::memory_order_release);
+    if (changed)
+        p.generation.fetch_add(1U, std::memory_order_release);
 }
 
 sms::dsp::SampleMixerSettings SamplerEngine::padMixerSettings(
@@ -1034,9 +1232,15 @@ void SamplerEngine::setPadMixerSettings(
     if (pad >= kPadCount) return;
     const auto settings = sms::dsp::sanitize(requested);
     auto& p = pads_[pad];
+    const bool changed =
+        p.mixerGainDecibels.load(std::memory_order_acquire) != settings.gainDecibels ||
+        p.mixerPan.load(std::memory_order_acquire) != settings.pan ||
+        p.mixerTuneSemitones.load(std::memory_order_acquire) != settings.tuneSemitones;
     p.mixerGainDecibels.store(settings.gainDecibels, std::memory_order_release);
     p.mixerPan.store(settings.pan, std::memory_order_release);
     p.mixerTuneSemitones.store(settings.tuneSemitones, std::memory_order_release);
+    if (changed)
+        p.generation.fetch_add(1U, std::memory_order_release);
 }
 
 void SamplerEngine::clearPad(std::uint32_t pad) noexcept {

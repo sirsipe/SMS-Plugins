@@ -41,6 +41,7 @@ struct ViewState {
     sms::ui::InteractiveTarget hoveredTarget;
     bool editorMode = false;
     bool chopEditorMode = false;
+    bool chopSplitMode = false;
     bool playOnSelect = false;
     bool hasWaveform = false;
     std::array<float, 2> inputLevels{};
