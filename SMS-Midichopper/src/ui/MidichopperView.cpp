@@ -510,7 +510,8 @@ private:
                 state_.chopWaveforms, state_.chopOffsets, pad);
             const double rate = chop::sampleRate(state_.chopWaveforms);
             const double seconds = state_.chopReady && rate > 0.0 ? frames / rate : 0.0;
-            const bool previewEnabled = state_.chopReady && frames != 0U;
+            const bool previewEnabled = state_.chopReady && frames != 0U &&
+                !state_.chopApplying;
             std::snprintf(label, sizeof(label), "PAD %02d   %.2f s",
                           localPadForGlobalPad(state_.chopFirstPad + pad) + 1, seconds);
             sms::ui::dpf::drawSegment(canvas_, uiLayout::chopPadButton(pad), label,
@@ -539,17 +540,72 @@ private:
             "Drag CUT 1 or CUT 2. Click a pad button below the waveform to hear that raw slice using the pending cuts.",
             nullptr);
         canvas_.textBox(690.0f, 382.0f, 222.0f,
-            "Apply rewrites the three samples. Pads touching a changed cut reset Start, End and ADSR.",
+            "Apply saves cuts and stays here. A zero-length pad is cleared. Arrows discard unapplied cuts.",
             nullptr);
         sms::ui::dpf::drawSegment(canvas_, uiLayout::chopApply,
                                   state_.chopApplying ? "APPLYING..." : "APPLY",
                                   false, colors.selection,
                                   hovered(InteractiveType::chopApply),
                                   state_.chopReady && state_.chopDirty && !state_.chopApplying);
-        sms::ui::dpf::drawSegment(canvas_, uiLayout::chopCancel, "CANCEL", false,
-                                  colors.controlAccent,
-                                  hovered(InteractiveType::chopCancel),
-                                  !state_.chopApplying);
+        drawChopArrow(uiLayout::chopPrevious, false,
+            hovered(InteractiveType::chopPrevious),
+            state_.chopPreviousEnabled && !state_.chopApplying);
+        drawChopExit();
+        drawChopArrow(uiLayout::chopNext, true,
+            hovered(InteractiveType::chopNext),
+            state_.chopNextEnabled && !state_.chopApplying);
+    }
+
+    void drawChopArrow(const sms::ui::Rect bounds, const bool pointsRight,
+                       const bool isHovered, const bool enabled)
+    {
+        const auto& colors = sms::ui::dpf::theme();
+        sms::ui::dpf::drawRaisedControlSurface(canvas_, bounds, colors.activityPlayback,
+            {false, isHovered, false, enabled});
+        const float centerY = bounds.y + bounds.height * 0.5f;
+        canvas_.beginPath();
+        canvas_.moveTo(uiLayout::chopArrowTailX(bounds, pointsRight), centerY - 10.0f);
+        canvas_.lineTo(uiLayout::chopArrowTipX(bounds, pointsRight), centerY);
+        canvas_.lineTo(uiLayout::chopArrowTailX(bounds, pointsRight), centerY + 10.0f);
+        canvas_.strokeColor((isHovered ? colors.activityPlayback : colors.contentSecondary)
+            .withAlpha(enabled ? 1.0f : colors.disabledAlpha));
+        canvas_.strokeWidth(2.5f);
+        canvas_.stroke();
+    }
+
+    void drawChopExit()
+    {
+        const auto& colors = sms::ui::dpf::theme();
+        const auto bounds = uiLayout::chopExit;
+        const float centerX = bounds.x + bounds.width * 0.5f;
+        const float centerY = bounds.y + bounds.height * 0.5f;
+        const float radius = bounds.width * 0.5f;
+        const bool isHovered = hovered(InteractiveType::chopExit);
+        const bool enabled = !state_.chopApplying;
+        const float alpha = enabled ? 1.0f : colors.disabledAlpha;
+        canvas_.beginPath();
+        canvas_.circle(centerX + 1.0f, centerY + 2.0f, radius + 2.0f);
+        canvas_.fillPaint(canvas_.radialGradient(centerX, centerY, radius * 0.35f,
+            radius + 3.0f, colors.shadow.withAlpha(0.72f * alpha),
+            colors.shadow.withAlpha(0.02f)));
+        canvas_.fill();
+        canvas_.beginPath();
+        canvas_.circle(centerX, centerY, radius);
+        canvas_.fillPaint(canvas_.linearGradient(centerX, bounds.y, centerX,
+            bounds.y + bounds.height, colors.controlTop.withAlpha(alpha),
+            colors.controlBottom.withAlpha(alpha)));
+        canvas_.fill();
+        canvas_.strokeColor(isHovered && enabled
+            ? colors.controlAccent : colors.outline.withAlpha(0.8f * alpha));
+        canvas_.strokeWidth(isHovered && enabled ? 2.0f : 1.0f);
+        canvas_.stroke();
+        canvas_.fontFace(NANOVG_DEJAVU_SANS_TTF);
+        canvas_.fontSize(10.0f);
+        canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_CENTER |
+                          DGL_NAMESPACE::NanoVG::ALIGN_MIDDLE);
+        canvas_.fillColor((isHovered ? colors.controlAccent : colors.contentSecondary)
+            .withAlpha(alpha));
+        canvas_.text(centerX, centerY, "EXIT", nullptr);
     }
 
     void drawEditorPadPanel()

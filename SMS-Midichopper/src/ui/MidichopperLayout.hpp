@@ -29,8 +29,32 @@ inline constexpr sms::ui::Rect playOnSelect{690.0f, 628.0f, 222.0f, 34.0f};
 inline constexpr sms::ui::Rect openEditor{690.0f, 108.0f, 222.0f, 28.0f};
 inline constexpr sms::ui::Rect closeEditor{690.0f, 112.0f, 222.0f, 32.0f};
 inline constexpr sms::ui::Rect chopWaveform{46.0f, 170.0f, 586.0f, 250.0f};
-inline constexpr sms::ui::Rect chopApply{690.0f, 500.0f, 108.0f, 38.0f};
-inline constexpr sms::ui::Rect chopCancel{804.0f, 500.0f, 108.0f, 38.0f};
+inline constexpr sms::ui::Rect chopApply{690.0f, 480.0f, 222.0f, 38.0f};
+inline constexpr sms::ui::Rect chopPrevious{690.0f, 542.0f, 64.0f, 52.0f};
+inline constexpr sms::ui::Rect chopExit{770.0f, 534.0f, 64.0f, 64.0f};
+inline constexpr sms::ui::Rect chopNext{848.0f, 542.0f, 64.0f, 52.0f};
+
+[[nodiscard]] constexpr bool chopExitContains(const sms::ui::Point point) noexcept
+{
+    const float centerX = chopExit.x + chopExit.width * 0.5f;
+    const float centerY = chopExit.y + chopExit.height * 0.5f;
+    const float dx = point.x - centerX;
+    const float dy = point.y - centerY;
+    const float radius = chopExit.width * 0.5f;
+    return dx * dx + dy * dy <= radius * radius;
+}
+
+[[nodiscard]] constexpr float chopArrowTailX(const sms::ui::Rect bounds,
+                                             const bool pointsRight) noexcept
+{
+    return bounds.x + bounds.width * 0.5f + (pointsRight ? -9.0f : 9.0f);
+}
+
+[[nodiscard]] constexpr float chopArrowTipX(const sms::ui::Rect bounds,
+                                            const bool pointsRight) noexcept
+{
+    return bounds.x + bounds.width * 0.5f + (pointsRight ? 3.0f : -3.0f);
+}
 inline constexpr sms::ui::Rect playMode{690.0f, 145.0f, 108.0f, 42.0f};
 inline constexpr sms::ui::Rect armMode{804.0f, 145.0f, 108.0f, 42.0f};
 inline constexpr sms::ui::Rect sequentialMode{690.0f, 220.0f, 106.0f, 38.0f};

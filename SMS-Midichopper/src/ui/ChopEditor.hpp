@@ -14,7 +14,17 @@ namespace midichopper::ui::chop {
 
 inline constexpr std::uint32_t kPadCount = 3U;
 inline constexpr std::uint32_t kBoundaryCount = kPadCount - 1U;
-inline constexpr std::uint32_t kMinimumSliceFrames = 1U;
+
+/** Return the adjacent center-pad slot, or -1 when its window would cross a bank edge. */
+[[nodiscard]] constexpr int navigationTarget(const int currentPad,
+                                             const int direction,
+                                             const int visiblePadCount) noexcept
+{
+    if (direction == 0 || visiblePadCount < static_cast<int>(kPadCount))
+        return -1;
+    const int next = currentPad + (direction < 0 ? -1 : 1);
+    return next > 0 && next + 1 < visiblePadCount ? next : -1;
+}
 
 [[nodiscard]] inline bool ready(
     const std::span<const sms::audio::WaveformSummary> waveforms) noexcept
@@ -127,8 +137,7 @@ inline constexpr std::uint32_t kMinimumSliceFrames = 1U;
         ? static_cast<std::int64_t>(totalFrames(waveforms))
         : adjustedBoundary(waveforms, offsets, boundary + 1);
     return std::clamp(requested,
-        previous + static_cast<std::int64_t>(kMinimumSliceFrames) - original,
-        next - static_cast<std::int64_t>(kMinimumSliceFrames) - original);
+        previous - original, next - original);
 }
 
 [[nodiscard]] inline std::int64_t wheelAdjustedBoundaryOffset(

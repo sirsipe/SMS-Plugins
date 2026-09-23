@@ -235,6 +235,44 @@ void interactionTargets()
               interaction::interactiveTargetAt(center(layout::chopPadButton(1)), context),
               interaction::InteractiveType::chopPadPreview, 1),
           "cut-point editor exposes both handles and three-pad raw preview");
+    check(interaction::isTarget(
+              interaction::interactiveTargetAt(center(layout::chopExit), context),
+              interaction::InteractiveType::chopExit) &&
+          !interaction::interactiveTargetAt(
+              {layout::chopExit.x + 1.0f, layout::chopExit.y + 1.0f}, context).valid() &&
+          !interaction::interactiveTargetAt(center(layout::chopApply), context).valid() &&
+          !interaction::interactiveTargetAt(center(layout::chopPrevious), context).valid() &&
+          !interaction::interactiveTargetAt(center(layout::chopNext), context).valid(),
+          "cut editor exposes Exit while disabled Apply and navigation are inert");
+    check(layout::chopArrowTipX(layout::chopPrevious, false) <
+              layout::chopArrowTailX(layout::chopPrevious, false) &&
+          layout::chopArrowTipX(layout::chopNext, true) >
+              layout::chopArrowTailX(layout::chopNext, true),
+          "cut editor arrow glyphs point toward their navigation direction");
+    context.chopApplyEnabled = true;
+    context.chopPreviousEnabled = true;
+    context.chopNextEnabled = true;
+    check(interaction::isTarget(
+              interaction::interactiveTargetAt(center(layout::chopApply), context),
+              interaction::InteractiveType::chopApply) &&
+          interaction::isTarget(
+              interaction::interactiveTargetAt(center(layout::chopPrevious), context),
+              interaction::InteractiveType::chopPrevious) &&
+          interaction::isTarget(
+              interaction::interactiveTargetAt(center(layout::chopNext), context),
+              interaction::InteractiveType::chopNext),
+          "enabled Apply and previous/next buttons resolve independently");
+    context.chopApplying = true;
+    context.chopApplyEnabled = false;
+    context.chopPreviousEnabled = false;
+    context.chopExitEnabled = false;
+    context.chopNextEnabled = false;
+    check(!interaction::interactiveTargetAt(center(layout::chopPadButton(1)), context).valid() &&
+          !interaction::interactiveTargetAt(center(interaction::chop::boundaryHandle(
+              layout::chopWaveform, chopWaveforms, chopOffsets, 0)), context).valid(),
+          "cut handles and previews are inert while Apply is in flight");
+    context.chopApplying = false;
+    context.chopExitEnabled = true;
     chopWaveforms[0].frames = 0U;
     check(!interaction::interactiveTargetAt(center(layout::chopPadButton(0)), context).valid(),
           "an empty proposed slice has no preview target");
@@ -459,6 +497,11 @@ void waveformGeometry()
 
 void chopEditorGeometry()
 {
+    check(midichopper::ui::chop::navigationTarget(1, -1, 8) == -1 &&
+          midichopper::ui::chop::navigationTarget(1, 1, 8) == 2 &&
+          midichopper::ui::chop::navigationTarget(6, 1, 8) == -1 &&
+          midichopper::ui::chop::navigationTarget(6, -1, 8) == 5,
+          "cut editor navigation keeps a neighbor on both sides");
     std::array<sms::audio::WaveformSummary, 3> waveforms{};
     for (std::size_t index = 0; index < waveforms.size(); ++index) {
         waveforms[index].pad = static_cast<std::uint32_t>(index);
@@ -478,9 +521,9 @@ void chopEditorGeometry()
           midichopper::ui::chop::boundaryAt(
               center(second), bounds, waveforms, offsets) == 1,
           "both cut handles follow the original three-pad boundaries");
-    check(midichopper::ui::chop::clampBoundaryOffset(waveforms, offsets, 0, -200) == -99 &&
-          midichopper::ui::chop::clampBoundaryOffset(waveforms, offsets, 0, 200) == 99,
-          "chop boundary retains at least one frame in each neighbor");
+    check(midichopper::ui::chop::clampBoundaryOffset(waveforms, offsets, 0, -200) == -100 &&
+          midichopper::ui::chop::clampBoundaryOffset(waveforms, offsets, 0, 200) == 100,
+          "chop boundary permits either neighbor to reach zero frames");
     check(midichopper::ui::chop::wheelAdjustedBoundaryOffset(
               waveforms, offsets, 0, 1.0f, bounds) == 1 &&
           midichopper::ui::chop::wheelAdjustedBoundaryOffset(
@@ -494,6 +537,9 @@ void chopEditorGeometry()
           "rolling edit transfers duration between adjacent pads");
     check(midichopper::ui::chop::adjustedStartFrame(waveforms, moved, 1) == 150U,
           "middle raw preview starts at the pending first cut");
+    moved[0] = 100;
+    check(midichopper::ui::chop::adjustedFrames(waveforms, moved, 1) == 0U,
+          "coincident boundaries produce a zero-length middle pad");
     const auto combined = midichopper::ui::chop::combinedWaveform(waveforms);
     check(combined.frames == 300U && combined.maximum.front() < 0.2f &&
           combined.maximum.back() > 0.29f,

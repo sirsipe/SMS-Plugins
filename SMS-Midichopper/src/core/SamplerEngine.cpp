@@ -835,9 +835,7 @@ bool SamplerEngine::rechopPads(const std::uint32_t firstPad,
         if (newBoundaries[index + 1U] < newBoundaries[index])
             return false;
         const auto length = newBoundaries[index + 1U] - newBoundaries[index];
-        const bool unchangedEmptyEdge = length == 0U && originalFrames[index] == 0U &&
-            (index == 0U || index + 1U == padCount);
-        if ((length == 0U && !unchangedEmptyEdge) || length > max_frames_)
+        if (length > max_frames_)
             return false;
         newFrames[index] = static_cast<std::uint32_t>(length);
         requiredBlocks += (newFrames[index] + kSampleBlockFrames - 1U) / kSampleBlockFrames;
@@ -896,8 +894,10 @@ bool SamplerEngine::rechopPads(const std::uint32_t firstPad,
         pad.occupied.store(newFrames[index] != 0U, std::memory_order_release);
         const bool changed = (index > 0U && boundaryOffsets[index - 1U] != 0) ||
                              (index + 1U < padCount && boundaryOffsets[index] != 0);
-        setPadPlaybackSettings(padIndex, changed
+        setPadPlaybackSettings(padIndex, newFrames[index] == 0U || changed
             ? sms::dsp::SamplePlaybackSettings{} : originalSettings[index]);
+        if (newFrames[index] == 0U)
+            setPadMixerSettings(padIndex, {});
         pad.generation.fetch_add(1U, std::memory_order_release);
     }
     return true;

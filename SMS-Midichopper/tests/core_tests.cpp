@@ -16,6 +16,19 @@ void check(bool value, const char* message) {
 }
 void close(float a, float b, const char* message) { check(std::abs(a - b) < 1.0e-5f, message); }
 
+void checkPadSettingsCleared(const midichopper::SamplerEngine& engine,
+                             const std::uint32_t pad,
+                             const char* const message)
+{
+    const auto playback = engine.padPlaybackSettings(pad);
+    const auto mixer = engine.padMixerSettings(pad);
+    check(playback.start == 0.0f && playback.end == 1.0f &&
+          playback.attackSeconds == 0.0f && playback.decaySeconds == 0.0f &&
+          playback.sustainLevel == 1.0f && playback.releaseSeconds == 0.0f &&
+          mixer.gainDecibels == 0.0f && mixer.pan == 0.0f &&
+          mixer.tuneSemitones == 0.0f, message);
+}
+
 void live_peak_meter() {
     sms::dsp::StereoPeakMeter meter;
     const float left[] = {-0.25f, 0.5f, -0.1f};
@@ -103,6 +116,9 @@ void rechop_and_raw_preview() {
     shaped.start = 0.25f;
     shaped.end = 0.75f;
     shaped.attackSeconds = 0.1f;
+    shaped.decaySeconds = 0.2f;
+    shaped.sustainLevel = 0.4f;
+    shaped.releaseSeconds = 0.3f;
     engine.setPadPlaybackSettings(0, shaped);
     engine.setPadPlaybackSettings(2, shaped);
     sms::dsp::SampleMixerSettings mix;
@@ -166,9 +182,56 @@ void rechop_and_raw_preview() {
     close(movedLeft.stereo[6], 4.0f, "negative move preserves left pad order");
     close(movedRight.stereo[0], 5.0f, "negative move restores the right pad prefix");
 
+    engine.setPadPlaybackSettings(0, shaped);
+    engine.setPadMixerSettings(0, mix);
     const std::array<std::int64_t, 2> emptyOccupied{{-4, 0}};
-    check(!engine.rechopPads(0, 3, emptyOccupied),
-          "rechop rejects emptying an occupied pad");
+    check(engine.rechopPads(0, 3, emptyOccupied),
+          "rechop can empty an occupied edge pad");
+    check(!engine.padMetadata(0).occupied && engine.padMetadata(0).frames == 0U &&
+          engine.padMetadata(0).peak == 0.0f && engine.padMetadata(0).rms == 0.0f,
+          "zero-length edge result is published as an empty pad");
+    checkPadSettingsCleared(engine, 0,
+        "emptying an edge pad clears all playback and mixer settings");
+    check(engine.exportPad(1, movedRight) && movedRight.frames == 8U,
+          "audio from an emptied edge pad transfers to its neighbor");
+    close(movedRight.stereo[0], 1.0f, "transferred audio keeps the combined source start");
+
+    engine.setPadPlaybackSettings(1, shaped);
+    engine.setPadMixerSettings(1, mix);
+    const std::array<std::int64_t, 2> emptyMiddle{{0, -8}};
+    check(engine.rechopPads(0, 3, emptyMiddle),
+          "rechop can empty the middle pad");
+    check(!engine.padMetadata(1).occupied && engine.padMetadata(1).frames == 0U,
+          "zero-length middle result is published as an empty pad");
+    checkPadSettingsCleared(engine, 1,
+        "emptying the middle pad clears all playback and mixer settings");
+    check(engine.exportPad(2, movedRight) && movedRight.frames == 12U &&
+          engine.padMetadata(0).frames + engine.padMetadata(1).frames +
+              engine.padMetadata(2).frames == 12U,
+          "emptying the middle pad conserves all source frames");
+    close(movedRight.stereo.front(), 1.0f,
+          "middle-pad removal preserves the combined source start");
+    close(movedRight.stereo.back(), 8.0f,
+          "middle-pad removal preserves the combined source end");
+
+    engine.setPadPlaybackSettings(2, shaped);
+    engine.setPadMixerSettings(2, mix);
+    const std::array<std::int64_t, 2> emptyRight{{0, 12}};
+    check(engine.rechopPads(0, 3, emptyRight),
+          "rechop can empty an occupied right edge pad");
+    check(!engine.padMetadata(2).occupied && engine.padMetadata(2).frames == 0U,
+          "zero-length right edge result is published as an empty pad");
+    checkPadSettingsCleared(engine, 2,
+        "emptying the right pad clears all playback and mixer settings");
+    check(engine.exportPad(1, movedRight) && movedRight.frames == 12U &&
+          engine.padMetadata(0).frames + engine.padMetadata(1).frames +
+              engine.padMetadata(2).frames == 12U,
+          "emptying the right pad conserves all source frames");
+    close(movedRight.stereo.front(), 1.0f,
+          "right-pad removal preserves the combined source start");
+    close(movedRight.stereo.back(), 8.0f,
+          "right-pad removal preserves the combined source end");
+
     const std::array<std::int64_t, 2> outsideSource{{-7, 0}};
     check(!engine.rechopPads(0, 3, outsideSource),
           "rechop rejects a cut outside the source");

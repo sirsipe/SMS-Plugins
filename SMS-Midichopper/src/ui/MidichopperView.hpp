@@ -61,6 +61,8 @@ struct ViewState {
     bool chopReady = false;
     bool chopDirty = false;
     bool chopApplying = false;
+    bool chopPreviousEnabled = false;
+    bool chopNextEnabled = false;
     const char* status = "";
 };
 

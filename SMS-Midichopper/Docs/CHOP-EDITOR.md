@@ -17,13 +17,20 @@ selected sample. An empty neighbor stays empty if its boundary is not moved.
 
 The three buttons below the waveform represent those three pads. Click one to
 hear only its proposed raw slice. A zero-length pad button is disabled until a
-cut gives it audio. Preview ignores Start/End, ADSR, and mixer settings but obeys
-the two pending cut positions.
+cut gives it audio. You can also move a cut all the way to a source edge or the
+other cut. Applying a zero-length result empties that pad and clears all of its
+settings. Preview ignores Start/End, ADSR, and mixer settings but obeys the two
+pending cut positions.
 
-Choose **Apply** to rewrite the three samples at the proposed cuts. Start, End,
-and ADSR return to defaults on pads touching a changed cut. Gain, Pan, and Tune
-are preserved. Choose **Cancel** to discard the proposed cuts without changing
-any sample.
+Choose **Apply** to rewrite the three samples at the proposed cuts. Apply stays
+in the editor and becomes disabled until you make another change. Start, End,
+and ADSR return to defaults on non-empty pads touching a changed cut. Gain, Pan,
+and Tune are preserved unless the pad is emptied.
+
+Use the left and right arrows to adjust the previous or next eligible pad in
+the current bank. Pending, unapplied cuts are discarded when you navigate. Use
+the round **Exit** button between the arrows to discard pending cuts and leave
+the view.
 
 All non-empty samples must use the same sample rate. The plug-in does not store
 capture-session identity, so it cannot prove that neighboring pads came from

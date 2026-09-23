@@ -33,7 +33,9 @@ enum class InteractiveType : int {
     chopBoundary,
     chopPadPreview,
     chopApply,
-    chopCancel,
+    chopPrevious,
+    chopExit,
+    chopNext,
     playMode,
     armMode,
     sequentialMode,
@@ -240,7 +242,11 @@ struct InteractionContext {
     bool fixedCapture = false;
     bool captureActive = false;
     bool chopReady = false;
+    bool chopApplying = false;
     bool chopApplyEnabled = false;
+    bool chopPreviousEnabled = false;
+    bool chopExitEnabled = true;
+    bool chopNextEnabled = false;
     int padLayout = 0;
     sms::ui::ContextMenuGeometry padContextMenu;
     std::span<const bool> padContextMenuEnabled;
@@ -285,8 +291,14 @@ interactiveTargetAt(const sms::ui::Point point, const InteractionContext& contex
     if (context.chopEditorMode) {
         if (context.chopApplyEnabled && uiLayout::chopApply.contains(point))
             return target(InteractiveType::chopApply);
-        if (uiLayout::chopCancel.contains(point))
-            return target(InteractiveType::chopCancel);
+        if (context.chopPreviousEnabled && uiLayout::chopPrevious.contains(point))
+            return target(InteractiveType::chopPrevious);
+        if (context.chopExitEnabled && uiLayout::chopExitContains(point))
+            return target(InteractiveType::chopExit);
+        if (context.chopNextEnabled && uiLayout::chopNext.contains(point))
+            return target(InteractiveType::chopNext);
+        if (context.chopApplying)
+            return sms::ui::kNoInteractiveTarget;
         const int boundary = chop::boundaryAt(
             point, uiLayout::chopWaveform, context.chopWaveforms, context.chopOffsets);
         if (boundary >= 0)

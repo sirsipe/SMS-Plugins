@@ -584,11 +584,9 @@ protected:
         {
             fChopApplying = false;
             if (std::strcmp(value, "CH1;OK") == 0) {
-                copyString(fStatus, "Cut points applied — affected shaping reset");
                 stopChopPreview();
-                fChopEditorMode = false;
-                fChopFirstPad = -1;
-                refreshSelectedWaveform();
+                resetChopWaveforms();
+                copyString(fStatus, "Cut points applied");
             } else if (std::strncmp(value, "CH1;ERROR;", 10U) == 0) {
                 copyString(fStatus, value + 10U);
             }
@@ -694,7 +692,7 @@ protected:
                 fChopOffsets.data(), fChopOffsets.size()},
             fChopFirstPad, fSelectedPad, fChopPreviewPosition, fChopPreviewPad,
             fChopActiveBoundary, chopReady(),
-            chopDirty(), fChopApplying, fStatus,
+            chopDirty(), fChopApplying, canNavigateChop(-1), canNavigateChop(1), fStatus,
         };
         midichopper::ui::draw(*this, view);
         endLogicalDisplay();
@@ -828,9 +826,19 @@ protected:
                     return true;
                 }
                 if (midichopper::ui::isTarget(
-                        clicked, midichopper::ui::InteractiveType::chopCancel)) {
+                        clicked, midichopper::ui::InteractiveType::chopPrevious)) {
+                    navigateChopEditor(-1);
+                    return true;
+                }
+                if (midichopper::ui::isTarget(
+                        clicked, midichopper::ui::InteractiveType::chopExit)) {
                     if (!fChopApplying)
                         cancelChopEditor();
+                    return true;
+                }
+                if (midichopper::ui::isTarget(
+                        clicked, midichopper::ui::InteractiveType::chopNext)) {
+                    navigateChopEditor(1);
                     return true;
                 }
                 return false;
@@ -1486,7 +1494,11 @@ private:
         context.fixedCapture = fRecordMode >= 0.5f;
         context.captureActive = fArm && fCurrentPad >= 0;
         context.chopReady = chopReady();
+        context.chopApplying = fChopApplying;
         context.chopApplyEnabled = chopReady() && chopDirty() && !fChopApplying;
+        context.chopPreviousEnabled = canNavigateChop(-1) && !fChopApplying;
+        context.chopExitEnabled = !fChopApplying;
+        context.chopNextEnabled = canNavigateChop(1) && !fChopApplying;
         context.padLayout = fLayout;
         context.padContextMenu = fPadContextMenu;
         context.padContextMenuEnabled = menuEnabled;
@@ -2037,6 +2049,25 @@ private:
         return midichopper::ui::chop::ready(fChopWaveforms);
     }
 
+    [[nodiscard]] bool canNavigateChop(const int direction) const noexcept
+    {
+        if (!fChopEditorMode || direction == 0)
+            return false;
+        return midichopper::ui::chop::navigationTarget(
+            localPadForGlobalPad(fSelectedPad), direction, visiblePadCount()) >= 0;
+    }
+
+    void resetChopWaveforms()
+    {
+        fChopWaveforms.fill({});
+        fChopOffsets.fill(0);
+        fChopNextWaveform = 0;
+        fChopWaveformRequestPending = false;
+        fChopActiveBoundary = -1;
+        fChopPreviewPosition = 0.0f;
+        fChopPreviewPad = -1;
+    }
+
     void beginChopEditor(const int targetPad)
     {
         const int localPad = localPadForGlobalPad(targetPad);
@@ -2048,16 +2079,19 @@ private:
         fEditorSnapshot.complete();
         fSelectedPad = targetPad;
         fChopFirstPad = targetPad - 1;
-        fChopWaveforms.fill({});
-        fChopOffsets.fill(0);
-        fChopNextWaveform = 0;
-        fChopWaveformRequestPending = false;
-        fChopActiveBoundary = -1;
+        resetChopWaveforms();
         fChopApplying = false;
-        fChopPreviewPosition = 0.0f;
-        fChopPreviewPad = -1;
         fStatus[0] = '\0';
         requestRepaint();
+    }
+
+    void navigateChopEditor(const int direction)
+    {
+        if (fChopApplying || !canNavigateChop(direction))
+            return;
+        const int nextLocalPad = midichopper::ui::chop::navigationTarget(
+            localPadForGlobalPad(fSelectedPad), direction, visiblePadCount());
+        beginChopEditor(globalPad(nextLocalPad));
     }
 
     void cancelChopEditor()
@@ -2167,7 +2201,7 @@ private:
         if (selectedBank == fBank || (fArm && fCurrentPad >= 0))
             return;
         if (fChopEditorMode) {
-            setLocalStatus("Apply or Cancel before changing bank");
+            setLocalStatus("Apply or Exit before changing bank");
             return;
         }
         const int localPad = hasSelectedPad()
@@ -2197,7 +2231,7 @@ private:
         if (selectedLayout == fLayout)
             return;
         if (fChopEditorMode) {
-            setLocalStatus("Apply or Cancel before changing layout");
+            setLocalStatus("Apply or Exit before changing layout");
             return;
         }
         fLayout = selectedLayout;
@@ -2216,7 +2250,7 @@ private:
             return;
         const int selectedMode = mode == 0 ? 0 : 1;
         if (fChopEditorMode) {
-            setLocalStatus("Apply or Cancel before changing MIDI mode");
+            setLocalStatus("Apply or Exit before changing MIDI mode");
             return;
         }
         if (selectedMode != fMidiBankMode)

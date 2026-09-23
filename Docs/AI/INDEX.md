@@ -19,7 +19,7 @@ the row needed for the task. Paths in commands are relative to the repo root.
 | VST3 state and outputs | [DPF VST3 constraints](DPF-VST3-CONSTRAINTS.md) | UI synchronization and fixed/dynamic bus boundaries |
 | User-visible behavior | [Plugin guide](../../SMS-Midichopper/README.md) | Verify against affected source/tests |
 | User WAV workflow | [WAV file guide](../../SMS-Midichopper/Docs/WAV-FILES.md) | Current formats and Linux requirements |
-| User cut-point workflow | [Adjust cut points](../../SMS-Midichopper/Docs/CHOP-EDITOR.md) | Context action, raw preview, Apply/Cancel behavior |
+| User cut-point workflow | [Adjust cut points](../../SMS-Midichopper/Docs/CHOP-EDITOR.md) | Context action, raw preview, Apply/Exit behavior |
 | Project overview | [Project README](../../README.md) | Human entry point |
 | Contributions, doc maintenance | [Contributing](../../CONTRIBUTING.md) | [Doc checker](../../scripts/check_docs.py) |
 | CI, release preparation | [Releasing](../RELEASING.md) | [Workflows](../../.github/workflows/) |

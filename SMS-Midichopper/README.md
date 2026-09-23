@@ -64,9 +64,9 @@ next bank in Selected Bank mode. All Banks uses contiguous layout-sized pages.
 **Sample Editor** groups waveform and ADSR above per-pad Gain, Pan, and
 varispeed Tune. Main-view global Volume, Pan, and Tune add to pad values.
 Mixer, ADSR, End, and global edits reach active voices next block; Start applies
-on retrigger. Tune changes pitch and duration. Rechopping preserves pad mixer
-settings. **Play on Select** auditions selections and defaults off. MIDI selects
-populated pads. Arm hides the editor.
+on retrigger. Tune changes pitch/duration. Rechopping keeps mixer settings
+unless a zero-length result empties the pad. **Play on Select** auditions
+selections. MIDI selects pads. Arm hides the editor.
 
 Right-click a middle pad and choose **Adjust cut points** to edit it with its
 neighbor slots, including empty ones. See the [cut-point guide](Docs/CHOP-EDITOR.md).

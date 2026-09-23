@@ -717,6 +717,9 @@ private:
             const std::string editor = midichopper::plugin::encodePlaybackSettings(
                 sampler_.padPlaybackSettings(pad));
             static_cast<void>(updateStateValue(kPadEditStateKeys[pad].c_str(), editor.c_str()));
+            const std::string mixer = midichopper::plugin::encodeMixerSettings(
+                sampler_.padMixerSettings(pad));
+            static_cast<void>(updateStateValue(kPadMixerStateKeys[pad].c_str(), mixer.c_str()));
         }
         static_cast<void>(updateStateValue(kChopStatusKey, "CH1;OK"));
     }

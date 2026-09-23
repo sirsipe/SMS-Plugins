@@ -1,11 +1,11 @@
 # SMS-Midichopper architecture
 
-Audience: agents changing engine, adapter, state, or UI. This describes
-implemented behavior; [VISION.md](VISION.md) describes intended scope.
+Audience: agents changing engine, adapter, state, or UI. This covers implemented
+behavior; [VISION.md](VISION.md) covers intent.
 
-SMS-Midichopper separates the sampler from the plug-in format and UI:
+SMS-Midichopper separates sampler, plug-in format, and UI:
 
-- `src/core` is a standard C++20 stereo capture/playback engine with no DPF,
+- `src/core` is a C++20 capture/playback engine with no DPF,
   LV2, window-system, or DAW dependencies.
 - `src/plugin` adapts DPF parameters, audio, MIDI, and project state to the
   engine. Start with `Parameters.hpp` for parameter indices/ranges,
@@ -74,15 +74,15 @@ volume, pan, and tune combine during playback. Active voices refresh mixer,
 ADSR, and End atomics per block; Start remains fixed until retrigger. Output
 updates seed a UI-clocked playhead that briefly holds its final position.
 
-The three-pad raw boundary workflow and its real-time contract are documented
-in [Cut Point Editor](../../Docs/AI/CHOP-EDITOR.md).
+The three-pad raw boundary workflow is documented in
+[Cut Point Editor](../../Docs/AI/CHOP-EDITOR.md).
 
 Pad storage mutations are control-thread work. A shared gate makes `run()`
 output silence while control code copies or replaces storage at a block
 boundary; its audio side only checks lock-free atomics. File access, codecs, and
 offline rendering never run in the callback. See `SamplerEngine.hpp`.
 
-Four hidden outputs carry allocation-free raw-input and final-output peaks.
+Four hidden outputs carry raw-input and final-output peaks.
 Meter redraws are 30-FPS capped, change only at LED boundaries, and batch
 colors. Input ignores settings; output follows monitoring,
 voices, envelopes, and gain. Host hard bypass that skips DSP cannot be metered.
@@ -94,7 +94,8 @@ PCM16 audio, Base64 encoded for portable DPF state. Decoding has strict size
 and structural checks. Empty pads use empty state values.
 
 Cut/ADSR and mixer values use compact versioned per-pad states. Import resets
-both; rechopping preserves mixer state. The UI retains its previous snapshot
+both; rechopping preserves mixer state on non-empty results and clears all
+settings when a pad becomes zero length. The UI retains its previous snapshot
 until matching waveform and control replies arrive, ignoring stale replies and
 retrying transient failures. DSP returns a fixed 128-bin min/max summary,
 keeping PCM blobs and waveform work outside the UI channel and audio callback.
