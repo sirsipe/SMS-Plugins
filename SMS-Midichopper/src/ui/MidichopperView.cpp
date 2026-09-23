@@ -82,10 +82,29 @@ private:
                           DGL_NAMESPACE::NanoVG::ALIGN_TOP);
         canvas_.fillColor(colors.contentSecondary);
         canvas_.text(bounds.x + bounds.width * 0.5f, bounds.y, label, nullptr);
+        const auto valueType = type == InteractiveType::mixerKnob
+            ? InteractiveType::mixerValueLabel : InteractiveType::globalMixerValueLabel;
+        const bool editing = isTarget(state_.mixerValueEntryTarget, valueType, index);
+        const auto valueBounds = type == InteractiveType::mixerKnob
+            ? uiLayout::mixerValueLabel(index) : uiLayout::globalMixerValueLabel(index);
+        if (editing) {
+            canvas_.beginPath();
+            canvas_.roundedRect(valueBounds.x + 2.0f, valueBounds.y,
+                                valueBounds.width - 4.0f, valueBounds.height, 3.0f);
+            canvas_.fillColor(colors.recess);
+            canvas_.fill();
+            canvas_.strokeColor(colors.selection);
+            canvas_.strokeWidth(1.0f);
+            canvas_.stroke();
+        }
+        char entry[32];
+        std::snprintf(entry, sizeof(entry), "%s%s",
+                      editing ? state_.mixerValueEntryText : display,
+                      editing ? "_" : "");
         canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_CENTER |
                           DGL_NAMESPACE::NanoVG::ALIGN_TOP);
         canvas_.fillColor(colors.contentPrimary);
-        canvas_.text(bounds.x + bounds.width * 0.5f, bounds.y + 56.0f, display, nullptr);
+        canvas_.text(bounds.x + bounds.width * 0.5f, bounds.y + 56.0f, entry, nullptr);
         const float normalized = bipolarKnobPosition(value, minimum, maximum);
         sms::ui::dpf::drawKnob(canvas_, bounds.x + bounds.width * 0.5f,
             bounds.y + 31.0f, 16.0f, normalized, colors.controlAccent,

@@ -68,10 +68,11 @@ selects pads. Arm hides the editor.
 Right-click a middle pad and choose **Adjust cut points** to edit it with its
 neighbor slots, including empty ones. See the [cut-point guide](Docs/CHOP-EDITOR.md).
 
-Drag or wheel mixer knobs. Hold **Shift** for 10× finer changes; **Ctrl** steps
-Gain/Volume 1 dB, Pan 10%, and Tune one semitone. Double- or middle-click a
-mixer knob or ADSR slider to reset it. The wheel also adjusts ADSR, Fixed Length,
-Max Voices, Pre-roll, Start/End, and cut points.
+Drag or wheel knobs. **Shift** gives 10× precision; **Ctrl** steps
+Gain/Volume 1 dB, Pan 10%, and Tune one semitone. Double-click a value to type
+(Pan: −100…100); Enter applies; click elsewhere to cancel. Double-click knob or
+middle-click knob/value to reset. The wheel adjusts ADSR,
+Fixed Length, Max Voices, Pre-roll, Start/End, and cut points.
 Arm shows capture and chop controls. Play shows playback controls and hides
 chop actions. Global mixer and bottom Monitor controls remain available.
 

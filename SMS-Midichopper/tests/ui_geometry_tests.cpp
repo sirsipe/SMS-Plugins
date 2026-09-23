@@ -147,6 +147,11 @@ void interactionTargets()
                   interaction::interactiveTargetAt(center(layout::globalMixerKnob(knob)), context),
                   interaction::InteractiveType::globalMixerKnob, knob),
               "main view exposes each global mixer knob");
+        check(interaction::isTarget(
+                  interaction::interactiveTargetAt(
+                      center(layout::globalMixerValueLabel(knob)), context),
+                  interaction::InteractiveType::globalMixerValueLabel, knob),
+              "main view exposes each global mixer value label");
     }
     check(!interaction::isTarget(
               interaction::interactiveTargetAt(center(layout::fixedLength), context),
@@ -233,6 +238,11 @@ void interactionTargets()
                   interaction::interactiveTargetAt(center(layout::mixerKnob(slider)), context),
                   interaction::InteractiveType::mixerKnob, slider),
               "sample editor exposes each mixer knob");
+        check(interaction::isTarget(
+                  interaction::interactiveTargetAt(
+                      center(layout::mixerValueLabel(slider)), context),
+                  interaction::InteractiveType::mixerValueLabel, slider),
+              "sample editor exposes each mixer value label");
     }
     check(!layout::envelopeGraph.contains(center(layout::mixerKnob(0))) &&
           !layout::editorSlider(0).contains(center(layout::mixerKnob(2))),
@@ -551,6 +561,15 @@ void waveformGeometry()
           midichopper::ui::bipolarKnobPosition(-60.0f, -60.0f, 12.0f) == 0.0f &&
           midichopper::ui::bipolarKnobPosition(12.0f, -60.0f, 12.0f) == 1.0f,
           "asymmetric gain draws zero at twelve o'clock");
+    check(midichopper::ui::mixerValueFromText("-12.5", 1.0f, -60.0f, 12.0f) ==
+              -12.5f &&
+          midichopper::ui::mixerValueFromText("25", 0.01f, -1.0f, 1.0f) == 0.25f &&
+          midichopper::ui::mixerValueFromText("200", 0.01f, -1.0f, 1.0f) == 1.0f,
+          "typed mixer values use displayed units and clamp to control ranges");
+    check(!midichopper::ui::mixerValueFromText("", 1.0f, -24.0f, 24.0f) &&
+          !midichopper::ui::mixerValueFromText("1.2.3", 1.0f, -24.0f, 24.0f) &&
+          !midichopper::ui::mixerValueFromText("12st", 1.0f, -24.0f, 24.0f),
+          "typed mixer values reject incomplete and non-numeric text");
 }
 
 void chopEditorGeometry()

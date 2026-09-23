@@ -11,7 +11,9 @@
 #include "WaveformEditor.hpp"
 
 #include <cstdint>
+#include <optional>
 #include <span>
+#include <string_view>
 
 namespace midichopper::ui {
 
@@ -28,6 +30,8 @@ enum class InteractiveType : int {
     envelopeSlider,
     mixerKnob,
     globalMixerKnob,
+    mixerValueLabel,
+    globalMixerValueLabel,
     playOnSelect,
     openEditor,
     chopBoundary,
@@ -107,6 +111,58 @@ private:
     return candidate.is(static_cast<int>(InteractiveType::mixerKnob)) ||
            candidate.is(static_cast<int>(InteractiveType::globalMixerKnob)) ||
            candidate.is(static_cast<int>(InteractiveType::envelopeSlider));
+}
+
+[[nodiscard]] constexpr bool isMixerValueLabel(
+    const sms::ui::InteractiveTarget candidate) noexcept
+{
+    return candidate.is(static_cast<int>(InteractiveType::mixerValueLabel)) ||
+           candidate.is(static_cast<int>(InteractiveType::globalMixerValueLabel));
+}
+
+/** Parse a decimal value, scale it to internal units, and clamp it to its range. */
+[[nodiscard]] inline std::optional<float> mixerValueFromText(
+    const std::string_view text, const float displayScale,
+    const float minimum, const float maximum) noexcept
+{
+    if (text.empty() || !std::isfinite(displayScale) || displayScale <= 0.0f ||
+        !std::isfinite(minimum) || !std::isfinite(maximum) || minimum > maximum)
+        return std::nullopt;
+
+    std::size_t position = 0U;
+    float sign = 1.0f;
+    if (text[position] == '+' || text[position] == '-') {
+        sign = text[position] == '-' ? -1.0f : 1.0f;
+        if (++position == text.size())
+            return std::nullopt;
+    }
+
+    double value = 0.0;
+    double fraction = 0.1;
+    bool hasDigit = false;
+    bool hasDecimalPoint = false;
+    for (; position < text.size(); ++position) {
+        const char character = text[position];
+        if (character >= '0' && character <= '9') {
+            hasDigit = true;
+            const double digit = static_cast<double>(character - '0');
+            if (hasDecimalPoint) {
+                value += digit * fraction;
+                fraction *= 0.1;
+            } else {
+                value = value * 10.0 + digit;
+            }
+        } else if (character == '.' && !hasDecimalPoint) {
+            hasDecimalPoint = true;
+        } else {
+            return std::nullopt;
+        }
+    }
+
+    value *= static_cast<double>(sign * displayScale);
+    if (!hasDigit || !std::isfinite(value))
+        return std::nullopt;
+    return std::clamp(static_cast<float>(value), minimum, maximum);
 }
 
 inline void resetMixerKnob(sms::dsp::SampleMixerSettings& settings,
@@ -399,6 +455,8 @@ interactiveTargetAt(const sms::ui::Point point, const InteractionContext& contex
                 return target(InteractiveType::envelopeSlider, slider);
         }
         for (int slider = 0; slider < 3; ++slider) {
+            if (uiLayout::mixerValueLabel(slider).contains(point))
+                return target(InteractiveType::mixerValueLabel, slider);
             if (uiLayout::mixerKnob(slider).contains(point))
                 return target(InteractiveType::mixerKnob, slider);
         }
@@ -446,6 +504,8 @@ interactiveTargetAt(const sms::ui::Point point, const InteractionContext& contex
     if (uiLayout::monitor.contains(point))
         return target(InteractiveType::monitor);
     for (int knob = 0; knob < 3; ++knob) {
+        if (uiLayout::globalMixerValueLabel(knob).contains(point))
+            return target(InteractiveType::globalMixerValueLabel, knob);
         if (uiLayout::globalMixerKnob(knob).contains(point))
             return target(InteractiveType::globalMixerKnob, knob);
     }

@@ -106,9 +106,21 @@ inline constexpr sms::ui::Rect clearAction{842.0f, 402.0f, 70.0f, 34.0f};
     return {46.0f + static_cast<float>(index) * 90.0f, 590.0f, 80.0f, 72.0f};
 }
 
+[[nodiscard]] constexpr sms::ui::Rect mixerValueLabel(const int index) noexcept
+{
+    const auto knob = mixerKnob(index);
+    return {knob.x, knob.y + 52.0f, knob.width, 18.0f};
+}
+
 [[nodiscard]] constexpr sms::ui::Rect globalMixerKnob(const int index) noexcept
 {
     return {690.0f + static_cast<float>(index) * 74.0f, 520.0f, 68.0f, 72.0f};
+}
+
+[[nodiscard]] constexpr sms::ui::Rect globalMixerValueLabel(const int index) noexcept
+{
+    const auto knob = globalMixerKnob(index);
+    return {knob.x, knob.y + 52.0f, knob.width, 18.0f};
 }
 
 [[nodiscard]] constexpr sms::ui::Rect chopPadButton(const int index) noexcept

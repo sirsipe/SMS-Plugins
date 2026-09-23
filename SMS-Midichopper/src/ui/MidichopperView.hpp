@@ -39,6 +39,8 @@ struct ViewState {
     sms::ui::ContextMenuGeometry padContextMenu;
     std::span<const sms::ui::ContextMenuItemView> padContextMenuItems;
     sms::ui::InteractiveTarget hoveredTarget;
+    sms::ui::InteractiveTarget mixerValueEntryTarget;
+    const char* mixerValueEntryText = "";
     bool editorMode = false;
     bool chopEditorMode = false;
     bool chopSplitMode = false;
