@@ -1,37 +1,26 @@
 # Pad context menu
 
-Audience: agents changing pad interactions. The shared menu, Clear Pad, WAV,
-Copy/Paste, Collapse Gap, and Split Sample actions are implemented; later
-actions remain approved direction. It
-is related to
-[issue #10](https://github.com/sirsipe/SMS-Plugins/issues/10), which requests
-copy, delete, MIDI assignment, and optional color. The menu is a general pad
-action surface; WAV operations are one consumer, not its defining purpose.
+Audience: agents changing pad interactions. The shared menu and actions below
+are implemented. [Issue #10](https://github.com/sirsipe/SMS-Plugins/issues/10)
+also requests MIDI assignment and optional color. This is a general pad action
+surface, not a WAV-specific menu.
 
 ## Interaction contract
 
 Right-clicking a visible pad in Play or Sample Editor opens a custom SMS menu
-and selects that pad without auditioning it. Arm mode has no context menu
-because pad clicks control capture destinations. A click outside, Escape,
-opening another pad menu, a mode/bank/layout change, or a successfully mapped
-MIDI note-on closes it. A note-off does not close it. Clamp the overlay to the
-logical canvas and preserve behavior under UI scaling. Disabled actions remain
-visible and cannot be triggered. Consume a pointer event that dismisses the
-menu so it cannot activate the control underneath. If the target becomes hidden
-or its state changes externally, close the menu or recompute action enablement
-before invocation.
+and selects that pad without auditioning it. Actions are grouped with compact,
+non-interactive separators; unavailable actions remain visible and disabled.
+Arm mode has no context menu because pad clicks choose capture destinations. A
+click outside, Escape, another pad menu, a mode/bank/layout change, or a mapped
+MIDI note-on closes it; note-off does not. Clamp it to the logical canvas under
+UI scaling. A dismissing pointer event must not activate the control underneath.
+If target state changes externally, close the menu or recompute enablement.
 
-Menu entries highlight while the pointer hovers over an enabled action.
-Disabled entries may expose a distinct non-interactive hover appearance only if
-the shared theme requires it. Motion and pointer-leave handling must repaint
-only when the hovered target changes.
+Enabled actions highlight on hover. Repaint only when the hovered target
+changes; disabled entries stay non-interactive.
 
-Hover is also an early direction for every clickable SMS control. Do not make
-the menu's hover implementation a dead end: keep reusable hover identity,
-transition, geometry, and themed drawing support in `Common-UI`, separate from
-product action handling. Applying hover to all existing controls is not required
-for the first context-menu slice, but its architecture must permit that work
-without replacing the menu foundation.
+Keep reusable hover identity, transitions, geometry, and themed drawing in
+`Common-UI`, separate from product actions, so other SMS controls can reuse it.
 
 ## Extensible action model
 
@@ -48,6 +37,10 @@ large conditional event handler. Do not add abstractions for hypothetical menu
 features until an action needs them.
 
 ## Implemented actions
+
+**Edit Sample** is the first action. In Play it is enabled only for an occupied
+target and opens the Sample Editor focused on that pad. It remains visible but
+disabled when the menu is opened inside the Sample Editor.
 
 **Clear Pad** uses the engine's single-pad
 clear behavior. It is enabled only when the clicked pad contains audio. The

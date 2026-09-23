@@ -20,6 +20,16 @@ inline void drawContextMenu(DGL_NAMESPACE::NanoVG& canvas,
     for (std::size_t index = 0; index < items.size(); ++index) {
         const ContextMenuItemView& item = items[index];
         const Rect bounds = geometry.item(static_cast<int>(index));
+        if (item.kind == ContextMenuItemKind::separator) {
+            canvas.beginPath();
+            canvas.moveTo(bounds.x + 7.0f, bounds.y + bounds.height * 0.5f);
+            canvas.lineTo(bounds.x + bounds.width - 7.0f,
+                          bounds.y + bounds.height * 0.5f);
+            canvas.strokeColor(colors.outline.withAlpha(0.7f));
+            canvas.strokeWidth(colors.outlineWidth);
+            canvas.stroke();
+            continue;
+        }
         const bool hovered = item.enabled && hoveredItem == static_cast<int>(index);
         const auto& accent = item.dangerous ? colors.intentDanger : colors.controlAccent;
 

@@ -76,17 +76,50 @@ inline constexpr auto kMeterFrameInterval = std::chrono::milliseconds(33);
 inline constexpr auto kEditorSnapshotRetryInterval = std::chrono::milliseconds(250);
 
 enum class PadMenuAction : int {
-    copy = 0,
-    paste,
+    editSample = 0,
     adjustCutPoints,
     splitSample,
     collapseGap,
     exportRaw,
     exportProcessed,
     import,
+    copy,
+    paste,
     clear,
     count,
 };
+
+struct PadMenuEntry {
+    PadMenuAction action = PadMenuAction::count;
+    sms::ui::ContextMenuItemKind kind = sms::ui::ContextMenuItemKind::action;
+};
+
+inline constexpr std::array kPadMenuEntries{
+    PadMenuEntry{PadMenuAction::editSample},
+    PadMenuEntry{PadMenuAction::count, sms::ui::ContextMenuItemKind::separator},
+    PadMenuEntry{PadMenuAction::adjustCutPoints},
+    PadMenuEntry{PadMenuAction::splitSample},
+    PadMenuEntry{PadMenuAction::collapseGap},
+    PadMenuEntry{PadMenuAction::count, sms::ui::ContextMenuItemKind::separator},
+    PadMenuEntry{PadMenuAction::exportRaw},
+    PadMenuEntry{PadMenuAction::exportProcessed},
+    PadMenuEntry{PadMenuAction::import},
+    PadMenuEntry{PadMenuAction::count, sms::ui::ContextMenuItemKind::separator},
+    PadMenuEntry{PadMenuAction::copy},
+    PadMenuEntry{PadMenuAction::paste},
+    PadMenuEntry{PadMenuAction::count, sms::ui::ContextMenuItemKind::separator},
+    PadMenuEntry{PadMenuAction::clear},
+};
+
+constexpr auto padMenuItemKinds() noexcept
+{
+    std::array<sms::ui::ContextMenuItemKind, kPadMenuEntries.size()> kinds{};
+    for (std::size_t index = 0; index < kinds.size(); ++index)
+        kinds[index] = kPadMenuEntries[index].kind;
+    return kinds;
+}
+
+inline constexpr auto kPadMenuItemKinds = padMenuItemKinds();
 
 enum class PendingFileDialog : std::uint8_t {
     none,
@@ -738,28 +771,15 @@ protected:
             std::snprintf(collapseLabel, sizeof(collapseLabel), "COLLAPSE GAP (%d %s)",
                           collapsingPads, collapsingPads == 1 ? "PAD" : "PADS");
         }
-        const std::array contextMenuItems{
-            sms::ui::ContextMenuItemView{
-                "COPY PAD", padCopyEnabled(), false},
-            sms::ui::ContextMenuItemView{
-                "PASTE PAD", padPasteEnabled(), false},
-            sms::ui::ContextMenuItemView{
-                "ADJUST CUT POINTS", padCutPointsEnabled(), false},
-            sms::ui::ContextMenuItemView{
-                "SPLIT SAMPLE...", padSplitEnabled(), false},
-            sms::ui::ContextMenuItemView{
-                fPadContextCollapseArmed ? "CONFIRM COLLAPSE" : collapseLabel,
-                padCollapseEnabled(), false},
-            sms::ui::ContextMenuItemView{
-                "EXPORT WAV...", padExportEnabled(), false},
-            sms::ui::ContextMenuItemView{
-                "EXPORT PROCESSED...", padProcessedExportEnabled(), false},
-            sms::ui::ContextMenuItemView{
-                "IMPORT WAV...", !padActionBusy(), false},
-            sms::ui::ContextMenuItemView{
-                fPadContextClearArmed ? "CONFIRM CLEAR" : "CLEAR PAD",
-                !padActionBusy() && padContextTargetOccupied(), true},
-        };
+        std::array<sms::ui::ContextMenuItemView, kPadMenuEntries.size()>
+            contextMenuItems{};
+        for (std::size_t index = 0; index < contextMenuItems.size(); ++index) {
+            const PadMenuEntry entry = kPadMenuEntries[index];
+            contextMenuItems[index] = entry.kind == sms::ui::ContextMenuItemKind::separator
+                ? sms::ui::ContextMenuItemView{
+                    "", false, false, sms::ui::ContextMenuItemKind::separator}
+                : padMenuActionView(entry.action, collapseLabel);
+        }
         const midichopper::ui::ViewState view{
             fArm, fRecordMode, fFixedLength, fPlaybackMode, fMonitor,
             fStartPad, fPreRoll, fBaseNote, fMidiBankMode, fGain, fGlobalPan, fGlobalTune,
@@ -857,7 +877,9 @@ protected:
                 fPadContextPointerCaptured = true;
                 if (midichopper::ui::isTarget(
                         clicked, midichopper::ui::InteractiveType::padContextItem)) {
-                    invokePadMenuAction(static_cast<PadMenuAction>(clicked.index));
+                    const auto row = static_cast<std::size_t>(clicked.index);
+                    if (row < kPadMenuEntries.size())
+                        invokePadMenuAction(kPadMenuEntries[row].action);
                     return true;
                 }
                 closePadContextMenu();
@@ -1029,14 +1051,9 @@ protected:
             if (midichopper::ui::isTarget(
                     clicked, midichopper::ui::InteractiveType::openEditor))
             {
-                fEditorMode = true;
-                fChopEditorMode = false;
-                fStatus[0] = '\0';
-                if (!hasSelectedPad() || bankForGlobalPad(fSelectedPad) != fBank)
-                    selectEditorPad(globalPad(0));
-                else
-                    refreshSelectedWaveform();
-                requestRepaint();
+                const int target = !hasSelectedPad() || bankForGlobalPad(fSelectedPad) != fBank
+                    ? globalPad(0) : fSelectedPad;
+                beginSampleEditor(target);
                 return true;
             }
             if (midichopper::ui::isTarget(
@@ -1580,9 +1597,11 @@ private:
     [[nodiscard]] sms::ui::InteractiveTarget
     resolveInteractiveTarget(const float x, const float y) const noexcept
     {
-        std::array<bool, static_cast<std::size_t>(PadMenuAction::count)> menuEnabled{};
+        std::array<bool, kPadMenuEntries.size()> menuEnabled{};
         for (std::size_t index = 0; index < menuEnabled.size(); ++index)
-            menuEnabled[index] = padMenuActionEnabled(static_cast<PadMenuAction>(index));
+            menuEnabled[index] = kPadMenuEntries[index].kind ==
+                    sms::ui::ContextMenuItemKind::action &&
+                padMenuActionEnabled(kPadMenuEntries[index].action);
         const auto envelope = envelopeGraphGeometry();
         midichopper::ui::InteractionContext context;
         context.editorMode = fEditorMode;
@@ -1629,7 +1648,8 @@ private:
     {
         fPadContextTarget = pad;
         fPadContextMenu = sms::ui::ContextMenuGeometry(
-            anchor, static_cast<int>(PadMenuAction::count), uiLayout::contentBounds);
+            anchor, std::span<const sms::ui::ContextMenuItemKind>{kPadMenuItemKinds},
+            uiLayout::contentBounds);
         static_cast<void>(fHover.clear());
         fPadContextClearArmed = false;
         fPadContextCollapseArmed = false;
@@ -1670,6 +1690,11 @@ private:
     [[nodiscard]] bool padCopyEnabled() const noexcept
     {
         return !padActionBusy() && padContextTargetOccupied();
+    }
+
+    [[nodiscard]] bool padEditSampleEnabled() const noexcept
+    {
+        return !fEditorMode && !padActionBusy() && padContextTargetOccupied();
     }
 
     [[nodiscard]] bool padPasteEnabled() const noexcept
@@ -1750,6 +1775,7 @@ private:
     [[nodiscard]] bool padMenuActionEnabled(const PadMenuAction action) const noexcept
     {
         switch (action) {
+        case PadMenuAction::editSample: return padEditSampleEnabled();
         case PadMenuAction::copy: return padCopyEnabled();
         case PadMenuAction::paste: return padPasteEnabled();
         case PadMenuAction::adjustCutPoints: return padCutPointsEnabled();
@@ -1765,11 +1791,50 @@ private:
         return false;
     }
 
+    [[nodiscard]] sms::ui::ContextMenuItemView padMenuActionView(
+        const PadMenuAction action, const char* const collapseLabel) const noexcept
+    {
+        const bool enabled = padMenuActionEnabled(action);
+        switch (action) {
+        case PadMenuAction::editSample:
+            return {"EDIT SAMPLE", enabled, false};
+        case PadMenuAction::adjustCutPoints:
+            return {"ADJUST CUT POINTS", enabled, false};
+        case PadMenuAction::splitSample:
+            return {"SPLIT SAMPLE...", enabled, false};
+        case PadMenuAction::collapseGap:
+            return {fPadContextCollapseArmed ? "CONFIRM COLLAPSE" : collapseLabel,
+                    enabled, false};
+        case PadMenuAction::exportRaw:
+            return {"EXPORT WAV...", enabled, false};
+        case PadMenuAction::exportProcessed:
+            return {"EXPORT PROCESSED...", enabled, false};
+        case PadMenuAction::import:
+            return {"IMPORT WAV...", enabled, false};
+        case PadMenuAction::copy:
+            return {"COPY PAD", enabled, false};
+        case PadMenuAction::paste:
+            return {"PASTE PAD", enabled, false};
+        case PadMenuAction::clear:
+            return {fPadContextClearArmed ? "CONFIRM CLEAR" : "CLEAR PAD",
+                    enabled, true};
+        case PadMenuAction::count:
+            return {};
+        }
+        return {};
+    }
+
     void invokePadMenuAction(const PadMenuAction action)
     {
         if (!padMenuActionEnabled(action))
             return;
         switch (action) {
+        case PadMenuAction::editSample: {
+            const int pad = fPadContextTarget;
+            closePadContextMenu();
+            beginSampleEditor(pad);
+            return;
+        }
         case PadMenuAction::copy:
             requestPadClipboard(PadClipboardAction::copy);
             return;
@@ -2272,6 +2337,19 @@ private:
             return false;
         return midichopper::ui::chop::navigationTarget(
             localPadForGlobalPad(fSelectedPad), direction, visiblePadCount()) >= 0;
+    }
+
+    void beginSampleEditor(const int targetPad)
+    {
+        const int pad = clampPad(static_cast<float>(targetPad));
+        fEditorMode = true;
+        fChopEditorMode = false;
+        fStatus[0] = '\0';
+        if (midichopper::ui::editorPadSelectionChanged(fSelectedPad, pad))
+            selectEditorPad(pad);
+        else
+            refreshSelectedWaveform();
+        requestRepaint();
     }
 
     void resetChopWaveforms()

@@ -11,6 +11,7 @@
 #include "WaveformEditor.hpp"
 
 #include <cmath>
+#include <array>
 #include <cstdlib>
 #include <iostream>
 
@@ -82,6 +83,22 @@ void contextMenuGeometry()
           expanded.bounds().x + expanded.bounds().width <= canvas.x + canvas.width &&
           expanded.bounds().y + expanded.bounds().height <= canvas.y + canvas.height,
           "expanded pad menu remains fully clamped to the canvas");
+
+    constexpr std::array groupedKinds{
+        sms::ui::ContextMenuItemKind::action,
+        sms::ui::ContextMenuItemKind::separator,
+        sms::ui::ContextMenuItemKind::action,
+    };
+    const sms::ui::ContextMenuGeometry grouped(
+        {200.0f, 200.0f}, groupedKinds, canvas);
+    const auto separator = grouped.item(1);
+    const auto followingAction = grouped.item(2);
+    check(grouped.item(1).height < grouped.item(0).height &&
+          grouped.hit({separator.x + separator.width * 0.5f,
+                       separator.y + separator.height * 0.5f}) == -1 &&
+          grouped.hit({followingAction.x + followingAction.width * 0.5f,
+                       followingAction.y + followingAction.height * 0.5f}) == 2,
+          "context-menu separators are compact, inert, and preserve row identities");
 
     sms::ui::HoverState hover;
     const auto item = midichopper::ui::target(midichopper::ui::InteractiveType::pad, 0);
