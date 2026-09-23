@@ -49,17 +49,15 @@ cp -a build/bin/SMS-Midichopper.lv2 ~/.lv2/
 4. Click **FINALIZE** or return to **PLAY** to keep the last open slice.
 5. Select Bank A–D and play from MIDI note 36 upward. The base is configurable.
 
-The hamburger menu provides two MIDI bank modes. **All Banks** (the default)
-assigns stable, gapless notes to exposed sample slots. **Selected Bank** reuses
-the base-note range for the visible bank. A note-on activates its bank and the
-UI follows it.
+The hamburger menu selects MIDI bank mode. **All Banks** (default) assigns
+stable, gapless notes across exposed slots; **Selected Bank** reuses the
+base-note range. A note-on activates its bank and the UI follows.
 Layout changes regroup slots without changing notes. All Banks limits the
 effective base to 64 so every layout fits MIDI 0–127.
 
-The pad layout supports 16 pads (4×4), 12 pads (3×4), and 8 pads (4×2), numbered
-from the bottom row. Banks retain 16 slots; smaller layouts hide slots without
-deleting samples. Sequential capture skips hidden slots and continues into the
-next bank in Selected Bank mode. All Banks uses contiguous layout-sized pages.
+Layouts provide 16 pads (4×4), 12 (3×4), or 8 (4×2), numbered from the bottom.
+Banks retain 16 slots; smaller layouts hide slots without deleting samples.
+Sequential capture skips hidden slots. All Banks uses contiguous layout pages.
 
 **Sample Editor** groups waveform and ADSR above per-pad Gain, Pan, and
 varispeed Tune; main-view controls add global values. Edits reach active voices
@@ -70,9 +68,10 @@ selects pads. Arm hides the editor.
 Right-click a middle pad and choose **Adjust cut points** to edit it with its
 neighbor slots, including empty ones. See the [cut-point guide](Docs/CHOP-EDITOR.md).
 
-Drag mixer knobs; wheel them or the ADSR sliders. Double- or
-middle-click either to reset it. The wheel also adjusts Fixed Length, Max Voices,
-Pre-roll, Start/End, and cut points.
+Drag or wheel mixer knobs. Hold **Shift** for 10× finer changes; **Ctrl** steps
+Gain/Volume 1 dB, Pan 10%, and Tune one semitone. Double- or middle-click a
+mixer knob or ADSR slider to reset it. The wheel also adjusts ADSR, Fixed Length,
+Max Voices, Pre-roll, Start/End, and cut points.
 Arm shows capture and chop controls. Play shows playback controls and hides
 chop actions. Global mixer and bottom Monitor controls remain available.
 

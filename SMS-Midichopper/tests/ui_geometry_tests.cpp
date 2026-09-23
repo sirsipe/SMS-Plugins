@@ -522,6 +522,31 @@ void waveformGeometry()
               1.0e-6f &&
           midichopper::ui::knobDragNormalized(0.95f, 100.0f, 0.0f) == 1.0f,
           "mixer knobs use bounded upward drag adjustment");
+    using midichopper::ui::KnobAdjustment;
+    check(std::abs(midichopper::ui::knobDraggedValue(
+              0.0f, 100.0f, 88.0f, -24.0f, 24.0f, 1.0f,
+              KnobAdjustment::normal) - 4.8f) < 1.0e-5f &&
+          std::abs(midichopper::ui::knobDraggedValue(
+              0.0f, 100.0f, 88.0f, -24.0f, 24.0f, 1.0f,
+              KnobAdjustment::fine) - 0.48f) < 1.0e-5f,
+          "Shift fine adjustment makes mixer knob dragging ten times slower");
+    check(midichopper::ui::knobDraggedValue(
+              0.0f, 100.0f, 88.0f, -24.0f, 24.0f, 1.0f,
+              KnobAdjustment::stepped) == 5.0f &&
+          std::abs(midichopper::ui::knobDraggedValue(
+              0.0f, 100.0f, 88.0f, -1.0f, 1.0f, 0.1f,
+              KnobAdjustment::stepped) - 0.2f) < 1.0e-6f,
+          "Control stepped adjustment snaps mixer knob drags to each control's grid");
+    check(std::abs(midichopper::ui::knobWheelAdjustedValue(
+              0.0f, 1.0f, 0.25f, 1.0f, -24.0f, 24.0f,
+              KnobAdjustment::fine) - 0.025f) < 1.0e-6f &&
+          midichopper::ui::knobWheelAdjustedValue(
+              0.25f, 1.0f, 0.25f, 1.0f, -24.0f, 24.0f,
+              KnobAdjustment::stepped) == 1.0f &&
+          midichopper::ui::knobWheelAdjustedValue(
+              0.25f, -1.0f, 0.25f, 1.0f, -24.0f, 24.0f,
+              KnobAdjustment::stepped) == 0.0f,
+          "wheel fine and stepped adjustments work from on-grid and off-grid values");
     check(midichopper::ui::bipolarKnobPosition(0.0f, -60.0f, 12.0f) == 0.5f &&
           midichopper::ui::bipolarKnobPosition(-60.0f, -60.0f, 12.0f) == 0.0f &&
           midichopper::ui::bipolarKnobPosition(12.0f, -60.0f, 12.0f) == 1.0f,

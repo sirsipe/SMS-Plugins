@@ -75,6 +75,16 @@ inline constexpr auto kClearConfirmationTimeout = std::chrono::seconds(2);
 inline constexpr auto kMeterFrameInterval = std::chrono::milliseconds(33);
 inline constexpr auto kEditorSnapshotRetryInterval = std::chrono::milliseconds(250);
 
+[[nodiscard]] midichopper::ui::KnobAdjustment knobAdjustment(
+    const uint modifiers) noexcept
+{
+    if ((modifiers & DGL_NAMESPACE::kModifierControl) != 0U)
+        return midichopper::ui::KnobAdjustment::stepped;
+    if ((modifiers & DGL_NAMESPACE::kModifierShift) != 0U)
+        return midichopper::ui::KnobAdjustment::fine;
+    return midichopper::ui::KnobAdjustment::normal;
+}
+
 enum class PadMenuAction : int {
     editSample = 0,
     adjustCutPoints,
@@ -1028,6 +1038,7 @@ protected:
                     fMixerDragIndex = clicked.index;
                     fMixerDragStartY = y;
                     fMixerDragStartSettings = fMixerSettings;
+                    fMixerDragAdjustment = knobAdjustment(ev.mod);
                     return true;
                 }
                 return false;
@@ -1152,6 +1163,7 @@ protected:
                 fGlobalMixerDragIndex = clicked.index;
                 fGlobalMixerDragStartY = y;
                 fGlobalMixerDragStart = {fGain, fGlobalPan, fGlobalTune};
+                fGlobalMixerDragAdjustment = knobAdjustment(ev.mod);
                 return true;
             }
             if (midichopper::ui::isTarget(
@@ -1342,23 +1354,25 @@ protected:
         }
         if (midichopper::ui::isTarget(
                 hovered, midichopper::ui::InteractiveType::mixerKnob)) {
+            const auto adjustment = knobAdjustment(ev.mod);
             switch (hovered.index) {
             case 0:
-                fMixerSettings.gainDecibels = sms::ui::wheelAdjustedValue(
-                    fMixerSettings.gainDecibels, delta, 0.5f,
+                fMixerSettings.gainDecibels = midichopper::ui::knobWheelAdjustedValue(
+                    fMixerSettings.gainDecibels, delta, 0.5f, 1.0f,
                     sms::dsp::kMinimumSampleGainDecibels,
-                    sms::dsp::kMaximumSampleGainDecibels);
+                    sms::dsp::kMaximumSampleGainDecibels, adjustment);
                 break;
             case 1:
-                fMixerSettings.pan = sms::ui::wheelAdjustedValue(
-                    fMixerSettings.pan, delta, 0.05f,
-                    sms::dsp::kMinimumSamplePan, sms::dsp::kMaximumSamplePan);
+                fMixerSettings.pan = midichopper::ui::knobWheelAdjustedValue(
+                    fMixerSettings.pan, delta, 0.05f, 0.1f,
+                    sms::dsp::kMinimumSamplePan, sms::dsp::kMaximumSamplePan,
+                    adjustment);
                 break;
             case 2:
-                fMixerSettings.tuneSemitones = sms::ui::wheelAdjustedValue(
-                    fMixerSettings.tuneSemitones, delta, 0.25f,
+                fMixerSettings.tuneSemitones = midichopper::ui::knobWheelAdjustedValue(
+                    fMixerSettings.tuneSemitones, delta, 0.25f, 1.0f,
                     sms::dsp::kMinimumTuneSemitones,
-                    sms::dsp::kMaximumTuneSemitones);
+                    sms::dsp::kMaximumTuneSemitones, adjustment);
                 break;
             default:
                 return false;
@@ -1370,24 +1384,25 @@ protected:
         }
         if (midichopper::ui::isTarget(
                 hovered, midichopper::ui::InteractiveType::globalMixerKnob)) {
+            const auto adjustment = knobAdjustment(ev.mod);
             switch (hovered.index) {
             case 0:
                 setControlValueFromWheel(kParameterOutputGainDb,
-                    sms::ui::wheelAdjustedValue(fGain, delta, 0.5f,
+                    midichopper::ui::knobWheelAdjustedValue(fGain, delta, 0.5f, 1.0f,
                         parameterRanges::outputGainDb.minimum,
-                        parameterRanges::outputGainDb.maximum));
+                        parameterRanges::outputGainDb.maximum, adjustment));
                 break;
             case 1:
                 setControlValueFromWheel(kParameterGlobalPan,
-                    sms::ui::wheelAdjustedValue(fGlobalPan, delta, 0.05f,
+                    midichopper::ui::knobWheelAdjustedValue(fGlobalPan, delta, 0.05f, 0.1f,
                         parameterRanges::globalPan.minimum,
-                        parameterRanges::globalPan.maximum));
+                        parameterRanges::globalPan.maximum, adjustment));
                 break;
             case 2:
                 setControlValueFromWheel(kParameterGlobalTuneSemitones,
-                    sms::ui::wheelAdjustedValue(fGlobalTune, delta, 0.25f,
+                    midichopper::ui::knobWheelAdjustedValue(fGlobalTune, delta, 0.25f, 1.0f,
                         parameterRanges::globalTuneSemitones.minimum,
-                        parameterRanges::globalTuneSemitones.maximum));
+                        parameterRanges::globalTuneSemitones.maximum, adjustment));
                 break;
             default:
                 return false;
@@ -1547,9 +1562,13 @@ private:
     int fMixerDragIndex;
     float fMixerDragStartY = 0.0f;
     sms::dsp::SampleMixerSettings fMixerDragStartSettings{};
+    midichopper::ui::KnobAdjustment fMixerDragAdjustment =
+        midichopper::ui::KnobAdjustment::normal;
     int fGlobalMixerDragIndex;
     float fGlobalMixerDragStartY = 0.0f;
     sms::dsp::SampleMixerSettings fGlobalMixerDragStart{};
+    midichopper::ui::KnobAdjustment fGlobalMixerDragAdjustment =
+        midichopper::ui::KnobAdjustment::normal;
     midichopper::ui::DoubleClickTracker fDoubleClick;
     float fDragStartX;
     float fDragStartY;
@@ -2681,37 +2700,37 @@ private:
     {
         if (fGlobalMixerDragIndex < 0 || fGlobalMixerDragIndex >= 3)
             return;
-        float startNormalized = 0.0f;
+        float startValue = 0.0f;
         float minimum = 0.0f;
         float maximum = 1.0f;
+        float steppedIncrement = 1.0f;
         std::uint32_t parameter = kParameterOutputGainDb;
         switch (fGlobalMixerDragIndex) {
         case 0:
             minimum = parameterRanges::outputGainDb.minimum;
             maximum = parameterRanges::outputGainDb.maximum;
-            startNormalized = (fGlobalMixerDragStart.gainDecibels - minimum) /
-                              (maximum - minimum);
+            startValue = fGlobalMixerDragStart.gainDecibels;
             parameter = kParameterOutputGainDb;
             break;
         case 1:
             minimum = parameterRanges::globalPan.minimum;
             maximum = parameterRanges::globalPan.maximum;
-            startNormalized = (fGlobalMixerDragStart.pan - minimum) / (maximum - minimum);
+            startValue = fGlobalMixerDragStart.pan;
+            steppedIncrement = 0.1f;
             parameter = kParameterGlobalPan;
             break;
         case 2:
             minimum = parameterRanges::globalTuneSemitones.minimum;
             maximum = parameterRanges::globalTuneSemitones.maximum;
-            startNormalized = (fGlobalMixerDragStart.tuneSemitones - minimum) /
-                              (maximum - minimum);
+            startValue = fGlobalMixerDragStart.tuneSemitones;
             parameter = kParameterGlobalTuneSemitones;
             break;
         default:
             return;
         }
-        const float normalized = midichopper::ui::knobDragNormalized(
-            startNormalized, fGlobalMixerDragStartY, y);
-        setControlValue(parameter, minimum + normalized * (maximum - minimum));
+        setControlValue(parameter, midichopper::ui::knobDraggedValue(
+            startValue, fGlobalMixerDragStartY, y, minimum, maximum,
+            steppedIncrement, fGlobalMixerDragAdjustment));
     }
 
     bool parseEditorState(const char* const key, const char* const value)
@@ -2767,42 +2786,42 @@ private:
     {
         if (fMixerDragIndex < 0 || fMixerDragIndex >= 3)
             return;
-        float startNormalized = 0.0f;
+        float startValue = 0.0f;
+        float minimum = 0.0f;
+        float maximum = 1.0f;
+        float steppedIncrement = 1.0f;
         switch (fMixerDragIndex) {
         case 0:
-            startNormalized = (fMixerDragStartSettings.gainDecibels -
-                sms::dsp::kMinimumSampleGainDecibels) /
-                (sms::dsp::kMaximumSampleGainDecibels -
-                 sms::dsp::kMinimumSampleGainDecibels);
+            startValue = fMixerDragStartSettings.gainDecibels;
+            minimum = sms::dsp::kMinimumSampleGainDecibels;
+            maximum = sms::dsp::kMaximumSampleGainDecibels;
             break;
         case 1:
-            startNormalized = (fMixerDragStartSettings.pan - sms::dsp::kMinimumSamplePan) /
-                (sms::dsp::kMaximumSamplePan - sms::dsp::kMinimumSamplePan);
+            startValue = fMixerDragStartSettings.pan;
+            minimum = sms::dsp::kMinimumSamplePan;
+            maximum = sms::dsp::kMaximumSamplePan;
+            steppedIncrement = 0.1f;
             break;
         case 2:
-            startNormalized = (fMixerDragStartSettings.tuneSemitones -
-                sms::dsp::kMinimumTuneSemitones) /
-                (sms::dsp::kMaximumTuneSemitones -
-                 sms::dsp::kMinimumTuneSemitones);
+            startValue = fMixerDragStartSettings.tuneSemitones;
+            minimum = sms::dsp::kMinimumTuneSemitones;
+            maximum = sms::dsp::kMaximumTuneSemitones;
             break;
         default:
             return;
         }
-        const float normalized = midichopper::ui::knobDragNormalized(
-            startNormalized, fMixerDragStartY, y);
+        const float adjusted = midichopper::ui::knobDraggedValue(
+            startValue, fMixerDragStartY, y, minimum, maximum,
+            steppedIncrement, fMixerDragAdjustment);
         switch (fMixerDragIndex) {
         case 0:
-            fMixerSettings.gainDecibels = sms::dsp::kMinimumSampleGainDecibels + normalized *
-                (sms::dsp::kMaximumSampleGainDecibels -
-                 sms::dsp::kMinimumSampleGainDecibels);
+            fMixerSettings.gainDecibels = adjusted;
             break;
         case 1:
-            fMixerSettings.pan = sms::dsp::kMinimumSamplePan + normalized *
-                (sms::dsp::kMaximumSamplePan - sms::dsp::kMinimumSamplePan);
+            fMixerSettings.pan = adjusted;
             break;
         case 2:
-            fMixerSettings.tuneSemitones = sms::dsp::kMinimumTuneSemitones + normalized *
-                (sms::dsp::kMaximumTuneSemitones - sms::dsp::kMinimumTuneSemitones);
+            fMixerSettings.tuneSemitones = adjusted;
             break;
         default:
             return;

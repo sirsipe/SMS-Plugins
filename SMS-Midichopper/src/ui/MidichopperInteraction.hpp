@@ -130,6 +130,65 @@ inline void resetMixerKnob(sms::dsp::SampleMixerSettings& settings,
     return std::clamp(startValue + (startY - currentY) / 120.0f, 0.0f, 1.0f);
 }
 
+enum class KnobAdjustment : std::uint8_t {
+    normal = 0,
+    fine,
+    stepped,
+};
+
+inline constexpr float kFineKnobScale = 0.1f;
+
+/** Adjust a knob by dragging, with optional fine movement or value snapping. */
+[[nodiscard]] inline float knobDraggedValue(const float startValue,
+                                            const float startY,
+                                            const float currentY,
+                                            const float minimum,
+                                            const float maximum,
+                                            const float steppedIncrement,
+                                            const KnobAdjustment adjustment) noexcept
+{
+    if (!std::isfinite(startValue) || !std::isfinite(startY) ||
+        !std::isfinite(currentY) || !std::isfinite(minimum) ||
+        !std::isfinite(maximum) || minimum > maximum)
+        return std::clamp(std::isfinite(startValue) ? startValue : minimum,
+                          minimum, maximum);
+
+    const float scale = adjustment == KnobAdjustment::fine ? kFineKnobScale : 1.0f;
+    const float requested = startValue +
+        (startY - currentY) / 120.0f * (maximum - minimum) * scale;
+    if (adjustment != KnobAdjustment::stepped || !std::isfinite(steppedIncrement) ||
+        steppedIncrement <= 0.0f)
+        return std::clamp(requested, minimum, maximum);
+
+    return std::clamp(std::round(requested / steppedIncrement) * steppedIncrement,
+                      minimum, maximum);
+}
+
+/** Adjust a knob by one wheel event, using fine or quantized steps when requested. */
+[[nodiscard]] inline float knobWheelAdjustedValue(
+    const float current, const float verticalDelta, const float normalIncrement,
+    const float steppedIncrement, const float minimum, const float maximum,
+    const KnobAdjustment adjustment) noexcept
+{
+    if (adjustment != KnobAdjustment::stepped)
+        return sms::ui::wheelAdjustedValue(
+            current, verticalDelta,
+            adjustment == KnobAdjustment::fine
+                ? normalIncrement * kFineKnobScale : normalIncrement,
+            minimum, maximum);
+
+    if (!std::isfinite(current) || !std::isfinite(verticalDelta) ||
+        !std::isfinite(steppedIncrement) || verticalDelta == 0.0f ||
+        steppedIncrement <= 0.0f || minimum > maximum)
+        return std::clamp(std::isfinite(current) ? current : minimum, minimum, maximum);
+
+    const float scaled = current / steppedIncrement;
+    const float adjusted = verticalDelta > 0.0f
+        ? (std::floor(scaled + 1.0e-6f) + 1.0f) * steppedIncrement
+        : (std::ceil(scaled - 1.0e-6f) - 1.0f) * steppedIncrement;
+    return std::clamp(adjusted, minimum, maximum);
+}
+
 /** Map a bipolar control so its zero value is drawn at twelve o'clock. */
 [[nodiscard]] inline float bipolarKnobPosition(const float value,
                                               const float minimum,
