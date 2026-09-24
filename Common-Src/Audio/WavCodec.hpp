@@ -10,7 +10,7 @@
 
 namespace sms::audio {
 
-inline constexpr double kMaximumWavDurationSeconds = 30.0;
+inline constexpr double kMaximumWavDurationSeconds = 8.0 * 60.0;
 
 enum class WavError : std::uint8_t {
     none,

@@ -153,6 +153,11 @@ void rejectedFormats()
     check(sms::audio::decodeWav(wav(1U, 1U, 16U, {0, 0}), 0.00001).error ==
               sms::audio::WavError::tooLong,
           "duration limit uses source frames and rate");
+    const auto longSong = wav(1U, 1U, 16U,
+                              std::vector<std::uint8_t>(31U * 48000U * 2U));
+    const auto longSongDecoded = sms::audio::decodeWav(longSong);
+    check(longSongDecoded && longSongDecoded.audio.frames == 31U * 48000U,
+          "default WAV import accepts a song longer than 30 seconds");
 }
 
 void encodeAndRender()

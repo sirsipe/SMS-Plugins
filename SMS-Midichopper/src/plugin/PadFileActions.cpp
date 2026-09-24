@@ -8,9 +8,9 @@
 namespace midichopper::plugin {
 namespace {
 
-// The largest accepted 30-second stereo float32 WAV is about 92 MB at 384 kHz.
-// Leave bounded room for ordinary metadata without allocating for arbitrary files.
-constexpr std::uintmax_t kMaximumWavFileBytes = 128U * 1024U * 1024U;
+// Eight minutes of stereo float32 at 384 kHz is about 1.5 GB. Leave bounded
+// room for metadata while rejecting oversized files before reading them.
+constexpr std::uintmax_t kMaximumWavFileBytes = 2ULL * 1024U * 1024U * 1024U;
 
 } // namespace
 

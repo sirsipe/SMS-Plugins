@@ -19,9 +19,9 @@ constexpr std::array<std::uint8_t, 4> kMagic{{'S', 'S', 'P', '1'}};
 constexpr std::uint16_t kVersion = 1;
 constexpr std::uint16_t kChannels = 2;
 constexpr std::size_t kHeaderBytes = 24;
-// 30 seconds at 384 kHz. This is intentionally a restore limit, not a UI
-// setting: malformed project state must never request unbounded memory.
-constexpr std::uint32_t kMaximumFrames = 11'520'000;
+// Eight minutes at 384 kHz. Malformed project state must not request
+// unbounded memory; engine pool capacity is checked separately on import.
+constexpr std::uint32_t kMaximumFrames = 184'320'000;
 
 constexpr char kBase64Alphabet[] =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";

@@ -2,7 +2,7 @@
 
 Audience: engine, adapter, state, or UI agents. [VISION.md](VISION.md) covers intent.
 
-SMS-Midichopper separates sampler, plug-in format, and UI:
+SMS-Midichopper separates sampler, format, and UI:
 
 - `src/core` is the framework-free C++20 capture/playback engine.
 - `src/plugin` adapts DPF parameters, audio, MIDI, and state; start with
@@ -41,12 +41,10 @@ until the editor closes.
 Arming chooses the first empty visible pad, or the first when full; idle mouse
 selection overrides it. A hidden output reports the target. The first
 Sequential note-on begins capture; later note-ons publish sample-accurate
-boundaries and advance. Capture runs Bank A through D and stops without
-wrapping. The 12- and 8-pad layouts
-skip hidden storage slots at the end of each bank in Selected Bank mode. All
-Banks instead advances through contiguous layout-sized pages. Note-off does not
-affect capture. Active recording ignores manual retargeting. Disarming or
-Finalize publishes the last slice.
+boundaries and advance through Bank D. Selected Bank skips hidden slots in
+8- and 12-pad layouts; All Banks uses contiguous pages. Note-off does not
+affect capture. Active recording ignores retargeting. Disarming or Finalize
+publishes the last slice.
 
 The pre-roll ring holds up to 100 ms. At a boundary, that history starts the new
 slice and is trimmed from the previous one. Fixed mode waits for a note-on,
@@ -57,8 +55,10 @@ records the chosen duration, then waits before advancing again.
 Audio processing uses a shared pool of preallocated sample blocks plus pre-roll
 storage. The pool supports 64 logical pad slots while keeping its nominal audio
 allocation close to the earlier 16-pad design; cleared blocks can be reused by
-any bank. An individual pad remains limited to 30 seconds, and the pool can hold
-approximately eight minutes of 48 kHz stereo audio in total. `process()` takes
+any bank. A pad can use the entire free pool, so a long imported song can be
+split and rolled across pads. The pool holds approximately eight minutes of
+stereo audio at the current host rate in total, with a little room for partial
+blocks after splits. `process()` takes
 sample-offset MIDI events and performs no allocation, locking, file access, or
 exception handling. Each pad is one voice, with a configurable global limit of
 1–16 simultaneous voices and deterministic oldest-voice stealing.

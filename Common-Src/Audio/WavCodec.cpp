@@ -338,7 +338,7 @@ const char* wavErrorMessage(const WavError error) noexcept
     case WavError::malformed: return "Malformed or truncated WAV file";
     case WavError::unsupportedFormat: return "Unsupported WAV format";
     case WavError::empty: return "WAV file contains no audio";
-    case WavError::tooLong: return "WAV exceeds the 30-second pad limit";
+    case WavError::tooLong: return "WAV exceeds the eight-minute sample limit";
     case WavError::nonFiniteSample: return "WAV contains a non-finite float sample";
     case WavError::tooLarge: return "WAV file is too large";
     }

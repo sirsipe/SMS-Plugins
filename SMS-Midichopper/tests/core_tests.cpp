@@ -365,6 +365,46 @@ void rechop_empty_neighbors()
           "unchanged empty neighbor remains empty after Apply");
 }
 
+void long_sample_split_and_roll()
+{
+    midichopper::SamplerEngine engine(1000.0, 30.0);
+    midichopper::PadData song;
+    song.sampleRate = 1000.0;
+    song.frames = 31000U;
+    song.stereo.resize(static_cast<std::size_t>(song.frames) * 2U);
+    for (std::uint32_t frame = 0; frame < song.frames; ++frame) {
+        const float value = static_cast<float>(frame) / song.frames;
+        song.stereo[static_cast<std::size_t>(frame) * 2U] = value;
+        song.stereo[static_cast<std::size_t>(frame) * 2U + 1U] = -value;
+    }
+    song.peak = song.rms = 1.0f;
+    check(engine.importPad(0, song), "one pad accepts audio longer than 30 seconds");
+    const std::array<std::uint64_t, 2> generations{{
+        engine.padMetadata(0).generation, engine.padMetadata(1).generation}};
+    check(engine.splitPadAndShiftRight(0, 1, 15500U, generations),
+          "long source splits into adjacent pads");
+    const std::array<std::int64_t, 2> roll{{0, -1000}};
+    check(engine.rechopPads(0, 3, roll),
+          "cut-point edit rolls the split source into the next pad");
+
+    midichopper::PadData first, second, third;
+    check(engine.exportPad(0, first) && engine.exportPad(1, second) &&
+          engine.exportPad(2, third), "export all rolled pads");
+    check(first.frames == 15500U && second.frames == 14500U && third.frames == 1000U,
+          "rolling preserves the full long source");
+    close(first.stereo.front(), 0.0f, "first pad keeps the source start");
+    close(second.stereo.front(), 0.5f, "second pad begins at the split");
+    close(third.stereo.front(), 30000.0f / 31000.0f,
+          "third pad begins at the moved cut");
+    close(third.stereo.back(), -30999.0f / 31000.0f,
+          "last pad keeps the source end");
+
+    song.frames = 1000000U;
+    song.stereo.assign(static_cast<std::size_t>(song.frames) * 2U, 0.0f);
+    check(!engine.importPad(0, song) && engine.padMetadata(0).frames == 15500U,
+          "over-capacity import leaves the existing pad intact");
+}
+
 void pad_structure_edits()
 {
     auto sample = [](const double rate, const std::initializer_list<float> values) {
@@ -1314,6 +1354,7 @@ int main() {
     sequential_boundaries_and_preroll();
     rechop_and_raw_preview();
     rechop_empty_neighbors();
+    long_sample_split_and_roll();
     pad_structure_edits();
     full_bank_and_undo();
     bank_and_layout_mapping();

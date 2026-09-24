@@ -8,10 +8,13 @@ Right-click a pad in Play or Sample Editor:
   varispeed, and ADSR applied. It is disabled while all editor controls use
   their defaults.
 
-Import accepts mono or stereo WAV files up to 30 seconds long: 16-, 24-, or
+Import accepts mono or stereo WAV files up to eight minutes long, subject to
+free sampler storage: 16-, 24-, or
 32-bit integer PCM and 32-bit floating point, including common extensible WAV
-headers. Mono is duplicated to stereo. Imported audio is embedded in the DAW
-project, so the source file is not needed when the project is reopened.
+headers. Mono is duplicated to stereo. A long song can occupy one pad and then
+be split onto following pads. Imported audio is embedded in the DAW project,
+so the source file is not needed when the project is reopened. Large songs can
+make project files and save times substantially larger.
 
 Both exports are stereo 16-bit PCM WAV at the sample's stored rate. A missing
 `.wav` suffix is added automatically; another suffix is rejected. Exporting

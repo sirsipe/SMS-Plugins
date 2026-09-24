@@ -38,6 +38,20 @@ void roundTrip()
               "PCM16 round-trip tolerance");
 }
 
+void longPadStateRoundTrip()
+{
+    midichopper::PadData original;
+    original.sampleRate = 1000.0;
+    original.frames = 31000U;
+    original.stereo.assign(static_cast<std::size_t>(original.frames) * 2U, 0.25f);
+    const auto encoded = midichopper::plugin::encodePadState(original, 1000U);
+    check(!encoded.empty(), "state saves a pad longer than 30 seconds");
+    midichopper::plugin::DecodedPadState decoded;
+    check(midichopper::plugin::decodePadState(encoded.c_str(), decoded) &&
+          decoded.pad.frames == original.frames,
+          "long pad restores with its full frame count");
+}
+
 void rejectsDamage()
 {
     midichopper::PadData original;
@@ -265,6 +279,7 @@ void padStructureProtocolRoundTrip()
 int main()
 {
     roundTrip();
+    longPadStateRoundTrip();
     rejectsDamage();
     editorStateRoundTrip();
     mixerStateRoundTrip();

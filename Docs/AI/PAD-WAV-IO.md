@@ -39,8 +39,10 @@ accept unknown metadata chunks and RIFF padding. Validate format consistency,
 finite float samples, arithmetic overflow, declared versus available data,
 sample rate, duration, and storage before allocation or replacement. Reject
 empty, malformed, compressed, float64, multichannel, RF64/WAVE64, unsupported,
-over-duration, and over-capacity files with useful UI status. Enforce the
-30-second limit from source frames and sample rate, not host-rate frame count.
+over-duration, and over-capacity files with useful UI status. The import limit
+is eight minutes from source frames and sample rate; the shared sampler pool
+may fill sooner when other pads contain audio. A 2 GiB file-read bound covers
+the supported eight-minute stereo float32 WAV at 384 kHz.
 
 Both exports remain little-endian stereo PCM16 RIFF/WAVE at the stored source
 rate, matching project-state precision and minimizing writer complexity. Append
@@ -65,9 +67,8 @@ PCM through UI state; LV2 UIs may run separately.
 
 ## File dialogs and Linux support
 
-Enable DPF's direct asynchronous `openFileBrowser()` API, not a host-provided
-browser. DPF has no extension filters, so validate after selection. Open dialogs
-can use its Linux X11 fallback, but the pinned fallback cannot save.
+Enable DPF's asynchronous `openFileBrowser()` API. DPF has no extension
+filters, so validate after selection. Its Linux X11 fallback cannot save.
 
 ### Dev Container prerequisite
 

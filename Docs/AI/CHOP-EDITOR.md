@@ -42,7 +42,8 @@ map while the editor is loading or applying.
 
 `chop_apply_request` carries the first pad, count three, and two offsets. Before
 mutation, the DSP validates occupancy/frame counts, sample rates, ordered source
-bounds, per-pad limits, and pool capacity. Any zero-length result clears its pad.
+bounds, per-pad addressable frames, and pool capacity. Any zero-length result
+clears its pad.
 
 Apply uses `RealtimeAccessGate` on the control thread, rebuilds one PCM sequence,
 releases its storage, and repartitions the frames. Empty results reset all pad

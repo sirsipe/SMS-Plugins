@@ -10,14 +10,22 @@ constexpr float kSilence = 0.0f;
 constexpr std::uint32_t kSampleBlockFrames = 1024;
 constexpr std::uint32_t kNoBlock = ~std::uint32_t{0};
 constexpr std::uint32_t clampPad(std::uint32_t p) noexcept { return p < kPadCount ? p : kPadCount; }
+constexpr std::uint32_t poolBlocks(const std::uint32_t captureFrames) noexcept {
+    // Leave room for the partially filled final blocks created by splitting a
+    // pool-length recording across all pads in one bank.
+    return std::max(kPadCount, kPadsPerBank *
+        ((captureFrames + kSampleBlockFrames - 1U) / kSampleBlockFrames) +
+        kPadsPerBank);
+}
 }
 
 SamplerEngine::SamplerEngine(double sampleRate, double maxRecordSeconds)
     : sample_rate_(sampleRate > 1.0 ? sampleRate : 48000.0),
       max_record_seconds_(maxRecordSeconds > 0.0 ? maxRecordSeconds : 1.0),
-      max_frames_(static_cast<std::uint32_t>(std::max(1.0, std::ceil(sample_rate_ * max_record_seconds_)))),
-      blocks_per_pad_((max_frames_ + kSampleBlockFrames - 1U) / kSampleBlockFrames),
-      total_blocks_(std::max(kPadCount, kPadsPerBank * blocks_per_pad_)),
+      total_blocks_(poolBlocks(static_cast<std::uint32_t>(
+          std::max(1.0, std::ceil(sample_rate_ * max_record_seconds_))))),
+      max_frames_(total_blocks_ * kSampleBlockFrames),
+      blocks_per_pad_(total_blocks_),
       samples_(static_cast<std::size_t>(total_blocks_) * kSampleBlockFrames * 2U, 0.0f),
       pad_blocks_(static_cast<std::size_t>(kPadCount) * blocks_per_pad_, kNoBlock),
       free_blocks_(total_blocks_),
@@ -36,7 +44,7 @@ void SamplerEngine::setSampleRate(double sampleRate) {
     stopChopPreview();
 
     // A host may change rate while keeping the same plug-in instance. Preserve
-    // completed pads and only grow the per-pad storage when the new rate needs
+    // completed pads and only grow the shared pool when the new rate needs
     // more room; shrinking it could truncate restored material.
     if (activePad_ >= 0) {
         finishRecord(static_cast<std::uint32_t>(activePad_));
@@ -44,7 +52,8 @@ void SamplerEngine::setSampleRate(double sampleRate) {
     }
     const auto requiredFrames = static_cast<std::uint32_t>(
         std::max(1.0, std::ceil(sampleRate * max_record_seconds_)));
-    if (requiredFrames > max_frames_) {
+    const auto requiredBlocks = poolBlocks(requiredFrames);
+    if (requiredBlocks > total_blocks_) {
         std::array<PadData, kPadCount> snapshots;
         std::array<sms::dsp::SamplePlaybackSettings, kPadCount> playbackSettings;
         std::array<sms::dsp::SampleMixerSettings, kPadCount> mixerSettings;
@@ -58,9 +67,9 @@ void SamplerEngine::setSampleRate(double sampleRate) {
             }
         }
 
-        max_frames_ = requiredFrames;
-        blocks_per_pad_ = (max_frames_ + kSampleBlockFrames - 1U) / kSampleBlockFrames;
-        total_blocks_ = std::max(kPadCount, kPadsPerBank * blocks_per_pad_);
+        total_blocks_ = requiredBlocks;
+        blocks_per_pad_ = total_blocks_;
+        max_frames_ = total_blocks_ * kSampleBlockFrames;
         samples_.assign(static_cast<std::size_t>(total_blocks_) * kSampleBlockFrames * 2U, 0.0f);
         pad_blocks_.assign(static_cast<std::size_t>(kPadCount) * blocks_per_pad_, kNoBlock);
         free_blocks_.resize(total_blocks_);

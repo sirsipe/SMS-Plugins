@@ -99,8 +99,9 @@ struct ChopMidiPreview {
  * pad, continuing into the next bank when needed.
  * finalizeRecording() commits the final slice. In FixedDuration mode each
  * note-on starts the next slice and it ends at the configured length. In either
- * mode a full buffer or exhausted shared storage also ends recording. Sample
- * blocks are preallocated by the constructor and never allocated from process().
+ * mode a full buffer or exhausted shared storage also ends recording. A pad
+ * may use the entire shared pool when other pads are empty. Sample blocks are
+ * preallocated by the constructor and never allocated from process().
  */
 class SamplerEngine {
 public:
@@ -267,9 +268,9 @@ private:
 
     double sample_rate_;
     double max_record_seconds_;
+    std::uint32_t total_blocks_;
     std::uint32_t max_frames_;
     std::uint32_t blocks_per_pad_;
-    std::uint32_t total_blocks_;
     EngineSettings settings_{};
     std::vector<float> samples_;
     std::vector<std::uint32_t> pad_blocks_;
