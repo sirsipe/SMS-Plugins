@@ -1,20 +1,16 @@
 # SMS-Midichopper architecture
 
-Audience: agents changing engine, adapter, state, or UI. This covers implemented
-behavior; [VISION.md](VISION.md) covers intent.
+Audience: engine, adapter, state, or UI agents. [VISION.md](VISION.md) covers intent.
 
 SMS-Midichopper separates sampler, plug-in format, and UI:
 
 - `src/core` is the framework-free C++20 capture/playback engine.
-- `src/plugin` adapts DPF parameters, audio, MIDI, and state. Start with
-  `Parameters.hpp`, `MidichopperPlugin.cpp`, `StateCodec.*`, and
-  `DistrhoPluginInfo.h` respectively.
+- `src/plugin` adapts DPF parameters, audio, MIDI, and state; start with
+  `Parameters.hpp`, `MidichopperPlugin.cpp`, `StateCodec.*`, and plugin info.
 - `src/ui/MidichopperUI.cpp` owns host communication;
   `MidichopperInteraction.hpp` resolves input and `MidichopperView.cpp` draws.
 - `tests` covers engine behavior, state, WAV handling, and host-free UI geometry.
-- `../Common-Src` contains plug-in-independent sample-region, ADSR, waveform
-  summary, state-codec, and UI geometry components intended for reuse by future
-  SMS plug-ins.
+- `../Common-Src` contains reusable sample, DSP, state, and UI geometry code.
 - `../Common-UI` contains the shared theme, DPF/NanoVG base, controls,
   context-menu and hover primitives, pad layouts, and waveform editor pieces.
 - `../third_party/DPF` is the shared framework submodule.
@@ -35,6 +31,11 @@ labels use the same mapping as the engine. Selected Bank reuses one note range,
 with `active_bank` choosing its target, and retains the released fixed 16-slot
 bank organization.
 
+The Cut Point Editor replaces normal MIDI playback with exclusive raw audition.
+Its three notes select proposed slices; Split Sample maps the target and next
+notes to virtual halves. Other notes and All Banks activation stay suppressed
+until the editor closes.
+
 ## Capture model
 
 Arming chooses the first empty visible pad, or the first when full; idle mouse
@@ -47,10 +48,9 @@ Banks instead advances through contiguous layout-sized pages. Note-off does not
 affect capture. Active recording ignores manual retargeting. Disarming or
 Finalize publishes the last slice.
 
-The pre-roll ring holds up to 100 ms. At a boundary, that history becomes the
-start of the new slice and is trimmed from the previous slice, avoiding a gap
-or duplicated audio. Fixed mode instead waits for a note-on, records the chosen
-duration, and waits for the next note before advancing again.
+The pre-roll ring holds up to 100 ms. At a boundary, that history starts the new
+slice and is trimmed from the previous one. Fixed mode waits for a note-on,
+records the chosen duration, then waits before advancing again.
 
 ## Real-time behavior
 

@@ -24,6 +24,17 @@ struct ChopPreviewRequest {
     std::uint64_t sourceEndFrame = 0;
 };
 
+inline constexpr std::size_t kChopMidiPreviewPadCount = 3U;
+
+struct ChopMidiPreviewRequest {
+    bool active = false;
+    std::uint32_t firstPad = 0;
+    std::uint32_t sourcePadCount = 0;
+    std::uint32_t previewPadCount = 0;
+    std::array<std::uint64_t, kChopMidiPreviewPadCount> sourceFrames{};
+    std::array<std::uint64_t, kChopMidiPreviewPadCount> sourceEndFrames{};
+};
+
 template <class Integer>
 [[nodiscard]] inline bool parseChopInteger(std::string_view token, Integer& value) noexcept
 {
@@ -108,6 +119,73 @@ template <class Integer>
         (play != 0U && decoded.sourceEndFrame <= decoded.sourceFrame))
         return false;
     decoded.play = play != 0U;
+    request = decoded;
+    return true;
+}
+
+[[nodiscard]] inline std::string encodeChopMidiPreviewRequest(
+    const ChopMidiPreviewRequest& request)
+{
+    if (!request.active)
+        return "CM1;0";
+    std::string encoded = "CM1;1;" + std::to_string(request.firstPad) + ";" +
+                          std::to_string(request.sourcePadCount) + ";" +
+                          std::to_string(request.previewPadCount);
+    for (std::uint32_t index = 0; index < request.previewPadCount &&
+         index < kChopMidiPreviewPadCount; ++index) {
+        encoded += ";" + std::to_string(request.sourceFrames[index]) + ";" +
+                   std::to_string(request.sourceEndFrames[index]);
+    }
+    return encoded;
+}
+
+[[nodiscard]] inline bool decodeChopMidiPreviewRequest(
+    const std::string_view encoded, ChopMidiPreviewRequest& request) noexcept
+{
+    if (!encoded.starts_with("CM1;"))
+        return false;
+    ChopMidiPreviewRequest decoded;
+    std::size_t cursor = 4U;
+    auto nextToken = [&encoded, &cursor](std::string_view& token) noexcept {
+        if (cursor > encoded.size())
+            return false;
+        const auto end = encoded.find(';', cursor);
+        token = encoded.substr(cursor, end == std::string_view::npos
+            ? encoded.size() - cursor : end - cursor);
+        cursor = end == std::string_view::npos ? encoded.size() + 1U : end + 1U;
+        return true;
+    };
+    std::string_view token;
+    unsigned active = 0U;
+    if (!nextToken(token) || !parseChopInteger(token, active) || active > 1U)
+        return false;
+    if (active == 0U) {
+        if (cursor <= encoded.size())
+            return false;
+        request = decoded;
+        return true;
+    }
+    if (!nextToken(token) || !parseChopInteger(token, decoded.firstPad) ||
+        !nextToken(token) || !parseChopInteger(token, decoded.sourcePadCount) ||
+        !nextToken(token) || !parseChopInteger(token, decoded.previewPadCount) ||
+        decoded.sourcePadCount == 0U ||
+        decoded.sourcePadCount > kChopMidiPreviewPadCount ||
+        decoded.previewPadCount > kChopMidiPreviewPadCount ||
+        decoded.firstPad >= kPadCount ||
+        decoded.sourcePadCount > kPadCount - decoded.firstPad ||
+        decoded.previewPadCount > kPadCount - decoded.firstPad)
+        return false;
+    for (std::uint32_t index = 0; index < decoded.previewPadCount; ++index) {
+        if (!nextToken(token) ||
+            !parseChopInteger(token, decoded.sourceFrames[index]) ||
+            !nextToken(token) ||
+            !parseChopInteger(token, decoded.sourceEndFrames[index]) ||
+            decoded.sourceEndFrames[index] < decoded.sourceFrames[index])
+            return false;
+    }
+    if (cursor <= encoded.size())
+        return false;
+    decoded.active = true;
     request = decoded;
     return true;
 }

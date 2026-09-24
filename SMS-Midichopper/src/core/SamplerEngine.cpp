@@ -99,6 +99,7 @@ void SamplerEngine::setSampleRate(double sampleRate) {
 
 void SamplerEngine::reset() noexcept {
     stopChopPreview();
+    chopMidiPreview_ = {};
     activePad_ = -1;
     lastCommittedPad_ = -1;
     previousArmed_ = settings_.armed;
@@ -547,6 +548,21 @@ void SamplerEngine::handleEvent(const MidiEvent& event) noexcept {
     }
     const auto pad = noteToPad(event.note);
     if (pad >= kPadCount) return;
+    if (chopMidiPreview_.active) {
+        if (!on || pad < chopMidiPreview_.firstPad)
+            return;
+        const auto previewPad = pad - chopMidiPreview_.firstPad;
+        if (previewPad >= chopMidiPreview_.previewPadCount)
+            return;
+        const auto sourceFrame = chopMidiPreview_.sourceFrames[previewPad];
+        const auto sourceEndFrame = chopMidiPreview_.sourceEndFrames[previewPad];
+        if (sourceEndFrame > sourceFrame) {
+            startChopPreview(chopMidiPreview_.firstPad,
+                             chopMidiPreview_.sourcePadCount,
+                             sourceFrame, sourceEndFrame);
+        }
+        return;
+    }
     if (on) startVoice(pad, event.velocity);
     else if (settings_.playbackMode == PlaybackMode::Gated) stopVoice(pad);
 }
@@ -1125,6 +1141,25 @@ void SamplerEngine::stopChopPreview() noexcept {
     chopPreviewPadCount_ = 0U;
     chopPreviewFrame_ = 0.0;
     chopPreviewRemainingFrames_ = 0.0;
+}
+
+void SamplerEngine::setChopMidiPreview(const ChopMidiPreview& preview) noexcept {
+    const bool valid = preview.active && preview.firstPad < kPadCount &&
+        preview.sourcePadCount > 0U && preview.sourcePadCount <= 3U &&
+        preview.sourcePadCount <= kPadCount - preview.firstPad &&
+        preview.previewPadCount <= 3U &&
+        preview.previewPadCount <= kPadCount - preview.firstPad;
+    if (!valid) {
+        chopMidiPreview_ = {};
+        stopChopPreview();
+        return;
+    }
+    if (!chopMidiPreview_.active) {
+        stopChopPreview();
+        for (std::uint32_t pad = 0; pad < kPadCount; ++pad)
+            hardStopVoice(pad);
+    }
+    chopMidiPreview_ = preview;
 }
 
 float SamplerEngine::chopPreviewPosition() const noexcept {

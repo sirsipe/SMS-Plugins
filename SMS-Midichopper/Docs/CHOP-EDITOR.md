@@ -1,43 +1,39 @@
 # Adjust cut points
 
-Right-click an occupied pad and choose **Adjust cut points** to correct the two
-cuts around it. The selected pad needs a pad slot immediately before and after
-it, so the action is unavailable on the first or last pad in a bank. Either
-neighbor may be empty.
+Choose **Adjust cut points** on an occupied pad to correct its surrounding cuts.
+It needs slots immediately before and after, so bank edge pads cannot open it.
+Either neighbor may be empty.
 
-The editor combines the left neighbor, selected pad, and right neighbor into
-one raw waveform. **Cut 1** divides the left and selected pads; **Cut 2** divides
-the selected and right pads. Drag either line, or use the wheel over it, to move
-audio across that cut.
+The editor combines the pad and neighbors into one raw waveform. **Cut 1**
+divides the left/selected pads; **Cut 2** divides selected/right. Drag or wheel a
+line to move audio across it.
 
-When the left pad is empty, Cut 1 starts at the far left. Drag it right to give
-the empty pad the beginning of the selected sample. When the right pad is empty,
-Cut 2 starts at the far right. Drag it left to give that pad the end of the
-selected sample. An empty neighbor stays empty if its boundary is not moved.
+With an empty left or right pad, its cut starts at that source edge. Move it
+inward to give the empty pad the source prefix or suffix; otherwise it stays empty.
 
-The three buttons below the waveform represent those three pads. Click one to
-hear only its proposed raw slice. A zero-length pad button is disabled until a
-cut gives it audio. You can also move a cut all the way to a source edge or the
-other cut. Applying a zero-length result empties that pad and clears all of its
-settings. Preview ignores Start/End, ADSR, and mixer settings but obeys the two
-pending cut positions.
+The three buttons preview the proposed raw slices. Zero-length slices are
+disabled; applying one empties its pad and clears its settings. Preview follows
+pending cuts but ignores Start/End, ADSR, and mixer settings.
 
-Choose **Apply** to rewrite the three samples at the proposed cuts. Apply stays
-in the editor and becomes disabled until you make another change. Start, End,
-and ADSR return to defaults on non-empty pads touching a changed cut. Gain, Pan,
-and Tune are preserved unless the pad is emptied.
+You can also trigger the three proposed slices from their corresponding MIDI
+notes. While this view is open, other notes are silent and do not switch banks.
+MIDI preview is one-shot, follows every pending cut adjustment, and moves the
+waveform playhead just like clicking a pad button.
 
-Use the left and right arrows to adjust the previous or next eligible pad in
-the current bank. Pending, unapplied cuts are discarded when you navigate. Use
-the round **Exit** button between the arrows to discard pending cuts and leave
-the view.
+**Apply** rewrites the three samples and stays open, disabled until another
+change. Affected non-empty pads reset Start/End/ADSR and preserve Gain/Pan/Tune.
+
+Arrows load the previous or next eligible bank pad and discard pending cuts.
+The round **Exit** button also discards them and leaves the view.
 
 ## Split a sample and insert a pad
 
 Right-click an occupied pad and choose **Split Sample...** when an empty slot is
 available later in the visible bank. The editor shows the selected raw sample
 split at its midpoint. Drag the single **SPLIT** line and use the two pad buttons
-to preview the proposed halves.
+to preview the proposed halves. The target pad's MIDI note previews the first
+half, and the following pad's note previews the second, virtual half. All other
+notes are silent until you apply or leave the view.
 
 Choose **Apply** to insert both halves. Occupied pads between the sample and the
 nearest empty slot move right by one. Their audio and settings move together.

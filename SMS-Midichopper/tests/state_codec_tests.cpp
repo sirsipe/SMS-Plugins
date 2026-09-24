@@ -152,6 +152,45 @@ void chopProtocolRoundTrip()
           !midichopper::plugin::decodeChopPreviewRequest("CP1;1;0;3;50;50", decodedPreview) &&
           !midichopper::plugin::decodeChopPreviewRequest("CP1;1;0;3;0", decodedPreview),
           "invalid chop preview command is rejected");
+
+    midichopper::plugin::ChopMidiPreviewRequest midiPreview;
+    midiPreview.active = true;
+    midiPreview.firstPad = 20U;
+    midiPreview.sourcePadCount = 1U;
+    midiPreview.previewPadCount = 2U;
+    midiPreview.sourceFrames[0] = 0U;
+    midiPreview.sourceEndFrames[0] = 500U;
+    midiPreview.sourceFrames[1] = 500U;
+    midiPreview.sourceEndFrames[1] = 1000U;
+    const auto encodedMidiPreview =
+        midichopper::plugin::encodeChopMidiPreviewRequest(midiPreview);
+    midichopper::plugin::ChopMidiPreviewRequest decodedMidiPreview;
+    check(midichopper::plugin::decodeChopMidiPreviewRequest(
+              encodedMidiPreview, decodedMidiPreview) &&
+          decodedMidiPreview.active && decodedMidiPreview.firstPad == 20U &&
+          decodedMidiPreview.sourcePadCount == 1U &&
+          decodedMidiPreview.previewPadCount == 2U &&
+          decodedMidiPreview.sourceFrames[1] == 500U &&
+          decodedMidiPreview.sourceEndFrames[1] == 1000U,
+          "split MIDI preview map round-trips");
+    const auto disabledMidiPreview =
+        midichopper::plugin::encodeChopMidiPreviewRequest({});
+    check(midichopper::plugin::decodeChopMidiPreviewRequest(
+              disabledMidiPreview, decodedMidiPreview) && !decodedMidiPreview.active,
+          "disabled MIDI preview map round-trips");
+    midiPreview.previewPadCount = 0U;
+    check(midichopper::plugin::decodeChopMidiPreviewRequest(
+              midichopper::plugin::encodeChopMidiPreviewRequest(midiPreview),
+              decodedMidiPreview) && decodedMidiPreview.active &&
+          decodedMidiPreview.previewPadCount == 0U,
+          "loading editor MIDI mute map round-trips");
+    check(!midichopper::plugin::decodeChopMidiPreviewRequest(
+              "CM1;1;0;3;3;0;4;4;8;8", decodedMidiPreview) &&
+          !midichopper::plugin::decodeChopMidiPreviewRequest(
+              "CM1;1;0;1;2;0;5;6;4", decodedMidiPreview) &&
+          !midichopper::plugin::decodeChopMidiPreviewRequest(
+              "CM1;0;extra", decodedMidiPreview),
+          "invalid MIDI preview maps are rejected");
 }
 
 void padStructureProtocolRoundTrip()

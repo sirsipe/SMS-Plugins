@@ -15,7 +15,8 @@
  *   pad_file_busy/status small progress and result messages returned to the UI
  *   pad_clipboard_request internal per-instance Copy or Paste command
  *   chop_apply_request/status transactional rolling-boundary edit and result
- *   chop_preview_request raw allocation-free play/pause/seek command
+ *   chop_preview_request raw allocation-free play/stop command
+ *   chop_midi_preview exclusive editor MIDI audition map
  *   pad_structure_request/status atomic gap collapse and planned sample split
  *
  * The UI sends C1 + pad as MIDI note-on/off in PLAY mode only. In ARM mode a
@@ -207,6 +208,11 @@ public:
 #endif
     }
 
+    ~MidichopperUI() override
+    {
+        disableChopMidiPreview();
+    }
+
 protected:
     void parameterChanged(uint32_t index, float value) override
     {
@@ -291,6 +297,25 @@ protected:
             if (std::isfinite(value) && value > 0.0f) {
                 fChopPreviewPosition = value;
                 fChopPlaying = true;
+                fChopPreviewPad = -1;
+                if (fChopEditorMode && chopReady()) {
+                    const int encodedPad = static_cast<int>(std::floor(value)) - 1;
+                    const int originalPad = encodedPad - fChopFirstPad;
+                    const double sourceFrame = midichopper::ui::chop::sourceFrameForPlayhead(
+                        fChopWaveforms, originalPad, value - std::floor(value));
+                    const int displayedPads = fChopSplitMode ? 2 : 3;
+                    for (int pad = 0; sourceFrame >= 0.0 && pad < displayedPads; ++pad) {
+                        const auto start = midichopper::ui::chop::adjustedStartFrame(
+                            fChopWaveforms, fChopOffsets, pad);
+                        const auto frames = midichopper::ui::chop::adjustedFrames(
+                            fChopWaveforms, fChopOffsets, pad);
+                        if (frames != 0U && sourceFrame >= static_cast<double>(start) &&
+                            sourceFrame < static_cast<double>(start + frames)) {
+                            fChopPreviewPad = pad;
+                            break;
+                        }
+                    }
+                }
             } else {
                 if (fChopPlaying)
                     fChopPreviewPosition = 0.0f;
@@ -618,11 +643,14 @@ protected:
                         fChopWaveformRequestPending = false;
                     }
                     if (fChopNextWaveform >= 3) {
-                        if (chopReady())
+                        if (chopReady()) {
                             fStatus[0] = '\0';
-                        else
+                            updateChopMidiPreview();
+                        } else {
+                            muteChopMidiPreview();
                             copyString(fStatus,
                                 "Non-empty samples must use one sample rate");
+                        }
                     }
                 }
                 if (fEditorSnapshot.accept(summary)) {
@@ -643,6 +671,7 @@ protected:
                 copyString(fStatus, "Cut points applied");
             } else if (std::strncmp(value, "CH1;ERROR;", 10U) == 0) {
                 copyString(fStatus, value + 10U);
+                updateChopMidiPreview();
             }
         }
         else if (std::strcmp(key, "pad_structure_status") == 0)
@@ -1302,6 +1331,7 @@ protected:
             const auto requested = fChopDragStartOffset + delta;
             fChopOffsets[boundary] = clampChopBoundaryOffset(
                 fChopActiveBoundary, requested);
+            updateChopMidiPreview();
             fStatus[0] = '\0';
             requestRepaint();
             return true;
@@ -1350,6 +1380,7 @@ protected:
                 fChopWaveforms, fChopOffsets, hovered.index, delta,
                 uiLayout::chopWaveform);
             fChopOffsets[boundary] = clampChopBoundaryOffset(hovered.index, requested);
+            updateChopMidiPreview();
             fStatus[0] = '\0';
             requestRepaint();
             return true;
@@ -2495,6 +2526,7 @@ private:
         resetChopWaveforms();
         fChopApplying = false;
         fStatus[0] = '\0';
+        muteChopMidiPreview();
         requestRepaint();
     }
 
@@ -2524,6 +2556,7 @@ private:
         fChopWaveformRequestPending = false;
         fChopApplying = false;
         fStatus[0] = '\0';
+        updateChopMidiPreview();
         requestRepaint();
     }
 
@@ -2558,6 +2591,7 @@ private:
         if (fChopSplitMode)
             cancelSplitPlan(fSplitPlanId);
         stopChopPreview();
+        disableChopMidiPreview();
         fChopEditorMode = false;
         fChopSplitMode = false;
         fSplitPlanId = 0U;
@@ -2623,6 +2657,56 @@ private:
         requestRepaint();
     }
 
+    void updateChopMidiPreview()
+    {
+#if DISTRHO_PLUGIN_WANT_STATE
+        if (!fChopEditorMode || fChopApplying || fChopFirstPad < 0 || !chopReady()) {
+            if (fChopEditorMode && fChopFirstPad >= 0)
+                muteChopMidiPreview();
+            else
+                disableChopMidiPreview();
+            return;
+        }
+        midichopper::plugin::ChopMidiPreviewRequest request;
+        request.active = true;
+        request.firstPad = static_cast<std::uint32_t>(fChopFirstPad);
+        request.sourcePadCount = fChopSplitMode ? 1U : 3U;
+        request.previewPadCount = fChopSplitMode ? 2U : 3U;
+        for (std::uint32_t pad = 0; pad < request.previewPadCount; ++pad) {
+            const auto localPad = static_cast<int>(pad);
+            request.sourceFrames[pad] = midichopper::ui::chop::adjustedStartFrame(
+                fChopWaveforms, fChopOffsets, localPad);
+            request.sourceEndFrames[pad] = request.sourceFrames[pad] +
+                midichopper::ui::chop::adjustedFrames(
+                    fChopWaveforms, fChopOffsets, localPad);
+        }
+        const auto encoded = midichopper::plugin::encodeChopMidiPreviewRequest(request);
+        setState("chop_midi_preview", encoded.c_str());
+#endif
+    }
+
+    void muteChopMidiPreview()
+    {
+#if DISTRHO_PLUGIN_WANT_STATE
+        if (fChopFirstPad < 0)
+            return;
+        midichopper::plugin::ChopMidiPreviewRequest request;
+        request.active = true;
+        request.firstPad = static_cast<std::uint32_t>(fChopFirstPad);
+        request.sourcePadCount = fChopSplitMode ? 1U : 3U;
+        const auto encoded = midichopper::plugin::encodeChopMidiPreviewRequest(request);
+        setState("chop_midi_preview", encoded.c_str());
+#endif
+    }
+
+    void disableChopMidiPreview()
+    {
+#if DISTRHO_PLUGIN_WANT_STATE
+        const auto encoded = midichopper::plugin::encodeChopMidiPreviewRequest({});
+        setState("chop_midi_preview", encoded.c_str());
+#endif
+    }
+
     void applyChops()
     {
 #if DISTRHO_PLUGIN_WANT_STATE
@@ -2643,6 +2727,7 @@ private:
             request.planId = fSplitPlanId;
             request.splitFrame = static_cast<std::uint32_t>(splitFrame);
             stopChopPreview();
+            muteChopMidiPreview();
             fChopApplying = true;
             fPadStructureBusy = true;
             setLocalStatus("Applying sample split...");
@@ -2657,6 +2742,7 @@ private:
             request.boundaryOffsets[static_cast<std::size_t>(boundary)] =
                 fChopOffsets[static_cast<std::size_t>(boundary)];
         stopChopPreview();
+        muteChopMidiPreview();
         fChopApplying = true;
         setLocalStatus("Applying chop boundaries...");
         const auto encoded = midichopper::plugin::encodeChopApplyRequest(request);

@@ -1,86 +1,78 @@
 # Cut Point Editor contract
 
-Audience: agents changing three-pad cut editing, raw preview, pad storage,
-context-menu actions, or waveform interaction.
+Audience: agents changing cut editing, raw preview, storage, or waveform input.
 
 ## Model
 
-The action starts from one context-menu pad and requires its immediate left and
-right neighbors in the active bank. The first and last local pads cannot open
-it. The UI requests three raw 128-bin summaries and shows them as one ordered
-waveform. The two signed frame offsets remain UI-local until Apply; they are not
-host parameters or saved project state.
+The action requires one context-menu pad and both immediate neighbors, so the
+first and last bank pads cannot open it. Three raw 128-bin summaries form one
+waveform. Two signed frame offsets stay UI-local until Apply; they are neither
+host parameters nor saved state.
 
-The context-menu action starts from an occupied selected pad, but arrow
-navigation may later center an empty slot. Either neighboring slot may be
-empty. All three waveform responses must arrive, and all non-empty pads must
-share a sample rate. The editor cannot verify recording ancestry because the
-engine stores PCM per pad without capture-session identity.
+The initial center pad is occupied, but arrow navigation may center an empty
+slot; either neighbor may also be empty. All responses must arrive and occupied
+pads must share a rate. Per-pad PCM has no capture-session identity, so source
+ancestry cannot be verified.
 
 ## Interaction and preview
 
-Cut 1 is the boundary between pads 0 and 1; Cut 2 is between pads 1 and 2.
-Dragging or wheeling clamps each cut between its neighbor or source edge. A cut
-may meet the other cut or a source edge, producing a zero-length pad. An empty
-left slot starts with Cut 1 at the far-left edge; dragging right assigns it the
-source prefix. An empty right slot starts with Cut 2 at the far-right edge;
-dragging left assigns it the source suffix. Pad buttons preview corresponding
-non-empty proposed slices and are disabled at zero length.
+Cut 1 separates pads 0/1 and Cut 2 separates pads 1/2. Dragging or wheeling
+clamps each cut between its neighbor and source edge. Cuts may coincide or meet
+an edge, producing a zero-length pad. Empty edge slots begin at their source
+edge and gain the prefix or suffix when moved inward. Buttons preview non-empty
+proposed slices.
 
-The right-panel arrows move to the previous or next eligible center pad within
-the current bank and reload its three-pad window. Navigation discards pending
-offsets. Exit also discards pending offsets and returns to the main view.
+From entry through Apply/loading, the editor owns MIDI exclusively; all notes
+are silent until its waveform data is ready. Then the three displayed notes
+trigger proposed slices. Split mode maps the target and following notes to the
+prefix and virtual suffix. Other notes cannot sound or activate banks. Preview
+is monophonic and one-shot, ignores note-off, and drives the raw playhead.
 
-`chop_preview_request` carries the three-pad global range plus an inclusive
-start/exclusive end frame range. The audio callback traverses existing pad
-blocks without allocation or locking, stops at the proposed cut, and bypasses
-per-pad Start/End and ADSR. Global output gain still applies. The hidden
-`chop_preview_position` output drives the playhead on the combined waveform.
-Per-pad mixer settings are also bypassed.
+Arrows load the previous or next eligible center in the bank and discard pending
+offsets. Exit also discards them and returns to the main view.
+
+`chop_preview_request` carries the global source pads and inclusive/exclusive
+frame range. The callback traverses existing blocks without allocation or
+locking and bypasses per-pad Start/End, ADSR, and mixer settings. Global gain
+applies. Hidden output `chop_preview_position` drives the combined playhead.
+`chop_midi_preview` publishes the current proposed ranges or an exclusive mute
+map while the editor is loading or applying.
 
 ## Apply
 
-`chop_apply_request` carries the first global pad, count three, and two frame
-offsets. The DSP validates the complete request before mutation: occupancy and
-frame counts must agree, non-empty pads must use one sample rate, boundaries
-must remain ordered and inside the source, slices must remain within the per-pad
-frame limit, and the result must fit the existing block pool. Zero-length edge
-slices and a zero-length middle slice are valid and clear the corresponding
-pad.
+`chop_apply_request` carries the first pad, count three, and two offsets. Before
+mutation, the DSP validates occupancy/frame counts, sample rates, ordered source
+bounds, per-pad limits, and pool capacity. Any zero-length result clears its pad.
 
-Apply uses `RealtimeAccessGate` on the control thread. It reconstructs one PCM
-sequence, releases participating storage, and repartitions the same frames at
-the proposed cuts. A zero-length result empties that pad and resets all of its
-playback and mixer settings. Non-empty pads touching a moved cut reset Start,
-End, and ADSR while preserving Gain, Pan, and Tune. Untouched non-empty pads
-retain all settings. `chop_status` reports completion. A successful Apply stays
-in the editor, reloads the three waveforms as the new baseline, and disables
-Apply until another cut changes.
+Apply uses `RealtimeAccessGate` on the control thread, rebuilds one PCM sequence,
+releases its storage, and repartitions the frames. Empty results reset all pad
+settings. Non-empty pads touching a moved cut reset Start/End/ADSR but preserve
+Gain/Pan/Tune; untouched pads retain settings. `chop_status` reports completion.
+Success stays in the editor, reloads its baseline, and disables Apply until the
+next change.
 
 ## Split Sample mode
 
-The **Split Sample...** context action reuses this view as a two-pad insertion
-editor when an occupied target has a later empty visible slot. The DSP first
-records a non-mutating plan through the nearest empty slot.
+**Split Sample...** becomes a two-pad insertion editor when an occupied target
+has a later empty visible slot. The DSP records a non-mutating plan through the
+nearest empty slot.
 
-Only the target's raw waveform is shown. The first boundary starts at
-`frames / 2`; the second virtual slot is its suffix. Only the split line and two
-preview buttons work. Bounded preview reads the unchanged source, excluding its
-physical neighbor. Navigation cancels the split plan and opens the neighboring
-ordinary three-pad window.
+Only the target raw waveform appears. Its boundary starts at `frames / 2`; the
+virtual second slot is the suffix. Preview excludes the physical neighbor.
+Navigation cancels the plan and opens the neighboring ordinary editor.
 
-Apply revalidates all planned pad generations, then atomically shifts the
-whole pads right and stores both non-empty halves. Their Start/End and ADSR
-reset; both inherit source mixer settings. Shifted pads keep all content and
-settings. Apply opens the ordinary three-pad editor around the new halves. Exit,
-Escape, stale plans, and failures do not mutate.
+Apply revalidates pad generations, atomically shifts whole pads right, and
+stores both halves. Both reset Start/End/ADSR and inherit source mixer settings;
+shifted pads stay intact. Apply opens the ordinary editor around the halves.
+Exit, Escape, stale plans, and failures do not mutate.
 
 ## Validation
 
 - `sampler-core`: positive and negative cut moves preserve PCM order and total
   frames; empty edge slots can receive prefixes or suffixes; zero-length edge
   and middle results clear their pad and settings; bounded raw preview skips
-  empties, crosses original storage boundaries, and stops at the proposed cut.
+  empties, crosses original storage boundaries, and stops at the proposed cut;
+  MIDI selects proposed ordinary and split slices while outside notes are silent.
 - `state-codec`: apply and bounded-preview commands round-trip and reject bad
   versions, counts, ranges, missing fields, and invalid numbers.
 - `ui-geometry`: both cut handles, edge placement for empty neighbors,
@@ -94,11 +86,15 @@ Escape, stale plans, and failures do not mutate.
   Check empty-neighbor behavior, zeroing each pad position, both drags,
   preview-button enablement, arrows, Exit, and Apply. Confirm Apply stays open
   and becomes disabled after its refresh. Listen across both edited cuts and
-  confirm shaping resets only on non-empty pads touching a changed cut.
+  confirm shaping resets only on non-empty pads touching a changed cut. Trigger
+  all three displayed pads from MIDI before and after moving both cuts; confirm
+  other notes are silent and do not change the active bank.
 - Right-click an occupied pad with a later empty slot and choose **Split
   Sample...**. Preview both midpoint halves, adjust the split, cancel once, then
-  Apply. Confirm later pads shift once, settings follow them, the editor exits,
-  and no hidden or next-bank slot changes.
+  Apply. Confirm MIDI for the target and following pad previews the proposed
+  prefix and virtual suffix, while other notes remain silent. Confirm later pads
+  shift once, settings follow them, the editor exits, and no hidden or next-bank
+  slot changes.
 
 ## Limitation
 

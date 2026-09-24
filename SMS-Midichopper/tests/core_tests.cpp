@@ -3,6 +3,7 @@
 #include "../src/plugin/Parameters.hpp"
 #include "DSP/PeakMeter.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdlib>
@@ -173,6 +174,73 @@ void rechop_and_raw_preview() {
           "raw preview cannot start while armed");
     settings.armed = false;
     engine.setSettings(settings);
+
+    check(engine.importPad(3, right), "import an out-of-editor pad");
+    midichopper::ChopMidiPreview midiPreview;
+    midiPreview.active = true;
+    midiPreview.firstPad = 0U;
+    midiPreview.sourcePadCount = 3U;
+    midiPreview.previewPadCount = 3U;
+    midiPreview.sourceFrames = {0U, 2U, 5U};
+    midiPreview.sourceEndFrames = {2U, 5U, 12U};
+    engine.setChopMidiPreview(midiPreview);
+    check(engine.chopMidiPreviewActive(), "cut editor MIDI preview activates");
+    const midichopper::MidiEvent middlePreview{
+        1U, midichopper::midiNoteForPad(1U, settings.baseNote,
+                                       settings.midiBankMode),
+        127U, midichopper::MidiEventType::NoteOn};
+    float midiPreviewLeft[5]{};
+    float midiPreviewRight[5]{};
+    engine.process(nullptr, nullptr, midiPreviewLeft, midiPreviewRight, 5U,
+                   &middlePreview, 1U);
+    close(midiPreviewLeft[0], 0.0f,
+          "MIDI raw preview retains the event's sample offset");
+    close(midiPreviewLeft[1], 3.0f,
+          "MIDI plays the proposed slice start instead of stored pad start");
+    close(midiPreviewLeft[3], 5.0f,
+          "MIDI raw preview reaches the proposed slice end");
+    close(midiPreviewLeft[4], 0.0f,
+          "MIDI raw preview stops after the proposed slice end");
+
+    const midichopper::MidiEvent outsidePreview{
+        0U, midichopper::midiNoteForPad(3U, settings.baseNote,
+                                       settings.midiBankMode),
+        127U, midichopper::MidiEventType::NoteOn};
+    std::fill_n(midiPreviewLeft, 5U, 0.0f);
+    std::fill_n(midiPreviewRight, 5U, 0.0f);
+    engine.process(nullptr, nullptr, midiPreviewLeft, midiPreviewRight, 4U,
+                   &outsidePreview, 1U);
+    close(midiPreviewLeft[0], 0.0f,
+          "notes outside the cut editor do not play stored pads");
+
+    midiPreview.sourcePadCount = 1U;
+    midiPreview.previewPadCount = 0U;
+    engine.setChopMidiPreview(midiPreview);
+    std::fill_n(midiPreviewLeft, 5U, 0.0f);
+    std::fill_n(midiPreviewRight, 5U, 0.0f);
+    engine.process(nullptr, nullptr, midiPreviewLeft, midiPreviewRight, 1U,
+                   &outsidePreview, 1U);
+    close(midiPreviewLeft[0], 0.0f,
+          "loading editor suppresses every MIDI note");
+
+    midiPreview.previewPadCount = 2U;
+    midiPreview.sourceFrames = {0U, 3U, 0U};
+    midiPreview.sourceEndFrames = {3U, 6U, 0U};
+    engine.setChopMidiPreview(midiPreview);
+    const midichopper::MidiEvent splitSuffix{
+        0U, midichopper::midiNoteForPad(1U, settings.baseNote,
+                                       settings.midiBankMode),
+        127U, midichopper::MidiEventType::NoteOn};
+    std::fill_n(midiPreviewLeft, 5U, 0.0f);
+    std::fill_n(midiPreviewRight, 5U, 0.0f);
+    engine.process(nullptr, nullptr, midiPreviewLeft, midiPreviewRight, 3U,
+                   &splitSuffix, 1U);
+    close(midiPreviewLeft[0], 4.0f,
+          "split editor second note previews the virtual suffix");
+    close(midiPreviewLeft[2], 6.0f,
+          "split editor suffix uses only the unsplit source pad");
+    engine.setChopMidiPreview({});
+    check(!engine.chopMidiPreviewActive(), "leaving the editor disables MIDI preview");
 
     const std::array<std::int64_t, 2> earlier{{-2, 0}};
     check(engine.rechopPads(0, 3, earlier), "move a boundary earlier");

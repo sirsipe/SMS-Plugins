@@ -59,7 +59,8 @@ constexpr std::uint32_t kPadClipboardRequestState = kPadFileStatusState + 1U;
 constexpr std::uint32_t kChopApplyRequestState = kPadClipboardRequestState + 1U;
 constexpr std::uint32_t kChopStatusState = kChopApplyRequestState + 1U;
 constexpr std::uint32_t kChopPreviewRequestState = kChopStatusState + 1U;
-constexpr std::uint32_t kMixerStateOffset = kChopPreviewRequestState + 1U;
+constexpr std::uint32_t kChopMidiPreviewState = kChopPreviewRequestState + 1U;
+constexpr std::uint32_t kMixerStateOffset = kChopMidiPreviewState + 1U;
 constexpr std::uint32_t kPadStructureRequestState =
     kMixerStateOffset + midichopper::kPadCount;
 constexpr std::uint32_t kPadStructureStatusState = kPadStructureRequestState + 1U;
@@ -74,6 +75,7 @@ constexpr const char* kPadClipboardRequestKey = "pad_clipboard_request";
 constexpr const char* kChopApplyRequestKey = "chop_apply_request";
 constexpr const char* kChopStatusKey = "chop_status";
 constexpr const char* kChopPreviewRequestKey = "chop_preview_request";
+constexpr const char* kChopMidiPreviewKey = "chop_midi_preview";
 constexpr const char* kPadStructureRequestKey = "pad_structure_request";
 constexpr const char* kPadStructureStatusKey = "pad_structure_status";
 static_assert(midichopper::kPadCount <= 64U,
@@ -395,6 +397,11 @@ protected:
             state.label = "Chop Preview Request";
             state.defaultValue = "";
             state.hints = kStateIsOnlyForDSP;
+        } else if (index == kChopMidiPreviewState) {
+            state.key = kChopMidiPreviewKey;
+            state.label = "Chop MIDI Preview Map";
+            state.defaultValue = "CM1;0";
+            state.hints = kStateIsOnlyForDSP;
         } else if (index < kPadStructureRequestState) {
             const auto pad = index - kMixerStateOffset;
             state.key = kPadMixerStateKeys[pad].c_str();
@@ -487,7 +494,8 @@ protected:
             return String();
         if (std::strcmp(key, kChopApplyRequestKey) == 0 ||
             std::strcmp(key, kChopStatusKey) == 0 ||
-            std::strcmp(key, kChopPreviewRequestKey) == 0)
+            std::strcmp(key, kChopPreviewRequestKey) == 0 ||
+            std::strcmp(key, kChopMidiPreviewKey) == 0)
             return String();
         if (std::strcmp(key, kPadStructureRequestKey) == 0 ||
             std::strcmp(key, kPadStructureStatusKey) == 0)
@@ -597,6 +605,29 @@ protected:
             }
             return;
         }
+        if (std::strcmp(key, kChopMidiPreviewKey) == 0) {
+            midichopper::plugin::ChopMidiPreviewRequest request;
+            if (midichopper::plugin::decodeChopMidiPreviewRequest(
+                    value != nullptr ? value : "", request)) {
+                const std::lock_guard lock(chopMidiPreviewMutex_);
+                pendingChopMidiPreviewSequence_.fetch_add(1U, std::memory_order_acq_rel);
+                const std::uint32_t packed = request.active
+                    ? 1U | ((request.firstPad & 0xffU) << 8U) |
+                        ((request.sourcePadCount & 0xffU) << 16U) |
+                        ((request.previewPadCount & 0xffU) << 24U)
+                    : 0U;
+                pendingChopMidiPreviewConfig_.store(packed, std::memory_order_relaxed);
+                for (std::size_t index = 0;
+                     index < midichopper::plugin::kChopMidiPreviewPadCount; ++index) {
+                    pendingChopMidiPreviewFrames_[index].store(
+                        request.sourceFrames[index], std::memory_order_relaxed);
+                    pendingChopMidiPreviewEndFrames_[index].store(
+                        request.sourceEndFrames[index], std::memory_order_relaxed);
+                }
+                pendingChopMidiPreviewSequence_.fetch_add(1U, std::memory_order_release);
+            }
+            return;
+        }
         if (std::strcmp(key, kPadStructureRequestKey) == 0) {
             handlePadStructureRequest(value != nullptr ? value : "");
             return;
@@ -618,6 +649,7 @@ protected:
             return;
         }
         applySettings();
+        applyChopMidiPreviewConfig();
         applyCommandTriggers();
 
         // Observe inputs before processing in case a host supplies in-place
@@ -1172,12 +1204,41 @@ private:
         }
     }
 
+    void applyChopMidiPreviewConfig() noexcept
+    {
+        const std::uint64_t before =
+            pendingChopMidiPreviewSequence_.load(std::memory_order_acquire);
+        if ((before & 1U) != 0U || before == appliedChopMidiPreviewSequence_)
+            return;
+        const std::uint32_t packed =
+            pendingChopMidiPreviewConfig_.load(std::memory_order_relaxed);
+        midichopper::ChopMidiPreview preview;
+        preview.active = (packed & 1U) != 0U;
+        preview.firstPad = (packed >> 8U) & 0xffU;
+        preview.sourcePadCount = (packed >> 16U) & 0xffU;
+        preview.previewPadCount = (packed >> 24U) & 0xffU;
+        for (std::size_t index = 0;
+             index < midichopper::plugin::kChopMidiPreviewPadCount; ++index) {
+            preview.sourceFrames[index] =
+                pendingChopMidiPreviewFrames_[index].load(std::memory_order_relaxed);
+            preview.sourceEndFrames[index] =
+                pendingChopMidiPreviewEndFrames_[index].load(std::memory_order_relaxed);
+        }
+        const std::uint64_t after =
+            pendingChopMidiPreviewSequence_.load(std::memory_order_acquire);
+        if (before != after || (after & 1U) != 0U)
+            return;
+        sampler_.setChopMidiPreview(preview);
+        appliedChopMidiPreviewSequence_ = after;
+    }
+
     void activateAllBanksMidiBank(const midichopper::MidiEvent* const events,
                                   const std::uint32_t eventCount) noexcept
     {
         using namespace midichopper::plugin;
         auto settings = sampler_.settings();
-        if (settings.armed || settings.midiBankMode != midichopper::MidiBankMode::AllBanks)
+        if (settings.armed || sampler_.chopMidiPreviewActive() ||
+            settings.midiBankMode != midichopper::MidiBankMode::AllBanks)
             return;
 
         std::uint32_t bank = settings.activeBank;
@@ -1296,12 +1357,22 @@ private:
     std::atomic<std::uint32_t> pendingChopPreviewCommand_{0};
     std::atomic<std::uint64_t> pendingChopPreviewFrame_{0};
     std::atomic<std::uint64_t> pendingChopPreviewEndFrame_{0};
+    std::atomic<std::uint64_t> pendingChopMidiPreviewSequence_{0};
+    std::atomic<std::uint32_t> pendingChopMidiPreviewConfig_{0};
+    std::array<std::atomic<std::uint64_t>,
+               midichopper::plugin::kChopMidiPreviewPadCount>
+        pendingChopMidiPreviewFrames_{};
+    std::array<std::atomic<std::uint64_t>,
+               midichopper::plugin::kChopMidiPreviewPadCount>
+        pendingChopMidiPreviewEndFrames_{};
+    std::uint64_t appliedChopMidiPreviewSequence_ = 0;
     mutable sms::audio::RealtimeAccessGate samplerAccess_;
     std::uint64_t publishedPlaybackTriggerGeneration_ = 0;
     bool playbackPadEventAlternateHalf_ = false;
     bool padFileResultAlternateHalf_ = false;
     bool padClipboardResultAlternateHalf_ = false;
     std::mutex padMutationMutex_;
+    std::mutex chopMidiPreviewMutex_;
     PendingSplitPlan pendingSplitPlan_{};
     std::uint64_t nextSplitPlanId_ = 1U;
 

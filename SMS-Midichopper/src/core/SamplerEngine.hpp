@@ -76,6 +76,15 @@ struct PlaybackTrigger {
     std::uint64_t generation = 0;
 };
 
+struct ChopMidiPreview {
+    bool active = false;
+    std::uint32_t firstPad = 0;
+    std::uint32_t sourcePadCount = 0;
+    std::uint32_t previewPadCount = 0;
+    std::array<std::uint64_t, 3> sourceFrames{};
+    std::array<std::uint64_t, 3> sourceEndFrames{};
+};
+
 /**
  * Allocation-free/lock-free audio engine. Configuration and pad state import
  * are control-thread operations and must not be called concurrently with
@@ -166,6 +175,12 @@ public:
     void startChopPreview(std::uint32_t firstPad, std::uint32_t padCount,
                           std::uint64_t sourceFrame, std::uint64_t sourceEndFrame) noexcept;
     void stopChopPreview() noexcept;
+    /** Route MIDI for the visible Cut Point Editor pads to proposed raw slices. */
+    void setChopMidiPreview(const ChopMidiPreview& preview) noexcept;
+    [[nodiscard]] bool chopMidiPreviewActive() const noexcept
+    {
+        return chopMidiPreview_.active;
+    }
     /** Zero when stopped; otherwise global pad + 1 plus normalized position. */
     [[nodiscard]] float chopPreviewPosition() const noexcept;
     /** Zero when stopped; otherwise latest triggered pad + 1 plus source position. */
@@ -279,6 +294,7 @@ private:
     bool playbackPositionWasActive_ = false;
     bool previousArmed_ = false;
     bool sessionComplete_ = false;
+    ChopMidiPreview chopMidiPreview_{};
     std::atomic<bool> finalizeRequested_{false};
     std::atomic<bool> undoRequested_{false};
     bool chopPreviewActive_ = false;
