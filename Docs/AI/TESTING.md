@@ -18,9 +18,10 @@ For focused iteration, use `ctest --test-dir build --output-on-failure -R NAME`:
 | `sampler-core` | Capture, banks/layouts, storage, voices, region/ADSR, pad/global mixer sums, raw chop preview/repartition, resampling, clipboard, lifecycle |
 | `state-codec` | Audio, editor-state, and Cut Point Editor command round trips; malformed/corrupt state |
 | `ui-geometry` | Pad mapping, editor snapshot assembly, waveform/chop geometry, hit testing, wheel editing |
+| `ui-message-bus` | Bounded VST3 message ordering, independent view cursors, wrap, and largest reply |
 | `wav-codec` | WAV formats, validation, file actions, offline render, real-time access gate |
 
-Rebuild affected targets before testing. Run all four before handing off code
+Rebuild affected targets before testing. Run all five before handing off code
 changes; they are small. For docs-only changes, run the doc checks and verify
 changed commands against CMake/tool help; no audio rebuild is required.
 ## LV2 bundle discovery
@@ -60,12 +61,8 @@ Keep jalv as a secondary, minimal LV2 audio/MIDI and diagnostics host:
 LV2_PATH="$PWD/build/bin" pw-jack jalv -s "$LV2_URI"
 ```
 
-The currently tested jalv and Carla 2.5.10 hosts both load the custom UI and can
-route MIDI, but neither provides LV2 control-input change requests. They can
-confirm that MIDI changes engine behavior, but cannot validate that a
-DSP-requested `active_bank` change reaches the custom UI. Do not report that
-behavior as broken based on either host version alone. Inspect local host help;
-frontends, features, and options vary by installed version.
+Jalv and Carla 2.5.10 load the UI and route MIDI, but cannot validate
+DSP-requested `active_bank` UI updates. Inspect local host help before testing.
 
 Connect stereo source → plugin inputs, MIDI source → plugin event input, and
 plugin outputs → a recorder or monitoring destination using your JACK graph
@@ -115,11 +112,14 @@ before sharing or committing it, and exclude usernames, home paths, machine
 names, unrelated applications, notifications, accounts, and other private data.
 Repository screenshots should contain only intentional product UI.
 
-The image uses Ubuntu's distribution Carla rather than pinning a post-2.5.10
-revision. Therefore the MIDI-triggered `active_bank` UI synchronization path is
-still not validated by this harness; Carla versions through 2.5.10 lack the
-needed LV2 control-input change-request feature. Report the installed Carla
-version with results and do not treat that limitation as a plug-in failure.
+The harness uses Carla 2.5.10, which cannot validate MIDI-triggered
+`active_bank` UI synchronization through LV2 control-input change requests.
+
+For the VST3 UI, launch
+`carla-single native vst3 "$PWD/build/bin/SMS-Midichopper.vst3"` on the same
+desktop. Import a WAV, open Sample Editor, switch pads and back, and check the
+waveform and settings. Exercise Split Sample or Adjust Cut Points. Then save,
+close, delete the source WAV, reload, and compare audio and editor values.
 
 Report host/frontend, sample rate/buffer size for audio tests, steps, observed
 results, and failures. If JACK, a display, or routing is unavailable, say which

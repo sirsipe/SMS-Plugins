@@ -1,8 +1,7 @@
 # Pad WAV import and export
 
 Audience: agents changing pad file operations. This contract is implemented.
-These actions consume the reusable
-[pad context menu](PAD-CONTEXT-MENU.md) and do not fully resolve
+Actions use the [pad context menu](PAD-CONTEXT-MENU.md) without settling
 [issue #10](https://github.com/sirsipe/SMS-Plugins/issues/10).
 
 ## Action contract
@@ -100,11 +99,11 @@ failed Save attempt and disable export for that UI session. Verify or fix pinned
 Windows Save flags and validate `NSSavePanel` on macOS. Do not invoke `zenity`,
 `kdialog`, or similar external fallbacks.
 
-The pinned Linux VST3 wrapper reports file completion through the hidden output
-event, but cannot return DSP-generated waveform/editor state to its UI. This
-also affects pad reselection and UI reopening; see the authoritative
-[DPF VST3 constraints](DPF-VST3-CONSTRAINTS.md). LV2 returns the complete state
-exchange.
+The Linux VST3 wrapper reports file completion through a hidden output event.
+Midichopper's [VST3 UI message bus](DPF-VST3-CONSTRAINTS.md) returns waveform
+and editor state after import and pad reselection. LV2 uses DPF's callback.
+A short WAV restored from Carla VST3 state without its source; test longer
+files and DAW projects.
 
 ## Validation and deferred public documentation
 

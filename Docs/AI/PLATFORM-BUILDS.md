@@ -16,9 +16,10 @@ and AU. Therefore the existing per-pad sample state should be reusable, but
 large-state restoration must be tested in native hosts rather than inferred
 from codec tests.
 
-The pinned VST3 wrapper has two relevant limits: DSP-generated transient state
-does not return to the UI, and DPF audio-port topology is compile-time fixed
-even though native VST3 can notify hosts of bus-count changes. See
+The pinned VST3 wrapper has two relevant limits: its `updateStateValue()`
+callback is absent, and DPF audio-port topology is compile-time fixed even
+though native VST3 can notify hosts of bus-count changes. Midichopper's VST3
+build uses a local UI message bus for transient replies. See
 [DPF VST3 constraints](DPF-VST3-CONSTRAINTS.md) before changing VST3 state or
 planning multi-output routing.
 

@@ -51,25 +51,58 @@ elseif(MSVC)
 endif()
 
 set(MIDICHOPPER_PLUGIN_FORMATS lv2)
-if(MIDICHOPPER_BUILD_VST3)
-  list(APPEND MIDICHOPPER_PLUGIN_FORMATS vst3)
-endif()
 if(MIDICHOPPER_BUILD_CLAP)
   list(APPEND MIDICHOPPER_PLUGIN_FORMATS clap)
 endif()
+
+set(MIDICHOPPER_DSP_SOURCES
+  ../Common-Src/Audio/WavCodec.cpp
+  src/plugin/MidichopperPlugin.cpp
+  src/plugin/PadFileActions.cpp
+  src/plugin/StateCodec.cpp)
+set(MIDICHOPPER_UI_SOURCES
+  src/ui/MidichopperUI.cpp
+  src/ui/MidichopperView.cpp)
 
 dpf_add_plugin(SMS-Midichopper
   TARGETS ${MIDICHOPPER_PLUGIN_FORMATS}
   UI_TYPE opengl
   USE_FILE_BROWSER
-  FILES_DSP
-    ../Common-Src/Audio/WavCodec.cpp
-    src/plugin/MidichopperPlugin.cpp
-    src/plugin/PadFileActions.cpp
-    src/plugin/StateCodec.cpp
-  FILES_UI
-    src/ui/MidichopperUI.cpp
-    src/ui/MidichopperView.cpp)
+  FILES_DSP ${MIDICHOPPER_DSP_SOURCES}
+  FILES_UI ${MIDICHOPPER_UI_SOURCES})
+
+# Only the VST3 variant needs same-process UI access. Keep LV2's separate UI
+# binary and its existing host feature requirements unchanged.
+if(MIDICHOPPER_BUILD_VST3)
+  dpf_add_plugin(SMS-Midichopper-VST3
+    TARGETS vst3
+    UI_TYPE opengl
+    USE_FILE_BROWSER
+    FILES_DSP ${MIDICHOPPER_DSP_SOURCES}
+    FILES_UI ${MIDICHOPPER_UI_SOURCES})
+  target_compile_definitions(SMS-Midichopper-VST3 INTERFACE
+    MIDICHOPPER_VST3_UI_BRIDGE=1)
+
+  dpf__determine_vst3_package_architecture(midichopper_vst3_arch)
+  if(APPLE)
+    set(midichopper_vst3_binary_dir
+      "${PROJECT_BINARY_DIR}/bin/SMS-Midichopper.vst3/Contents/MacOS/$<0:>")
+    set(INFO_PLIST_PROJECT_NAME "SMS-Midichopper")
+    configure_file("${SMS_DPF_ROOT}/utils/plugin.bundle/Contents/Info.plist"
+      "${PROJECT_BINARY_DIR}/bin/SMS-Midichopper.vst3/Contents/Info.plist" @ONLY)
+    file(COPY "${SMS_DPF_ROOT}/utils/plugin.bundle/Contents/PkgInfo"
+      DESTINATION "${PROJECT_BINARY_DIR}/bin/SMS-Midichopper.vst3/Contents")
+  elseif(WIN32)
+    set(midichopper_vst3_binary_dir
+      "${PROJECT_BINARY_DIR}/bin/SMS-Midichopper.vst3/Contents/${midichopper_vst3_arch}-win/$<0:>")
+  else()
+    set(midichopper_vst3_binary_dir
+      "${PROJECT_BINARY_DIR}/bin/SMS-Midichopper.vst3/Contents/${midichopper_vst3_arch}-linux/$<0:>")
+  endif()
+  set_target_properties(SMS-Midichopper-VST3-vst3 PROPERTIES
+    LIBRARY_OUTPUT_DIRECTORY "${midichopper_vst3_binary_dir}"
+    OUTPUT_NAME "SMS-Midichopper")
+endif()
 
 # DPF currently passes disabled optional DGL features through generator
 # expressions. CMake 4 evaluates those expressions as true while configuring
@@ -82,18 +115,23 @@ foreach(property COMPILE_DEFINITIONS INTERFACE_COMPILE_DEFINITIONS)
   endif()
 endforeach()
 
-target_include_directories(SMS-Midichopper PUBLIC
-  "${CMAKE_CURRENT_SOURCE_DIR}/../Common-Src"
-  "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
-  "${CMAKE_CURRENT_SOURCE_DIR}/src/plugin"
-  "${CMAKE_CURRENT_SOURCE_DIR}/src/ui")
-target_link_libraries(SMS-Midichopper PUBLIC sms_common_ui)
-
-target_link_libraries(SMS-Midichopper-dsp PRIVATE midichopper_core)
-target_compile_definitions(SMS-Midichopper-dsp PRIVATE
-  MIDICHOPPER_VERSION_MAJOR=${PROJECT_VERSION_MAJOR}
-  MIDICHOPPER_VERSION_MINOR=${PROJECT_VERSION_MINOR}
-  MIDICHOPPER_VERSION_PATCH=${PROJECT_VERSION_PATCH})
+set(midichopper_targets SMS-Midichopper)
+if(MIDICHOPPER_BUILD_VST3)
+  list(APPEND midichopper_targets SMS-Midichopper-VST3)
+endif()
+foreach(midichopper_target IN LISTS midichopper_targets)
+  target_include_directories(${midichopper_target} PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}/../Common-Src"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/plugin"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/ui")
+  target_link_libraries(${midichopper_target} PUBLIC sms_common_ui)
+  target_link_libraries(${midichopper_target}-dsp PRIVATE midichopper_core)
+  target_compile_definitions(${midichopper_target}-dsp PRIVATE
+    MIDICHOPPER_VERSION_MAJOR=${PROJECT_VERSION_MAJOR}
+    MIDICHOPPER_VERSION_MINOR=${PROJECT_VERSION_MINOR}
+    MIDICHOPPER_VERSION_PATCH=${PROJECT_VERSION_PATCH})
+endforeach()
 
 if(BUILD_TESTING)
   find_package(Threads REQUIRED)
@@ -117,6 +155,14 @@ if(BUILD_TESTING)
     "${CMAKE_CURRENT_SOURCE_DIR}/src/ui")
   target_link_libraries(midichopper_ui_geometry_tests PRIVATE sms_common_ui)
   add_test(NAME ui-geometry COMMAND midichopper_ui_geometry_tests)
+
+  add_executable(midichopper_ui_message_bus_tests tests/ui_message_bus_tests.cpp)
+  target_include_directories(midichopper_ui_message_bus_tests PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/../Common-Src"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/plugin")
+  target_link_libraries(midichopper_ui_message_bus_tests PRIVATE Threads::Threads)
+  add_test(NAME ui-message-bus COMMAND midichopper_ui_message_bus_tests)
 
   add_executable(midichopper_wav_codec_tests
     tests/wav_codec_tests.cpp

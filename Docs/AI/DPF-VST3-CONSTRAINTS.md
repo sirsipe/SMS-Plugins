@@ -4,34 +4,52 @@ Audience: agents changing VST3 communication or audio-port topology. This page
 records verified behavior of the pinned DPF revision and approved architectural
 direction; it is not a promise of dynamic outputs.
 
-## DSP-to-UI state limitation
+## DSP-to-UI state transport
 
 DPF's VST3 wrapper constructs its plug-in exporter with a null
 `updateStateValue` callback. Midichopper can therefore receive UI-to-DSP state,
 but a DSP call to `updateStateValue()` cannot return transient data to the UI.
-The wrapper logs `updateStateValueCallback (nil)`.
+The wrapper logs `updateStateValueCallback (nil)`. DPF's maintainer says this
+API was first implemented for LV2; the same limitation is tracked in
+[DPF issue #410](https://github.com/DISTRHO/DPF/issues/410).
 
-Pad selection, Sample Editor entry, MIDI selection, and import completion all
-request a fresh waveform and editor snapshot. The DSP generates them, but VST3
-drops the reply. Closing and reopening the UI or reselecting the pad only
-repeats this failed exchange. The hidden `pad_file_result_event` confirms that
-a file action finished; it cannot carry a waveform or six editor values.
+Midichopper now builds a separate VST3 DPF target with direct instance access.
+`publishUiState()` uses DPF's callback where available and sends failed VST3
+updates to a per-instance, bounded message bus. The UI reads that bus on idle
+and feeds messages through `stateChanged()`. Each view has its own sequence
+cursor; the oldest events are dropped if more than 64 messages arrive before a
+view reads them. Keys are limited to 47 bytes and values to 8191 bytes. The
+largest current reply, a split plan with a 128-bin waveform, is covered by a
+bound test. No audio callback uses the bus. LV2 retains separate DSP/UI
+binaries and uses its existing DPF callback; VST3 uses a combined controller
+so its view receives the same plug-in instance pointer.
 
-Durable state is separate. Pad PCM is embedded as DSP-only Base64 state, while
-cut points and ADSR are normal versioned per-pad state. UI edits reach the DSP
-and affect playback. DPF's VST3 component queries these values when the DAW
-saves state, so persistence is expected, but a complete VST3
-save-close-delete-source-reload test remains required. The current UI cannot
-reliably reload editor values after switching pads or reopening. It may show
-defaults while the DSP still uses saved values; committing another edit can
-then overwrite those values.
+Pad selection, Sample Editor entry, MIDI selection, import, clipboard and cut
+actions use this return path for waveform, settings and status messages. The
+hidden `pad_file_result_event` still provides a small completion signal. In
+Carla on Linux at 48 kHz/2048 frames, WAV import displayed its waveform,
+editor settings survived pad switching, and Split Sample opened and applied.
+A saved 0.5-second WAV restored after removing the plug-in instance and source
+file: its waveform and 6102-frame Start value returned, and a MIDI note produced
+nonzero output.
+VST3 restoration ignores empty transient command keys so defaults do not fire
+file, clipboard, chop, or pad-structure actions. Another VST3 host, long files,
+and simultaneous views still need integration testing.
 
-A complete fix needs a bounded DSP-to-controller-to-view message path in DPF,
-with no PCM transfer and no audio-thread allocation. An import-only UI waveform
-cache would improve immediate feedback but would not cover captured audio,
-project restoration, another UI instance, or editor-state resynchronization.
-Keep the primary LV2 workflow as the supported reference until this is fixed
-and host-tested.
+Durable state is separate. Pad PCM is marked DSP-only Base64 state, while cut
+points and ADSR are normal versioned per-pad state. UI edits reach the DSP and
+affect playback. DPF's VST3 component queries these values when the DAW saves
+state, so persistence is expected, but a complete VST3
+save-close-delete-source-reload test with longer recordings and a DAW project
+remains required.
+The pinned VST3 wrapper also sends every state key to a newly opened view,
+without filtering the DSP-only hint; loaded pad PCM may therefore cross that
+initial view path despite the hint. Review this when changing VST3 transport.
+
+Direct instance access is local to one process and cannot serve a remote UI.
+If remote VST3 views become a requirement, add a bounded component-to-view
+message path in DPF. Keep PCM out of the plug-in message bus and never allocate
+in the audio callback.
 
 ## Multi-output topology
 

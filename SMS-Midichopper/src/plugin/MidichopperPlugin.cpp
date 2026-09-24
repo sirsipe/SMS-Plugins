@@ -11,6 +11,7 @@
 #include "PadFileActions.hpp"
 #include "PadStructureProtocol.hpp"
 #include "Parameters.hpp"
+#include "PluginUiBridge.hpp"
 #include "StateCodec.hpp"
 #include "SamplerEngine.hpp"
 
@@ -114,14 +115,43 @@ constexpr std::array<const char*, midichopper::kPadsPerBank> kPadActivitySymbols
 
 } // namespace
 
-class MidichopperPlugin final : public Plugin {
+class MidichopperPlugin final : public PluginUiBridge {
 public:
     MidichopperPlugin()
-        : Plugin(midichopper::plugin::kParameterCount, 0, kStateCount),
+        : PluginUiBridge(midichopper::plugin::kParameterCount, kStateCount),
           sampler_(getSampleRate())
     {
         for (std::uint32_t index = 0; index < midichopper::plugin::kParameterCount; ++index)
             parameters_[index].store(defaultParameterValue(index), std::memory_order_relaxed);
+    }
+
+    [[nodiscard]] std::uint64_t uiMessageCursor() const override
+    {
+#if DISTRHO_PLUGIN_WANT_DIRECT_ACCESS
+        return uiMessageBus_.cursor();
+#else
+        return 1U;
+#endif
+    }
+
+    [[nodiscard]] bool readUiMessage(
+        std::uint64_t& cursor,
+        midichopper::plugin::UiMessageBus::Message& message) const override
+    {
+#if DISTRHO_PLUGIN_WANT_DIRECT_ACCESS
+        return uiMessageBus_.read(cursor, message);
+#else
+        static_cast<void>(cursor);
+        static_cast<void>(message);
+        return false;
+#endif
+    }
+
+    void stopUiPreview() override
+    {
+        const std::string encoded =
+            midichopper::plugin::encodeChopMidiPreviewRequest({});
+        setState(kChopMidiPreviewKey, encoded.c_str());
     }
 
 protected:
@@ -547,15 +577,15 @@ protected:
                 const auto pad = static_cast<std::uint32_t>(requested);
                 std::string waveform;
                 if (makeWaveformState(pad, waveform)) {
-                    static_cast<void>(updateStateValue(kWaveformDataKey, waveform.c_str()));
+                    publishUiState(kWaveformDataKey, waveform.c_str());
                     const std::string editor = midichopper::plugin::encodePlaybackSettings(
                         sampler_.padPlaybackSettings(pad));
-                    static_cast<void>(updateStateValue(
-                        kPadEditStateKeys[pad].c_str(), editor.c_str()));
+                    publishUiState(
+                        kPadEditStateKeys[pad].c_str(), editor.c_str());
                     const std::string mixer = midichopper::plugin::encodeMixerSettings(
                         sampler_.padMixerSettings(pad));
-                    static_cast<void>(updateStateValue(
-                        kPadMixerStateKeys[pad].c_str(), mixer.c_str()));
+                    publishUiState(
+                        kPadMixerStateKeys[pad].c_str(), mixer.c_str());
                 }
             }
             return;
@@ -575,18 +605,21 @@ protected:
             return;
         }
         if (std::strcmp(key, kPadFileRequestKey) == 0) {
-            handlePadFileRequest(value != nullptr ? value : "");
+            if (value != nullptr && value[0] != '\0')
+                handlePadFileRequest(value);
             return;
         }
         if (std::strcmp(key, kPadFileBusyKey) == 0 ||
             std::strcmp(key, kPadFileStatusKey) == 0)
             return;
         if (std::strcmp(key, kPadClipboardRequestKey) == 0) {
-            handlePadClipboardRequest(value != nullptr ? value : "");
+            if (value != nullptr && value[0] != '\0')
+                handlePadClipboardRequest(value);
             return;
         }
         if (std::strcmp(key, kChopApplyRequestKey) == 0) {
-            handleChopApplyRequest(value != nullptr ? value : "");
+            if (value != nullptr && value[0] != '\0')
+                handleChopApplyRequest(value);
             return;
         }
         if (std::strcmp(key, kChopStatusKey) == 0)
@@ -629,7 +662,8 @@ protected:
             return;
         }
         if (std::strcmp(key, kPadStructureRequestKey) == 0) {
-            handlePadStructureRequest(value != nullptr ? value : "");
+            if (value != nullptr && value[0] != '\0')
+                handlePadStructureRequest(value);
             return;
         }
         if (std::strcmp(key, kPadStructureStatusKey) == 0)
@@ -693,6 +727,16 @@ protected:
     }
 
 private:
+    void publishUiState(const char* const key, const char* const value)
+    {
+#if DISTRHO_PLUGIN_WANT_DIRECT_ACCESS
+        if (!updateStateValue(key, value))
+            static_cast<void>(uiMessageBus_.publish(key, value));
+#else
+        static_cast<void>(updateStateValue(key, value));
+#endif
+    }
+
     struct PendingSplitPlan {
         bool active = false;
         std::uint64_t id = 0U;
@@ -711,12 +755,12 @@ private:
             const std::uint32_t pad = firstPad + index;
             const std::string editor = midichopper::plugin::encodePlaybackSettings(
                 sampler_.padPlaybackSettings(pad));
-            static_cast<void>(updateStateValue(
-                kPadEditStateKeys[pad].c_str(), editor.c_str()));
+            publishUiState(
+                kPadEditStateKeys[pad].c_str(), editor.c_str());
             const std::string mixer = midichopper::plugin::encodeMixerSettings(
                 sampler_.padMixerSettings(pad));
-            static_cast<void>(updateStateValue(
-                kPadMixerStateKeys[pad].c_str(), mixer.c_str()));
+            publishUiState(
+                kPadMixerStateKeys[pad].c_str(), mixer.c_str());
         }
     }
 
@@ -724,7 +768,7 @@ private:
                                   const char* const message)
     {
         const std::string status = "PS1;E;" + std::to_string(planId) + ";" + message;
-        static_cast<void>(updateStateValue(kPadStructureStatusKey, status.c_str()));
+        publishUiState(kPadStructureStatusKey, status.c_str());
     }
 
     void handlePadStructureRequest(const std::string_view encoded)
@@ -761,8 +805,8 @@ private:
                 committed = true;
                 mutationLock.unlock();
                 publishPadSettings(request.firstPad, request.padCount);
-                static_cast<void>(updateStateValue(
-                    kPadStructureStatusKey, committedStatus.c_str()));
+                publishUiState(
+                    kPadStructureStatusKey, committedStatus.c_str());
                 return;
             }
             if (request.action == PadStructureAction::prepareSplit) {
@@ -820,7 +864,7 @@ private:
                 mutationLock.unlock();
                 const auto ready = midichopper::plugin::encodeSplitPlanReady(
                     {prepared.id, prepared.firstPad, prepared.emptyPad, preparedWaveform});
-                static_cast<void>(updateStateValue(kPadStructureStatusKey, ready.c_str()));
+                publishUiState(kPadStructureStatusKey, ready.c_str());
                 return;
             }
 
@@ -854,14 +898,14 @@ private:
             committed = true;
             mutationLock.unlock();
             publishPadSettings(plan.firstPad, plan.emptyPad - plan.firstPad + 1U);
-            static_cast<void>(updateStateValue(
-                kPadStructureStatusKey, committedStatus.c_str()));
+            publishUiState(
+                kPadStructureStatusKey, committedStatus.c_str());
         } catch (...) {
             pendingSplitPlan_ = {};
             if (committed) {
                 try {
-                    static_cast<void>(updateStateValue(
-                        kPadStructureStatusKey, committedStatus.c_str()));
+                    publishUiState(
+                        kPadStructureStatusKey, committedStatus.c_str());
                 } catch (...) {
                 }
                 return;
@@ -906,7 +950,7 @@ private:
 
     void publishFileStatus(const std::string& status)
     {
-        static_cast<void>(updateStateValue(kPadFileStatusKey, status.c_str()));
+        publishUiState(kPadFileStatusKey, status.c_str());
     }
 
     void publishFileResult(const midichopper::plugin::PadFileResultCode result) noexcept
@@ -931,7 +975,7 @@ private:
         try {
             handleChopApplyRequestImpl(encoded);
         } catch (...) {
-            static_cast<void>(updateStateValue(kChopStatusKey, "CH1;ERROR;Chop apply failed"));
+            publishUiState(kChopStatusKey, "CH1;ERROR;Chop apply failed");
         }
     }
 
@@ -939,7 +983,7 @@ private:
     {
         midichopper::plugin::ChopApplyRequest request;
         if (!midichopper::plugin::decodeChopApplyRequest(encoded, request)) {
-            static_cast<void>(updateStateValue(kChopStatusKey, "CH1;ERROR;Invalid request"));
+            publishUiState(kChopStatusKey, "CH1;ERROR;Invalid request");
             return;
         }
         bool applied = false;
@@ -949,21 +993,21 @@ private:
                                               request.padCount - 1U});
         });
         if (!accessed || !applied) {
-            static_cast<void>(updateStateValue(
+            publishUiState(
                 kChopStatusKey,
-                "CH1;ERROR;Could not apply cuts; verify samples and available storage"));
+                "CH1;ERROR;Could not apply cuts; verify samples and available storage");
             return;
         }
         for (std::uint32_t index = 0; index < request.padCount; ++index) {
             const auto pad = request.firstPad + index;
             const std::string editor = midichopper::plugin::encodePlaybackSettings(
                 sampler_.padPlaybackSettings(pad));
-            static_cast<void>(updateStateValue(kPadEditStateKeys[pad].c_str(), editor.c_str()));
+            publishUiState(kPadEditStateKeys[pad].c_str(), editor.c_str());
             const std::string mixer = midichopper::plugin::encodeMixerSettings(
                 sampler_.padMixerSettings(pad));
-            static_cast<void>(updateStateValue(kPadMixerStateKeys[pad].c_str(), mixer.c_str()));
+            publishUiState(kPadMixerStateKeys[pad].c_str(), mixer.c_str());
         }
-        static_cast<void>(updateStateValue(kChopStatusKey, "CH1;OK"));
+        publishUiState(kChopStatusKey, "CH1;OK");
     }
 
     void handlePadClipboardRequest(const std::string_view encoded)
@@ -1002,15 +1046,15 @@ private:
         if (result == midichopper::plugin::PadClipboardResultCode::pasted) {
             const std::string editor = midichopper::plugin::encodePlaybackSettings(
                 sampler_.padPlaybackSettings(request.pad));
-            static_cast<void>(updateStateValue(
-                kPadEditStateKeys[request.pad].c_str(), editor.c_str()));
+            publishUiState(
+                kPadEditStateKeys[request.pad].c_str(), editor.c_str());
             const std::string mixer = midichopper::plugin::encodeMixerSettings(
                 sampler_.padMixerSettings(request.pad));
-            static_cast<void>(updateStateValue(
-                kPadMixerStateKeys[request.pad].c_str(), mixer.c_str()));
+            publishUiState(
+                kPadMixerStateKeys[request.pad].c_str(), mixer.c_str());
             std::string waveform;
             if (makeWaveformState(request.pad, waveform))
-                static_cast<void>(updateStateValue(kWaveformDataKey, waveform.c_str()));
+                publishUiState(kWaveformDataKey, waveform.c_str());
         }
         publishClipboardResult(result);
     }
@@ -1020,8 +1064,8 @@ private:
         try {
             handlePadFileRequestImpl(encoded);
         } catch (...) {
-            static_cast<void>(updateStateValue(kPadFileStatusKey, "WAV action failed"));
-            static_cast<void>(updateStateValue(kPadFileBusyKey, "0"));
+            publishUiState(kPadFileStatusKey, "WAV action failed");
+            publishUiState(kPadFileBusyKey, "0");
             publishFileResult(midichopper::plugin::PadFileResultCode::failed);
         }
     }
@@ -1036,7 +1080,7 @@ private:
             return;
         }
 
-        static_cast<void>(updateStateValue(kPadFileBusyKey, "1"));
+        publishUiState(kPadFileBusyKey, "1");
         std::string status;
         auto result = midichopper::plugin::PadFileResultCode::failed;
         if (request.action == PadFileAction::import) {
@@ -1067,14 +1111,14 @@ private:
                     status = "WAV imported";
                     result = midichopper::plugin::PadFileResultCode::importSucceeded;
                     const std::string editor = midichopper::plugin::encodePlaybackSettings({});
-                    static_cast<void>(updateStateValue(
-                        kPadEditStateKeys[request.pad].c_str(), editor.c_str()));
+                    publishUiState(
+                        kPadEditStateKeys[request.pad].c_str(), editor.c_str());
                     const std::string mixer = midichopper::plugin::encodeMixerSettings({});
-                    static_cast<void>(updateStateValue(
-                        kPadMixerStateKeys[request.pad].c_str(), mixer.c_str()));
+                    publishUiState(
+                        kPadMixerStateKeys[request.pad].c_str(), mixer.c_str());
                     std::string waveform;
                     if (makeWaveformState(request.pad, waveform))
-                        static_cast<void>(updateStateValue(kWaveformDataKey, waveform.c_str()));
+                        publishUiState(kWaveformDataKey, waveform.c_str());
                 }
             }
         } else {
@@ -1110,7 +1154,7 @@ private:
             }
         }
         publishFileStatus(status);
-        static_cast<void>(updateStateValue(kPadFileBusyKey, "0"));
+        publishUiState(kPadFileBusyKey, "0");
         publishFileResult(result);
     }
 
@@ -1373,6 +1417,9 @@ private:
     bool padClipboardResultAlternateHalf_ = false;
     std::mutex padMutationMutex_;
     std::mutex chopMidiPreviewMutex_;
+#if DISTRHO_PLUGIN_WANT_DIRECT_ACCESS
+    midichopper::plugin::UiMessageBus uiMessageBus_;
+#endif
     PendingSplitPlan pendingSplitPlan_{};
     std::uint64_t nextSplitPlanId_ = 1U;
 

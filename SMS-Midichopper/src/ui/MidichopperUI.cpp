@@ -53,6 +53,7 @@
 #include "PadFileActionProtocol.hpp"
 #include "PadStructureProtocol.hpp"
 #include "Parameters.hpp"
+#include "PluginUiBridge.hpp"
 
 #include <algorithm>
 #include <array>
@@ -203,6 +204,13 @@ public:
         fChopOffsets.fill(0);
         fStatus[0] = '\0';
 
+#if DISTRHO_PLUGIN_WANT_DIRECT_ACCESS
+        if (void* const instance = getPluginInstancePointer()) {
+            fUiBridge = static_cast<PluginUiBridge*>(static_cast<Plugin*>(instance));
+            fUiMessageCursor = fUiBridge->uiMessageCursor();
+        }
+#endif
+
 #ifndef DGL_NO_SHARED_RESOURCES
         loadSharedResources();
 #endif
@@ -210,6 +218,14 @@ public:
 
     ~MidichopperUI() override
     {
+        if (!fChopEditorMode)
+            return;
+#if DISTRHO_PLUGIN_WANT_DIRECT_ACCESS
+        if (fUiBridge != nullptr) {
+            fUiBridge->stopUiPreview();
+            return;
+        }
+#endif
         disableChopMidiPreview();
     }
 
@@ -758,6 +774,13 @@ protected:
 
     void onUiIdle() override
     {
+#if DISTRHO_PLUGIN_WANT_DIRECT_ACCESS
+        if (fUiBridge != nullptr) {
+            midichopper::plugin::UiMessageBus::Message message;
+            while (fUiBridge->readUiMessage(fUiMessageCursor, message))
+                stateChanged(message.key.data(), message.value.data());
+        }
+#endif
         const auto now = std::chrono::steady_clock::now();
         if (fClearArmed && now >= fClearDeadline) {
             fClearArmed = false;
@@ -1702,6 +1725,10 @@ private:
     float fDragStartY;
     bool fHasWaveform;
     midichopper::ui::EditorSnapshotCollector fEditorSnapshot;
+#if DISTRHO_PLUGIN_WANT_DIRECT_ACCESS
+    PluginUiBridge* fUiBridge = nullptr;
+    std::uint64_t fUiMessageCursor = 0U;
+#endif
     std::chrono::steady_clock::time_point fEditorSnapshotRetryDeadline{};
     std::array<float, 2> fInputLevels{};
     std::array<float, 2> fOutputLevels{};

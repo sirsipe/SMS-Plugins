@@ -52,13 +52,10 @@ records the chosen duration, then waits before advancing again.
 
 ## Real-time behavior
 
-Audio processing uses a shared pool of preallocated sample blocks plus pre-roll
-storage. The pool supports 64 logical pad slots while keeping its nominal audio
-allocation close to the earlier 16-pad design; cleared blocks can be reused by
-any bank. A pad can use the entire free pool, so a long imported song can be
-split and rolled across pads. The pool holds approximately eight minutes of
-stereo audio at the current host rate in total, with a little room for partial
-blocks after splits. `process()` takes
+Audio processing uses preallocated sample blocks plus pre-roll storage. The pool
+supports 64 pad slots; cleared blocks can be reused by any bank. A pad can use
+the entire free pool, so a long song can be split across pads. The pool holds
+about eight minutes of stereo audio at the host rate. `process()` takes
 sample-offset MIDI events and performs no allocation, locking, file access, or
 exception handling. Each pad is one voice, with a configurable global limit of
 1–16 simultaneous voices and deterministic oldest-voice stealing.
@@ -90,22 +87,22 @@ voices, envelopes, and gain. Host hard bypass that skips DSP cannot be metered.
 
 ## Project state
 
-Each pad slot stores a versioned, CRC-checked header and interleaved signed
-PCM16 audio, Base64 encoded for portable DPF state. Decoding has strict size
-and structural checks. Empty pads use empty state values.
+Each pad stores versioned, CRC-checked interleaved PCM16 audio, Base64 encoded
+for DPF state. Decoding checks size and structure. Empty pads use empty values.
 
-Cut/ADSR and mixer values use compact versioned per-pad states. Import resets
-both; rechopping preserves mixer state on non-empty results and clears all
-settings when a pad becomes zero length. The UI retains its previous snapshot
-until matching waveform and control replies arrive, ignoring stale replies and
-retrying transient failures. DSP returns a fixed 128-bin min/max summary,
-keeping PCM blobs and waveform work outside the UI channel and audio callback.
+Cut/ADSR and mixer values use versioned per-pad states. Import resets both;
+rechopping preserves mixer settings on non-empty results and clears settings
+when a pad becomes empty. The UI retains its snapshot until matching waveform
+and control replies arrive, ignoring stale replies and retrying failures. DSP
+returns a 128-bin min/max summary through DPF state in LV2 or the bounded
+direct-access bus in VST3. Waveform work stays outside the audio callback.
 
 `pad_clear_request` publishes an atomic command consumed at the next block.
 `pad_file_request` carries an action, pad, and UTF-8 path; LV2 handles it on its
 required worker. Busy/status states contain small messages, while a hidden
 output signals completion where wrapper state callbacks cannot return status
-to the UI. PCM never crosses the UI state channel.
+to the UI. The VST3 bus carries no PCM. DPF's VST3 initial state transfer does
+not filter DSP-only state keys and may send Base64 pad PCM to a newly opened UI.
 
 ## Build and validation
 

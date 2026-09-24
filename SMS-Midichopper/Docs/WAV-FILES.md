@@ -25,7 +25,7 @@ On Linux, the plug-in requires `libdbus-1` and Export requires a working
 KDE. Import can fall back to DPF's built-in X11 browser when the portal is not
 available. If Save cannot open, the plug-in explains the requirement and
 disables Export for that UI session; Import and other functions remain usable.
-In the current Linux VST3 build, imported audio plays and exports, but its
-waveform and editor values cannot reliably refresh after selecting another pad
-or reopening the UI. The DSP may retain editor settings while the UI shows
-defaults, so use the primary LV2 build for the complete Sample Editor workflow.
+In the Linux VST3 build, imported audio and its waveform appear in the Sample
+Editor. A Carla host test also confirmed editor settings after switching pads.
+A short WAV and its edited Start value restored from Carla VST3 state after
+deleting the source file. Longer recordings and DAW projects remain untested.

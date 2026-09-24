@@ -75,10 +75,9 @@ real-time access gate. The callback emits silence while access is granted; it
 never allocates, blocks, locks, or copies sample data. Keep clipboard storage and
 mutation framework-neutral in `src/core`; DPF state and output parameters carry
 only bounded commands and completion/availability signals. Paste publishes fresh
-editor and waveform state through the same path as WAV Import. Consequently the
-documented [DPF VST3 DSP-to-UI limitation](DPF-VST3-CONSTRAINTS.md) also applies:
-VST3 playback receives the pasted data, but its open editor may not refresh;
-LV2 is the supported reference workflow.
+editor and waveform state through the same path as WAV Import. The
+[VST3 UI message bus](DPF-VST3-CONSTRAINTS.md) carries these replies where DPF's
+`updateStateValue()` callback is absent.
 
 **Collapse Gap** is enabled on an empty visible pad when an occupied pad follows
 in the current bank/page. **Confirm Collapse** finds the complete containing gap
