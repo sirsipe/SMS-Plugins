@@ -6,12 +6,11 @@ namespace midichopper {
 
 bool PadClipboard::copyFrom(const SamplerEngine& sampler, const std::uint32_t pad)
 {
-    PadData sample;
-    if (!sampler.exportPad(pad, sample) || sample.frames == 0U)
+    if (!sampler.exportPad(pad, staging_) || staging_.frames == 0U)
         return false;
     const auto settings = sampler.padPlaybackSettings(pad);
     const auto mixerSettings = sampler.padMixerSettings(pad);
-    sample_ = std::move(sample);
+    std::swap(sample_, staging_);
     settings_ = settings;
     mixerSettings_ = mixerSettings;
     return true;

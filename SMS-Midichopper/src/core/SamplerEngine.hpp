@@ -33,6 +33,12 @@ struct MidiEvent {
     [[nodiscard]] constexpr bool isNoteOn() const noexcept { return type == MidiEventType::NoteOn && velocity != 0; }
 };
 
+/** Pull sorted events without imposing a fixed per-block event limit. */
+struct MidiEventSource {
+    void* context = nullptr;
+    bool (*next)(void*, MidiEvent&) noexcept = nullptr;
+};
+
 struct EngineSettings {
     bool armed = false;
     CaptureMode captureMode = CaptureMode::Sequential;
@@ -127,6 +133,9 @@ public:
                  float* outputLeft, float* outputRight,
                  std::uint32_t frames,
                  std::span<const MidiEvent> events) noexcept;
+    void process(const float* inputLeft, const float* inputRight,
+                 float* outputLeft, float* outputRight,
+                 std::uint32_t frames, MidiEventSource events) noexcept;
 
     [[nodiscard]] PadMetadata padMetadata(std::uint32_t pad) const noexcept;
     /** Most recent successful MIDI playback trigger; read from the audio thread. */

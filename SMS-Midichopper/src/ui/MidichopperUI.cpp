@@ -777,8 +777,21 @@ protected:
 #if DISTRHO_PLUGIN_WANT_DIRECT_ACCESS
         if (fUiBridge != nullptr) {
             midichopper::plugin::UiMessageBus::Message message;
-            while (fUiBridge->readUiMessage(fUiMessageCursor, message))
+            bool skipped = false;
+            while (fUiBridge->readUiMessage(fUiMessageCursor, message, skipped)) {
+                if (skipped) {
+                    fPadStructureBusy = false;
+                    fPendingSplitTarget = -1;
+                    fPendingSplitFirst = -1;
+                    fPendingSplitCount = 0;
+                    if (fChopSplitMode || fChopApplying)
+                        cancelChopEditor();
+                    fChopApplying = false;
+                    refreshSelectedWaveform();
+                    setLocalStatus("UI replies were missed; check the pad and retry");
+                }
                 stateChanged(message.key.data(), message.value.data());
+            }
         }
 #endif
         const auto now = std::chrono::steady_clock::now();

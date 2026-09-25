@@ -55,9 +55,9 @@ records the chosen duration, then waits before advancing again.
 Audio processing uses preallocated sample blocks plus pre-roll storage. The pool
 supports 64 pad slots; cleared blocks can be reused by any bank. A pad can use
 the entire free pool, so a long song can be split across pads. The pool holds
-about eight minutes of stereo audio at the host rate. `process()` takes
-sample-offset MIDI events and performs no allocation, locking, file access, or
-exception handling. Each pad is one voice, with a configurable global limit of
+about eight minutes of stereo audio at the host rate. `process()` pulls
+sample-offset MIDI without a fixed event cap or allocation, locking, I/O, or
+exceptions. Each pad is one voice, with a global limit of
 1–16 simultaneous voices and deterministic oldest-voice stealing.
 Playback uses linear interpolation for source-rate conversion and semitone
 varispeed. Each pad has non-destructive region/ADSR and mixer settings; global
@@ -72,6 +72,9 @@ Pad storage mutations are control-thread work. A shared gate makes `run()`
 output silence while control code copies or replaces storage at a block
 boundary; its audio side only checks lock-free atomics. File access, codecs, and
 offline rendering never run in the callback. See `SamplerEngine.hpp`.
+Export and same-rate import use block copies, allocating before
+gating. Large transfers can silence the callback; avoiding that needs another
+handoff.
 
 Collapse Gap moves shared-pool block mappings and complete pad settings without
 copying PCM. Split Sample stages only the selected PCM, snapshots generations

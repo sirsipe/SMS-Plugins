@@ -580,6 +580,24 @@ void SamplerEngine::process(const float* inputLeft, const float* inputRight,
                             float* outputLeft, float* outputRight,
                             std::uint32_t frames, const MidiEvent* events,
                             std::uint32_t eventCount) noexcept {
+    struct Cursor {
+        const MidiEvent* events;
+        std::uint32_t count;
+        std::uint32_t index = 0;
+    } cursor{events, eventCount};
+    process(inputLeft, inputRight, outputLeft, outputRight, frames,
+        MidiEventSource{&cursor, [](void* const opaque, MidiEvent& event) noexcept {
+            auto& source = *static_cast<Cursor*>(opaque);
+            if (source.events == nullptr || source.index >= source.count)
+                return false;
+            event = source.events[source.index++];
+            return true;
+        }});
+}
+
+void SamplerEngine::process(const float* inputLeft, const float* inputRight,
+                            float* outputLeft, float* outputRight,
+                            std::uint32_t frames, MidiEventSource events) noexcept {
     if (!outputLeft || !outputRight) return;
     if (settings_.armed != previousArmed_) {
         if (settings_.armed) {
@@ -611,9 +629,13 @@ void SamplerEngine::process(const float* inputLeft, const float* inputRight,
     }
     for (std::uint32_t pad = 0; pad < kPadCount; ++pad)
         refreshActiveVoiceSettings(pad);
-    std::uint32_t eventIndex = 0;
+    MidiEvent nextEvent{};
+    bool hasEvent = events.next != nullptr && events.next(events.context, nextEvent);
     for (std::uint32_t frame = 0; frame < frames; ++frame) {
-        while (events && eventIndex < eventCount && events[eventIndex].frameOffset <= frame) handleEvent(events[eventIndex++]);
+        while (hasEvent && nextEvent.frameOffset <= frame) {
+            handleEvent(nextEvent);
+            hasEvent = events.next(events.context, nextEvent);
+        }
         const float inL = inputLeft ? inputLeft[frame] : kSilence;
         const float inR = inputRight ? inputRight[frame] : kSilence;
         if (activePad_ >= 0) writeRecordFrame(frame, inL, inR);
@@ -727,9 +749,22 @@ bool SamplerEngine::exportPad(std::uint32_t pad, PadData& destination) const {
     destination.peak = p.publishedPeak.load(std::memory_order_relaxed);
     destination.rms = p.publishedRms.load(std::memory_order_relaxed);
     destination.stereo.resize(static_cast<std::size_t>(n) * 2U);
-    for (std::uint32_t frame = 0; frame < n; ++frame) {
-        destination.stereo[static_cast<std::size_t>(frame) * 2U] = sampleAt(pad, frame, 0U);
-        destination.stereo[static_cast<std::size_t>(frame) * 2U + 1U] = sampleAt(pad, frame, 1U);
+    for (std::uint32_t frame = 0; frame < n;) {
+        const auto logicalBlock = frame / kSampleBlockFrames;
+        const auto blockFrame = frame % kSampleBlockFrames;
+        const auto count = std::min(n - frame, kSampleBlockFrames - blockFrame);
+        const auto mapped = pad_blocks_[static_cast<std::size_t>(pad) *
+                                        blocks_per_pad_ + logicalBlock];
+        float* const output = destination.stereo.data() +
+            static_cast<std::size_t>(frame) * 2U;
+        if (mapped == kNoBlock) {
+            std::fill_n(output, static_cast<std::size_t>(count) * 2U, 0.0f);
+        } else {
+            const float* const source = samples_.data() +
+                (static_cast<std::size_t>(mapped) * kSampleBlockFrames + blockFrame) * 2U;
+            std::memcpy(output, source, static_cast<std::size_t>(count) * 2U * sizeof(float));
+        }
+        frame += count;
     }
     return true;
 }
@@ -772,10 +807,18 @@ bool SamplerEngine::importPad(std::uint32_t pad, const PadData& source,
     p.publishedRecording.store(false, std::memory_order_release);
     releasePadBlocks(pad);
     if (source.frames <= max_frames_) {
-        for (std::uint32_t frame = 0; frame < storedFrames; ++frame) {
-            const auto offset = static_cast<std::size_t>(frame) * 2U;
-            static_cast<void>(storeSample(pad, frame, source.stereo[offset],
-                                          source.stereo[offset + 1U]));
+        for (std::uint32_t frame = 0; frame < storedFrames;) {
+            const auto logicalBlock = frame / kSampleBlockFrames;
+            const auto count = std::min(storedFrames - frame, kSampleBlockFrames);
+            if (!ensurePadBlock(pad, logicalBlock))
+                return false;
+            const auto mapped = pad_blocks_[static_cast<std::size_t>(pad) *
+                                            blocks_per_pad_ + logicalBlock];
+            float* const output = samples_.data() +
+                static_cast<std::size_t>(mapped) * kSampleBlockFrames * 2U;
+            std::memcpy(output, source.stereo.data() + static_cast<std::size_t>(frame) * 2U,
+                        static_cast<std::size_t>(count) * 2U * sizeof(float));
+            frame += count;
         }
     } else {
         const double step = source.sampleRate / sample_rate_;

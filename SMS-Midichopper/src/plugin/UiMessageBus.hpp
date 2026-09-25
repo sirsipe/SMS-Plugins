@@ -41,12 +41,14 @@ public:
         return nextSequence_;
     }
 
-    [[nodiscard]] bool read(std::uint64_t& cursor, Message& message) const
+    [[nodiscard]] bool read(std::uint64_t& cursor, Message& message,
+                            bool& skipped) const
     {
         const std::lock_guard lock(mutex_);
         const std::uint64_t oldest = nextSequence_ > kCapacity
             ? nextSequence_ - kCapacity : 1U;
-        if (cursor < oldest)
+        skipped = cursor < oldest;
+        if (skipped)
             cursor = oldest;
         if (cursor >= nextSequence_)
             return false;

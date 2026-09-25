@@ -1347,6 +1347,42 @@ void disarm_note_off_gain_and_rate_change() {
     close(preservedMixer.tuneSemitones, mixer.tuneSemitones,
           "host sample-rate change preserves mixer tune");
 }
+
+void unbounded_midi_source_preserves_late_note_off() {
+    midichopper::SamplerEngine engine(1000.0, 1.0);
+    midichopper::PadData pad;
+    pad.sampleRate = 1000.0;
+    pad.frames = 20;
+    pad.stereo.assign(40, 1.0f);
+    check(engine.importPad(0, pad), "import gated-playback pad");
+    auto settings = engine.settings();
+    settings.monitorInput = false;
+    settings.playbackMode = midichopper::PlaybackMode::Gated;
+    engine.setSettings(settings);
+
+    std::vector<midichopper::MidiEvent> events;
+    events.emplace_back(0, settings.baseNote, 127, midichopper::MidiEventType::NoteOn);
+    for (int i = 0; i < 1024; ++i)
+        events.emplace_back(1, 127, 127, midichopper::MidiEventType::NoteOn);
+    events.emplace_back(2, settings.baseNote, 0, midichopper::MidiEventType::NoteOff);
+    struct Cursor {
+        const std::vector<midichopper::MidiEvent>* events;
+        std::size_t index = 0;
+    } cursor{&events};
+    const midichopper::MidiEventSource source{
+        &cursor, [](void* opaque, midichopper::MidiEvent& event) noexcept {
+            auto& current = *static_cast<Cursor*>(opaque);
+            if (current.index == current.events->size()) return false;
+            event = (*current.events)[current.index++];
+            return true;
+        }};
+    float left[4]{};
+    float right[4]{};
+    engine.process(nullptr, nullptr, left, right, 4, source);
+    check(left[0] > 0.0f && left[1] > 0.0f && left[2] == 0.0f,
+          "late note-off survives more than 1024 events in one block");
+    check(cursor.index == events.size(), "event source consumes every MIDI event");
+}
 }
 
 int main() {
@@ -1372,5 +1408,6 @@ int main() {
     pad_clipboard_snapshot();
     fixed_duration();
     disarm_note_off_gain_and_rate_change();
+    unbounded_midi_source_preserves_late_note_off();
     std::cout << "core tests passed\n";
 }

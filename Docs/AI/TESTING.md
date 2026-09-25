@@ -15,10 +15,10 @@ For focused iteration, use `ctest --test-dir build --output-on-failure -R NAME`:
 
 | CTest name | Coverage |
 | --- | --- |
-| `sampler-core` | Capture, banks/layouts, storage, voices, region/ADSR, pad/global mixer sums, raw chop preview/repartition, resampling, clipboard, lifecycle |
+| `sampler-core` | Capture, banks/layouts, storage, voices, region/ADSR, pad/global mixer sums, raw chop preview/repartition, resampling, clipboard, lifecycle, and more than 1,024 MIDI events per block |
 | `state-codec` | Audio, editor-state, and Cut Point Editor command round trips; malformed/corrupt state |
 | `ui-geometry` | Pad mapping, editor snapshot assembly, waveform/chop geometry, hit testing, wheel editing |
-| `ui-message-bus` | Bounded VST3 message ordering, independent view cursors, wrap, and largest reply |
+| `ui-message-bus` | Bounded VST3 message ordering, independent view cursors, explicit gap reporting on wrap, and largest reply |
 | `wav-codec` | WAV formats, validation, file actions, offline render, real-time access gate |
 
 Rebuild affected targets before testing. Run all five before handing off code

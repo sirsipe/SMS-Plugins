@@ -18,7 +18,9 @@ Midichopper now builds a separate VST3 DPF target with direct instance access.
 updates to a per-instance, bounded message bus. The UI reads that bus on idle
 and feeds messages through `stateChanged()`. Each view has its own sequence
 cursor; the oldest events are dropped if more than 64 messages arrive before a
-view reads them. Keys are limited to 47 bytes and values to 8191 bytes. The
+view reads them. The bus reports that gap; the UI clears pending pad operations,
+refreshes the selected waveform, and tells the user to check the pad and retry.
+Keys are limited to 47 bytes and values to 8191 bytes. The
 largest current reply, a split plan with a 128-bin waveform, is covered by a
 bound test. No audio callback uses the bus. LV2 retains separate DSP/UI
 binaries and uses its existing DPF callback; VST3 uses a combined controller

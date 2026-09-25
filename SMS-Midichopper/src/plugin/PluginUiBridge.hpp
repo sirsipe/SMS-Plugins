@@ -11,7 +11,8 @@ class PluginUiBridge : public Plugin {
 public:
     [[nodiscard]] virtual std::uint64_t uiMessageCursor() const = 0;
     [[nodiscard]] virtual bool readUiMessage(
-        std::uint64_t& cursor, midichopper::plugin::UiMessageBus::Message& message) const = 0;
+        std::uint64_t& cursor, midichopper::plugin::UiMessageBus::Message& message,
+        bool& skipped) const = 0;
     virtual void stopUiPreview() = 0;
 
 protected:

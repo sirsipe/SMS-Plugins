@@ -113,6 +113,33 @@ constexpr std::array<const char*, midichopper::kPadsPerBank> kPadActivitySymbols
     return std::pow(10.0f, decibels / 20.0f);
 }
 
+struct HostMidiCursor {
+    const MidiEvent* events = nullptr;
+    std::uint32_t count = 0;
+    std::uint32_t frames = 0;
+    std::uint32_t index = 0;
+
+    static bool next(void* const opaque, midichopper::MidiEvent& result) noexcept
+    {
+        auto& cursor = *static_cast<HostMidiCursor*>(opaque);
+        while (cursor.index < cursor.count) {
+            const MidiEvent& event = cursor.events[cursor.index++];
+            if (event.size < 3U || event.frame >= cursor.frames)
+                continue;
+            const std::uint8_t status = event.data[0] & 0xf0U;
+            if (status != 0x80U && status != 0x90U)
+                continue;
+            const std::uint8_t velocity = event.data[2] & 0x7fU;
+            result = {event.frame, static_cast<std::uint8_t>(event.data[1] & 0x7fU),
+                velocity, status == 0x90U && velocity != 0U
+                    ? midichopper::MidiEventType::NoteOn
+                    : midichopper::MidiEventType::NoteOff};
+            return true;
+        }
+        return false;
+    }
+};
+
 } // namespace
 
 class MidichopperPlugin final : public PluginUiBridge {
@@ -136,13 +163,15 @@ public:
 
     [[nodiscard]] bool readUiMessage(
         std::uint64_t& cursor,
-        midichopper::plugin::UiMessageBus::Message& message) const override
+        midichopper::plugin::UiMessageBus::Message& message,
+        bool& skipped) const override
     {
 #if DISTRHO_PLUGIN_WANT_DIRECT_ACCESS
-        return uiMessageBus_.read(cursor, message);
+        return uiMessageBus_.read(cursor, message, skipped);
 #else
         static_cast<void>(cursor);
         static_cast<void>(message);
+        skipped = false;
         return false;
 #endif
     }
@@ -491,6 +520,8 @@ protected:
             if (std::strcmp(key, kPadStateKeys[pad].c_str()) != 0)
                 continue;
             midichopper::PadData snapshot;
+            snapshot.stereo.reserve(
+                static_cast<std::size_t>(sampler_.padMetadata(pad).frames) * 2U);
             bool exported = false;
             if (!withSamplerPaused([&] {
                     exported = sampler_.exportPad(pad, snapshot);
@@ -690,24 +721,10 @@ protected:
         // buffers. This tap intentionally ignores every plug-in mode/setting.
         inputMeter_.process(inputs[0], inputs[1], frames, getSampleRate());
 
-        std::array<midichopper::MidiEvent, 1024> events{};
-        std::uint32_t eventCount = 0;
-        for (uint32_t index = 0; index < midiEventCount && eventCount < events.size(); ++index) {
-            const MidiEvent& event = midiEvents[index];
-            if (event.size < 3U || event.frame >= frames)
-                continue;
-            const uint8_t status = event.data[0] & 0xf0U;
-            if (status != 0x80U && status != 0x90U)
-                continue;
-            const uint8_t note = event.data[1] & 0x7fU;
-            const uint8_t velocity = event.data[2] & 0x7fU;
-            const auto type = (status == 0x90U && velocity != 0U)
-                ? midichopper::MidiEventType::NoteOn : midichopper::MidiEventType::NoteOff;
-            events[eventCount++] = {event.frame, note, velocity, type};
-        }
-
-        activateAllBanksMidiBank(events.data(), eventCount);
-        sampler_.process(inputs[0], inputs[1], outputs[0], outputs[1], frames, events.data(), eventCount);
+        activateAllBanksMidiBank(midiEvents, midiEventCount, frames);
+        HostMidiCursor cursor{midiEvents, midiEventCount, frames};
+        sampler_.process(inputs[0], inputs[1], outputs[0], outputs[1], frames,
+            midichopper::MidiEventSource{&cursor, &HostMidiCursor::next});
         // The output tap follows monitoring, pad voices, envelopes, and gain.
         outputMeter_.process(outputs[0], outputs[1], frames, getSampleRate());
         updateMeterOutputParameters();
@@ -813,6 +830,9 @@ private:
                 pendingSplitPlan_ = {};
                 PendingSplitPlan prepared;
                 sms::audio::WaveformSummary preparedWaveform;
+                midichopper::PadData waveformSource;
+                waveformSource.stereo.reserve(static_cast<std::size_t>(
+                    sampler_.padMetadata(request.targetPad).frames) * 2U);
                 bool valid = false;
                 const bool accessed = withSamplerPaused([&] {
                     const auto settings = sampler_.settings();
@@ -829,7 +849,6 @@ private:
                     const auto source = sampler_.padMetadata(request.targetPad);
                     if (!source.occupied || source.frames < 2U)
                         return;
-                    midichopper::PadData waveformSource;
                     if (!sampler_.exportPad(request.targetPad, waveformSource) ||
                         waveformSource.frames != source.frames)
                         return;
@@ -921,6 +940,8 @@ private:
                                          std::string& waveform) const
     {
         midichopper::PadData snapshot;
+        snapshot.stereo.reserve(
+            static_cast<std::size_t>(sampler_.padMetadata(pad).frames) * 2U);
         bool exported = false;
         if (!withSamplerPaused([&] {
                 exported = sampler_.exportPad(pad, snapshot);
@@ -1029,6 +1050,8 @@ private:
         }
 
         bool succeeded = false;
+        if (request.action == PadClipboardAction::copy)
+            padClipboard_.reserveFrames(sampler_.padMetadata(request.pad).frames);
         const bool accessed = withSamplerPaused([&] {
             succeeded = request.action == PadClipboardAction::copy
                 ? padClipboard_.copyFrom(sampler_, request.pad)
@@ -1123,6 +1146,8 @@ private:
             }
         } else {
             midichopper::PadData snapshot;
+            snapshot.stereo.reserve(static_cast<std::size_t>(
+                sampler_.padMetadata(request.pad).frames) * 2U);
             sms::dsp::SamplePlaybackSettings settings;
             sms::dsp::SampleMixerSettings mixerSettings;
             bool exported = false;
@@ -1276,8 +1301,9 @@ private:
         appliedChopMidiPreviewSequence_ = after;
     }
 
-    void activateAllBanksMidiBank(const midichopper::MidiEvent* const events,
-                                  const std::uint32_t eventCount) noexcept
+    void activateAllBanksMidiBank(const MidiEvent* const events,
+                                  const std::uint32_t eventCount,
+                                  const std::uint32_t frames) noexcept
     {
         using namespace midichopper::plugin;
         auto settings = sampler_.settings();
@@ -1286,11 +1312,13 @@ private:
             return;
 
         std::uint32_t bank = settings.activeBank;
-        for (std::uint32_t index = 0; index < eventCount; ++index) {
-            if (!events[index].isNoteOn())
+        HostMidiCursor cursor{events, eventCount, frames};
+        midichopper::MidiEvent event;
+        while (HostMidiCursor::next(&cursor, event)) {
+            if (!event.isNoteOn())
                 continue;
             const std::uint32_t pad = midichopper::padForMidiNote(
-                events[index].note, settings.baseNote, settings.activeBank,
+                event.note, settings.baseNote, settings.activeBank,
                 settings.padsPerBank, settings.midiBankMode);
             if (pad < midichopper::kPadCount)
                 bank = midichopper::bankForPad(
