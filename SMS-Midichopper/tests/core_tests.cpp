@@ -1348,6 +1348,39 @@ void disarm_note_off_gain_and_rate_change() {
           "host sample-rate change preserves mixer tune");
 }
 
+void input_monitor_modes() {
+    using namespace midichopper::plugin;
+    check(parameterRange(kParameterInputMonitor).defaultValue == 1.0f &&
+          parameterRange(kParameterInputMonitor).maximum == 2.0f,
+          "monitor keeps its released default and exposes Auto");
+    check(nextInputMonitorMode(0.0f) == 1.0f &&
+          nextInputMonitorMode(1.0f) == 2.0f &&
+          nextInputMonitorMode(2.0f) == 0.0f,
+          "monitor control cycles Off, On, Auto");
+
+    midichopper::SamplerEngine engine(1000.0, 1.0);
+    auto settings = engine.settings();
+    const float input[] = {0.25f};
+    float left[1]{};
+    float right[1]{};
+    const auto checkMonitor = [&](const float mode, const bool armed,
+                                  const float expected, const char* message) {
+        settings.armed = armed;
+        settings.monitorInput = inputMonitorEnabled(mode, armed);
+        engine.setSettings(settings);
+        engine.process(input, input, left, right, 1);
+        close(left[0], expected, message);
+        close(right[0], expected, message);
+    };
+    checkMonitor(0.0f, false, 0.0f, "Off mutes input in Play");
+    checkMonitor(0.0f, true, 0.0f, "Off mutes input in Arm");
+    checkMonitor(1.0f, true, 0.25f, "On passes input in Arm");
+    checkMonitor(1.0f, false, 0.25f, "On passes input in Play");
+    checkMonitor(2.0f, false, 0.0f, "Auto mutes input in Play");
+    checkMonitor(2.0f, true, 0.25f, "Auto passes input in Arm");
+    checkMonitor(2.0f, false, 0.0f, "Auto mutes input again after disarming");
+}
+
 void unbounded_midi_source_preserves_late_note_off() {
     midichopper::SamplerEngine engine(1000.0, 1.0);
     midichopper::PadData pad;
@@ -1408,6 +1441,7 @@ int main() {
     pad_clipboard_snapshot();
     fixed_duration();
     disarm_note_off_gain_and_rate_change();
+    input_monitor_modes();
     unbounded_midi_source_preserves_late_note_off();
     std::cout << "core tests passed\n";
 }

@@ -794,9 +794,11 @@ private:
         }
 
         drawGlobalMixer();
-        const char* monitor = state_.monitorInput >= 0.5f ? "MONITOR  ON" : "MONITOR  OFF";
+        const char* monitor = state_.monitorInput >= 1.5f ? "MONITOR  AUTO"
+            : state_.monitorInput >= 0.5f ? "MONITOR  ON" : "MONITOR  OFF";
         sms::ui::dpf::drawSegment(canvas_, uiLayout::monitor, monitor,
-            state_.monitorInput >= 0.5f, colors.activityPlayback,
+            plugin::inputMonitorEnabled(state_.monitorInput, state_.armed),
+            colors.activityPlayback,
             hovered(InteractiveType::monitor));
         if (state_.armed) {
             canvas_.fontSize(11.0f);

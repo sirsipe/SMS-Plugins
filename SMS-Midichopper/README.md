@@ -42,28 +42,26 @@ cp -a build/bin/SMS-Midichopper.lv2 ~/.lv2/
 ## Use
 
 1. Insert **SMS-Midichopper** on a stereo Reaper track receiving audio and MIDI.
-2. Choose a bank, enable monitoring if needed, then click **ARM**. The first
+2. Choose a bank, set monitoring if needed, then click **ARM**. The first
    empty visible pad is selected; click another pad while idle to override it.
 3. The first MIDI note-on starts the slice. Later note-ons close the current
    slice and continue at the next pad; their note identity does not choose it.
 4. Click **FINALIZE** or return to **PLAY** to keep the last open slice.
 5. Select Bank A–D and play from MIDI note 36 upward. The base is configurable.
 
-The hamburger menu selects MIDI bank mode. **All Banks** (default) assigns
-stable, gapless notes across exposed slots; **Selected Bank** reuses the
-base-note range. A note-on activates its bank and the UI follows.
+The menu selects MIDI bank mode. **All Banks** (default) assigns gapless notes;
+**Selected Bank** reuses the base-note range. Note-on activates its bank.
 Layout changes regroup slots without changing notes. All Banks limits the
 effective base to 64 so every layout fits MIDI 0–127.
 
-Layouts provide 16 pads (4×4), 12 (3×4), or 8 (4×2), numbered from the bottom.
+Layouts provide 16 pads (4×4), 12 (3×4), or 8 (4×2).
 Banks retain 16 slots; smaller layouts hide slots without deleting samples.
 Sequential capture skips hidden slots. All Banks uses contiguous layout pages.
 
-**Sample Editor** groups waveform and ADSR above per-pad Gain, Pan, and
-varispeed Tune; main-view controls add global values. Edits reach active voices
-next block except Start, which applies on retrigger. Rechopping keeps mixer
-settings unless it empties a pad. **Play on Select** auditions selections. MIDI
-selects pads. Arm hides the editor.
+**Sample Editor** groups waveform and ADSR above per-pad Gain, Pan, and Tune;
+main-view controls add global values. Edits reach active voices next block except
+Start, which applies on retrigger. Rechopping keeps mixer settings unless it
+empties a pad. **Play on Select** auditions selections. Arm hides the editor.
 
 Right-click a middle pad and choose **Adjust cut points** to edit it with its
 neighbor slots, including empty ones. See the [cut-point guide](Docs/CHOP-EDITOR.md).
@@ -74,11 +72,13 @@ Gain/Volume 1 dB, Pan 10%, and Tune one semitone. Double-click a value to type
 middle-click knob/value to reset. The wheel adjusts ADSR,
 Fixed Length, Max Voices, Pre-roll, Start/End, and cut points.
 Arm shows capture and chop controls. Play shows playback controls and hides
-chop actions. Global mixer and bottom Monitor controls remain available.
+chop actions. Global mixer and bottom Monitor controls remain available. Click
+Monitor to cycle through Off, On, and Auto. Auto passes input only while
+armed; On passes it always. Default remains On.
 
 Right-click pads to copy, paste, import, export, clear, split, or collapse a gap.
-Split shifts pads right on Apply; Exit cancels. Confirmed Collapse shifts the
-next run left. Both stay within the bank. See
+Split shifts pads right; Collapse shifts the next run left. Both stay within the
+bank. See
 [WAV files](Docs/WAV-FILES.md) for formats and Linux requirements.
 
 Max Voices limits simultaneous pads. At the limit, a new trigger stops the

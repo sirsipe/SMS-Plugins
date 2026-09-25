@@ -61,7 +61,8 @@ inline constexpr ParameterRange toggle{0.0f, 0.0f, 1.0f};
 inline constexpr ParameterRange startPad{1.0f, 1.0f, static_cast<float>(kPadsPerBank)};
 inline constexpr ParameterRange preRollMs{0.0f, 0.0f, 100.0f};
 inline constexpr ParameterRange fixedLengthSeconds{1.0f, 0.01f, 30.0f};
-inline constexpr ParameterRange inputMonitor{1.0f, 0.0f, 1.0f};
+// Preserve released values: 0 = Off, 1 = On, 2 = Auto (on while armed).
+inline constexpr ParameterRange inputMonitor{1.0f, 0.0f, 2.0f};
 inline constexpr ParameterRange baseMidiNote{
     static_cast<float>(kDefaultBaseMidiNote), 0.0f,
     static_cast<float>(128U - kPadsPerBank)};
@@ -90,6 +91,17 @@ inline constexpr ParameterRange playbackPosition = chopPreviewPosition;
 inline constexpr ParameterRange globalPan{0.0f, -1.0f, 1.0f};
 inline constexpr ParameterRange globalTuneSemitones{0.0f, -24.0f, 24.0f};
 } // namespace parameterRanges
+
+[[nodiscard]] inline constexpr bool inputMonitorEnabled(const float mode,
+                                                        const bool armed) noexcept
+{
+    return mode >= 1.5f ? armed : mode >= 0.5f;
+}
+
+[[nodiscard]] inline constexpr float nextInputMonitorMode(const float mode) noexcept
+{
+    return mode < 0.5f ? 1.0f : mode < 1.5f ? 2.0f : 0.0f;
+}
 
 /**
  * Encode a played pad into alternating halves of the output range. Toggling

@@ -242,7 +242,8 @@ protected:
             break;
         case kParameterInputMonitor:
             setupParameter(index, parameter, "Input Monitor", "input_monitor", "",
-                           kParameterIsBoolean | kParameterIsInteger, "Pass the input to the output.");
+                           kParameterIsInteger,
+                           "0 = Off, 1 = On, 2 = Auto (on while armed).");
             break;
         case kParameterBaseMidiNote:
             setupParameter(index, parameter, "Base MIDI Note", "base_midi_note", "",
@@ -1225,7 +1226,8 @@ private:
         settings.fixedLengthSeconds = clampedParameter(kParameterFixedLengthSeconds);
         settings.playbackMode = parameter(kParameterPlaybackMode) >= 0.5f
             ? midichopper::PlaybackMode::Gated : midichopper::PlaybackMode::OneShot;
-        settings.monitorInput = parameter(kParameterInputMonitor) >= 0.5f;
+        settings.monitorInput = inputMonitorEnabled(
+            clampedParameter(kParameterInputMonitor), settings.armed);
         settings.baseNote = static_cast<std::uint8_t>(clampedParameter(kParameterBaseMidiNote));
         settings.gain = decibelsToGain(clampedParameter(kParameterOutputGainDb));
         settings.pan = clampedParameter(kParameterGlobalPan);

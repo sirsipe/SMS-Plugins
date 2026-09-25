@@ -1256,7 +1256,7 @@ protected:
             }
             if (midichopper::ui::isTarget(clicked, midichopper::ui::InteractiveType::monitor))
             {
-                setControlValue(kParameterInputMonitor, fMonitor >= 0.5f ? 0.0f : 1.0f);
+                setControlValue(kParameterInputMonitor, nextInputMonitorMode(fMonitor));
                 return true;
             }
             if (midichopper::ui::isTarget(

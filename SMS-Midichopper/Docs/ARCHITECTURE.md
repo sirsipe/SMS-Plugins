@@ -1,12 +1,12 @@
 # SMS-Midichopper architecture
 
-Audience: engine, adapter, state, or UI agents. [VISION.md](VISION.md) covers intent.
+Audience: engine, adapter, state, UI.
 
-SMS-Midichopper separates sampler, format, and UI:
+SMS-Midichopper separates these layers:
 
 - `src/core` is the framework-free C++20 capture/playback engine.
 - `src/plugin` adapts DPF parameters, audio, MIDI, and state; start with
-  `Parameters.hpp`, `MidichopperPlugin.cpp`, `StateCodec.*`, and plugin info.
+  `Parameters.hpp`, `MidichopperPlugin.cpp`, and `StateCodec.*`.
 - `src/ui/MidichopperUI.cpp` owns host communication;
   `MidichopperInteraction.hpp` resolves input and `MidichopperView.cpp` draws.
 - `tests` covers engine behavior, state, WAV handling, and host-free UI geometry.
@@ -38,17 +38,17 @@ until the editor closes.
 
 ## Capture model
 
-Arming chooses the first empty visible pad, or the first when full; idle mouse
+Arming chooses the first empty visible pad, or the first when full; idle
 selection overrides it. A hidden output reports the target. The first
 Sequential note-on begins capture; later note-ons publish sample-accurate
-boundaries and advance through Bank D. Selected Bank skips hidden slots in
-8- and 12-pad layouts; All Banks uses contiguous pages. Note-off does not
+boundaries and advance through Bank D. Selected Bank skips hidden slots;
+All Banks uses contiguous pages. Note-off does not
 affect capture. Active recording ignores retargeting. Disarming or Finalize
 publishes the last slice.
 
-The pre-roll ring holds up to 100 ms. At a boundary, that history starts the new
-slice and is trimmed from the previous one. Fixed mode waits for a note-on,
-records the chosen duration, then waits before advancing again.
+The pre-roll ring holds up to 100 ms. At a boundary, history starts the new
+slice and is trimmed from the previous one. Fixed mode records the chosen
+duration after each note-on.
 
 ## Real-time behavior
 
@@ -59,6 +59,8 @@ about eight minutes of stereo audio at the host rate. `process()` pulls
 sample-offset MIDI without a fixed event cap or allocation, locking, I/O, or
 exceptions. Each pad is one voice, with a global limit of
 1–16 simultaneous voices and deterministic oldest-voice stealing.
+Saved `input_monitor` values are Off=0, On=1, Auto=2. The adapter resolves Auto
+against Arm before passing the engine's boolean monitor gate each block.
 Playback uses linear interpolation for source-rate conversion and semitone
 varispeed. Each pad has non-destructive region/ADSR and mixer settings; global
 volume, pan, and tune combine during playback. Active voices refresh mixer,
