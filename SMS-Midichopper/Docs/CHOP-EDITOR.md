@@ -7,6 +7,10 @@ Either neighbor may be empty.
 The editor combines the pad and neighbors into one raw waveform. **Cut 1**
 divides the left/selected pads; **Cut 2** divides selected/right. Drag or wheel a
 line to move audio across it.
+Over the waveform, **Ctrl + wheel** zooms around the pointer and **Shift +
+wheel** scrolls left or right. Each zoomed view requests detail from the
+visible raw audio. Ordinary wheel still moves a cut; Ctrl/Shift wheel over a
+cut controls the view. Navigating to another pad or leaving the editor resets zoom.
 
 With an empty left or right pad, its cut starts at that source edge. Move it
 inward to give the empty pad the source prefix or suffix; otherwise it stays empty.

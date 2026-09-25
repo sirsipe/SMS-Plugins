@@ -9,6 +9,7 @@
 #include "PadLayout.hpp"
 #include "UI/Geometry.hpp"
 #include "WaveformEditor.hpp"
+#include "WaveformViewport.hpp"
 #include "../src/plugin/DistrhoPluginInfo.h"
 
 #include <cmath>
@@ -478,6 +479,30 @@ void levelMeterGeometry()
 
 void waveformGeometry()
 {
+    sms::ui::waveform::Viewport viewport;
+    const sms::ui::Rect viewBounds{0.0f, 0.0f, 800.0f, 100.0f};
+    viewport.reset(8000U);
+    check(viewport.zoom(1.0f, 200.0f, viewBounds) &&
+          viewport.start == 1000U && viewport.end == 5000U &&
+          std::abs(viewport.frameAt(200.0f, viewBounds) - 2000.0) < 1.0,
+          "zoom retains the audio frame under the pointer");
+    check(viewport.pan(-1.0f) && viewport.start == 1800U &&
+          viewport.xForFrame(1800.0, viewBounds) == viewBounds.x,
+          "shift wheel pans by part of the visible duration");
+    viewport.reset(8000U);
+    check(!viewport.zoomed() && viewport.start == 0U && viewport.end == 8000U,
+          "new pad or editor entry restores the full waveform");
+    viewport = {20000000U, 12000000U, 12000016U};
+    check(std::abs(viewport.frameAt(viewport.xForFrame(12000008.0, viewBounds),
+        viewBounds) - 12000008.0) < 0.1,
+        "deep zoom maps long-sample frames without virtual-canvas precision loss");
+    sms::dsp::SamplePlaybackSettings precise;
+    precise.start = 0.5f;
+    precise.end = 0.8f;
+    sms::ui::waveform::updateRegion(precise, sms::ui::waveform::EditTarget::regionStart,
+        400.0f, viewBounds, viewport);
+    check(std::abs(static_cast<double>(precise.start) * viewport.total - 12000008.0) < 2.0,
+        "zoomed region drag targets the visible source frame");
     sms::audio::WaveformSummary summary;
     summary.frames = 48000U;
     summary.sampleRate = 48000.0;

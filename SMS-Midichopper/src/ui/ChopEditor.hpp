@@ -2,6 +2,7 @@
 
 #include "Audio/WaveformSummary.hpp"
 #include "UI/Geometry.hpp"
+#include "WaveformViewport.hpp"
 
 #include <algorithm>
 #include <array>
@@ -111,6 +112,19 @@ inline constexpr std::uint32_t kBoundaryCount = kPadCount - 1U;
         static_cast<double>(adjustedBoundary(waveforms, offsets, boundary)) / total);
 }
 
+[[nodiscard]] inline float boundaryX(
+    const sms::ui::Rect waveformBounds,
+    const std::span<const sms::audio::WaveformSummary> waveforms,
+    const std::span<const std::int64_t> offsets, const int boundary,
+    const sms::ui::waveform::Viewport viewport) noexcept
+{
+    if (!viewport.zoomed())
+        return boundaryX(waveformBounds, waveforms, offsets, boundary);
+    return viewport.xForFrame(
+        static_cast<double>(adjustedBoundary(waveforms, offsets, boundary)),
+        waveformBounds);
+}
+
 [[nodiscard]] inline sms::ui::Rect boundaryHandle(
     const sms::ui::Rect waveformBounds,
     const std::span<const sms::audio::WaveformSummary> waveforms,
@@ -129,6 +143,22 @@ inline constexpr std::uint32_t kBoundaryCount = kPadCount - 1U;
         return -1;
     for (int boundary = 0; boundary < static_cast<int>(kBoundaryCount); ++boundary) {
         if (boundaryHandle(waveformBounds, waveforms, offsets, boundary).contains(point))
+            return boundary;
+    }
+    return -1;
+}
+
+[[nodiscard]] inline int boundaryAt(
+    const sms::ui::Point point, const sms::ui::Rect waveformBounds,
+    const std::span<const sms::audio::WaveformSummary> waveforms,
+    const std::span<const std::int64_t> offsets,
+    const sms::ui::waveform::Viewport viewport) noexcept
+{
+    if (!ready(waveforms) || !waveformBounds.contains(point))
+        return -1;
+    for (int boundary = 0; boundary < static_cast<int>(kBoundaryCount); ++boundary) {
+        const auto x = boundaryX(waveformBounds, waveforms, offsets, boundary, viewport);
+        if (std::abs(point.x - x) <= 9.0f)
             return boundary;
     }
     return -1;
@@ -154,7 +184,8 @@ inline constexpr std::uint32_t kBoundaryCount = kPadCount - 1U;
 [[nodiscard]] inline std::int64_t wheelAdjustedBoundaryOffset(
     const std::span<const sms::audio::WaveformSummary> waveforms,
     const std::span<const std::int64_t> offsets, const int boundary,
-    const float verticalDelta, const sms::ui::Rect waveformBounds) noexcept
+    const float verticalDelta, const sms::ui::Rect waveformBounds,
+    const sms::ui::waveform::Viewport viewport = {}) noexcept
 {
     if (verticalDelta == 0.0f || !std::isfinite(verticalDelta) ||
         waveformBounds.width <= 0.0f || boundary < 0 ||
@@ -162,7 +193,8 @@ inline constexpr std::uint32_t kBoundaryCount = kPadCount - 1U;
         return boundary >= 0 && boundary < static_cast<int>(offsets.size())
             ? offsets[static_cast<std::size_t>(boundary)] : 0;
     const auto step = std::max<std::int64_t>(1, static_cast<std::int64_t>(std::llround(
-        static_cast<double>(totalFrames(waveforms)) / waveformBounds.width)));
+        static_cast<double>(viewport.zoomed() ? viewport.end - viewport.start :
+            totalFrames(waveforms)) / waveformBounds.width)));
     const auto requested = offsets[static_cast<std::size_t>(boundary)] +
         (verticalDelta > 0.0f ? step : -step);
     return clampBoundaryOffset(waveforms, offsets, boundary, requested);

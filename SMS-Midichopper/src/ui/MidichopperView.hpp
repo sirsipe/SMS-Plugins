@@ -7,6 +7,7 @@
 #include "DSP/SampleMixerSettings.hpp"
 #include "DSP/SamplePlaybackSettings.hpp"
 #include "Interaction.hpp"
+#include "WaveformViewport.hpp"
 
 #include <array>
 #include <cstdint>
@@ -67,6 +68,8 @@ struct ViewState {
     bool chopPreviousEnabled = false;
     bool chopNextEnabled = false;
     const char* status = "";
+    sms::ui::waveform::Viewport waveformViewport;
+    const sms::audio::WaveformSummary* waveformDetail = nullptr;
 };
 
 void draw(DGL_NAMESPACE::NanoVG& canvas, const ViewState& state);

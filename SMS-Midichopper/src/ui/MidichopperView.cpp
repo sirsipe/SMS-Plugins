@@ -355,7 +355,8 @@ private:
             state_.waveform, state_.hasWaveform, state_.editorSettings,
             hovered(InteractiveType::regionHandle)
                 ? static_cast<sms::ui::waveform::EditTarget>(state_.hoveredTarget.index)
-                : sms::ui::waveform::EditTarget::none);
+                : sms::ui::waveform::EditTarget::none,
+            state_.waveformDetail, state_.waveformViewport);
 
         const int playbackPad = state_.playbackPosition > 0.0f
             ? static_cast<int>(std::floor(state_.playbackPosition)) - 1 : -1;
@@ -363,28 +364,34 @@ private:
             const float fraction = state_.playbackPosition -
                                    std::floor(state_.playbackPosition);
             const float x = uiLayout::editorWaveform.x +
-                            uiLayout::editorWaveform.width * fraction;
-            canvas_.beginPath();
-            canvas_.moveTo(x, uiLayout::editorWaveform.y + 4.0f);
-            canvas_.lineTo(x, uiLayout::editorWaveform.y +
-                              uiLayout::editorWaveform.height - 4.0f);
-            canvas_.strokeColor(colors.shadow.withAlpha(0.8f));
-            canvas_.strokeWidth(4.0f);
-            canvas_.stroke();
-            canvas_.beginPath();
-            canvas_.moveTo(x, uiLayout::editorWaveform.y + 4.0f);
-            canvas_.lineTo(x, uiLayout::editorWaveform.y +
-                              uiLayout::editorWaveform.height - 4.0f);
-            canvas_.strokeColor(colors.selection);
-            canvas_.strokeWidth(2.0f);
-            canvas_.stroke();
-            canvas_.beginPath();
-            canvas_.moveTo(x - 5.0f, uiLayout::editorWaveform.y + 4.0f);
-            canvas_.lineTo(x + 5.0f, uiLayout::editorWaveform.y + 4.0f);
-            canvas_.lineTo(x, uiLayout::editorWaveform.y + 11.0f);
-            canvas_.closePath();
-            canvas_.fillColor(colors.selection);
-            canvas_.fill();
+                uiLayout::editorWaveform.width * static_cast<float>(
+                    state_.waveformViewport.zoomed()
+                        ? state_.waveformViewport.fraction(
+                            fraction * state_.waveformViewport.total) : fraction);
+            if (x >= uiLayout::editorWaveform.x &&
+                x <= uiLayout::editorWaveform.x + uiLayout::editorWaveform.width) {
+                canvas_.beginPath();
+                canvas_.moveTo(x, uiLayout::editorWaveform.y + 4.0f);
+                canvas_.lineTo(x, uiLayout::editorWaveform.y +
+                                uiLayout::editorWaveform.height - 4.0f);
+                canvas_.strokeColor(colors.shadow.withAlpha(0.8f));
+                canvas_.strokeWidth(4.0f);
+                canvas_.stroke();
+                canvas_.beginPath();
+                canvas_.moveTo(x, uiLayout::editorWaveform.y + 4.0f);
+                canvas_.lineTo(x, uiLayout::editorWaveform.y +
+                                uiLayout::editorWaveform.height - 4.0f);
+                canvas_.strokeColor(colors.selection);
+                canvas_.strokeWidth(2.0f);
+                canvas_.stroke();
+                canvas_.beginPath();
+                canvas_.moveTo(x - 5.0f, uiLayout::editorWaveform.y + 4.0f);
+                canvas_.lineTo(x + 5.0f, uiLayout::editorWaveform.y + 4.0f);
+                canvas_.lineTo(x, uiLayout::editorWaveform.y + 11.0f);
+                canvas_.closePath();
+                canvas_.fillColor(colors.selection);
+                canvas_.fill();
+            }
         }
 
         char region[112];
@@ -485,31 +492,60 @@ private:
         canvas_.text(936.0f, 122.0f, neighbors, nullptr);
 
         const auto combined = chop::combinedWaveform(state_.chopWaveforms);
-        sms::ui::dpf::drawWaveform(canvas_, uiLayout::chopWaveform, combined,
-            state_.chopReady, colors.activityPlayback);
+        const auto& visible = state_.waveformViewport.zoomed() && state_.waveformDetail
+            ? *state_.waveformDetail : combined;
+        sms::ui::dpf::drawWaveform(canvas_, uiLayout::chopWaveform, visible,
+            state_.chopReady && (!state_.waveformViewport.zoomed() ||
+                state_.waveformDetail != nullptr), colors.activityPlayback);
+        if (state_.chopReady && state_.waveformViewport.zoomed() &&
+            state_.waveformDetail == nullptr) {
+            canvas_.fontSize(13.0f);
+            canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_CENTER |
+                              DGL_NAMESPACE::NanoVG::ALIGN_MIDDLE);
+            canvas_.fillColor(colors.contentSecondary);
+            canvas_.text(uiLayout::chopWaveform.x + uiLayout::chopWaveform.width * 0.5f,
+                         uiLayout::chopWaveform.y + uiLayout::chopWaveform.height * 0.5f,
+                         "LOADING DETAIL...", nullptr);
+        }
+        sms::ui::dpf::drawWaveformViewportLabel(canvas_, uiLayout::chopWaveform,
+            state_.waveformViewport, combined.sampleRate);
         if (state_.chopReady) {
             const float selectedStart = state_.chopSplitMode ? uiLayout::chopWaveform.x :
                 chop::boundaryX(
-                    uiLayout::chopWaveform, state_.chopWaveforms, state_.chopOffsets, 0);
+                    uiLayout::chopWaveform, state_.chopWaveforms, state_.chopOffsets, 0,
+                    state_.waveformViewport);
             const float selectedEnd = chop::boundaryX(
                 uiLayout::chopWaveform, state_.chopWaveforms, state_.chopOffsets,
-                state_.chopSplitMode ? 0 : 1);
+                state_.chopSplitMode ? 0 : 1, state_.waveformViewport);
+            const float clippedStart = std::clamp(selectedStart,
+                uiLayout::chopWaveform.x, uiLayout::chopWaveform.x + uiLayout::chopWaveform.width);
+            const float clippedEnd = std::clamp(selectedEnd,
+                uiLayout::chopWaveform.x, uiLayout::chopWaveform.x + uiLayout::chopWaveform.width);
             canvas_.beginPath();
-            canvas_.rect(selectedStart, uiLayout::chopWaveform.y,
-                         selectedEnd - selectedStart, uiLayout::chopWaveform.height);
+            canvas_.rect(clippedStart, uiLayout::chopWaveform.y,
+                         std::max(0.0f, clippedEnd - clippedStart), uiLayout::chopWaveform.height);
             canvas_.fillColor(colors.selection.withAlpha(0.08f));
             canvas_.fill();
             if (state_.chopSplitMode) {
-                sms::ui::dpf::drawCutHandle(canvas_, selectedEnd,
-                    uiLayout::chopWaveform.y, uiLayout::chopWaveform.height, "SPLIT",
-                    hovered(InteractiveType::chopBoundary, 0));
+                if (selectedEnd >= uiLayout::chopWaveform.x &&
+                    selectedEnd <= uiLayout::chopWaveform.x + uiLayout::chopWaveform.width) {
+                    sms::ui::dpf::drawCutHandle(canvas_, selectedEnd,
+                        uiLayout::chopWaveform.y, uiLayout::chopWaveform.height, "SPLIT",
+                        hovered(InteractiveType::chopBoundary, 0));
+                }
             } else {
-                sms::ui::dpf::drawCutHandle(canvas_, selectedStart,
-                    uiLayout::chopWaveform.y, uiLayout::chopWaveform.height, "CUT 1",
-                    hovered(InteractiveType::chopBoundary, 0));
-                sms::ui::dpf::drawCutHandle(canvas_, selectedEnd,
-                    uiLayout::chopWaveform.y, uiLayout::chopWaveform.height, "CUT 2",
-                    hovered(InteractiveType::chopBoundary, 1));
+                if (selectedStart >= uiLayout::chopWaveform.x &&
+                    selectedStart <= uiLayout::chopWaveform.x + uiLayout::chopWaveform.width) {
+                    sms::ui::dpf::drawCutHandle(canvas_, selectedStart,
+                        uiLayout::chopWaveform.y, uiLayout::chopWaveform.height, "CUT 1",
+                        hovered(InteractiveType::chopBoundary, 0));
+                }
+                if (selectedEnd >= uiLayout::chopWaveform.x &&
+                    selectedEnd <= uiLayout::chopWaveform.x + uiLayout::chopWaveform.width) {
+                    sms::ui::dpf::drawCutHandle(canvas_, selectedEnd,
+                        uiLayout::chopWaveform.y, uiLayout::chopWaveform.height, "CUT 2",
+                        hovered(InteractiveType::chopBoundary, 1));
+                }
             }
         } else {
             canvas_.fontSize(13.0f);
@@ -532,13 +568,17 @@ private:
         const auto total = chop::totalFrames(state_.chopWaveforms);
         if (playSource >= 0.0 && total != 0U) {
             const float x = uiLayout::chopWaveform.x + uiLayout::chopWaveform.width *
-                static_cast<float>(playSource / total);
-            canvas_.beginPath();
-            canvas_.moveTo(x, uiLayout::chopWaveform.y + 4.0f);
-            canvas_.lineTo(x, uiLayout::chopWaveform.y + uiLayout::chopWaveform.height - 4.0f);
-            canvas_.strokeColor(colors.selection);
-            canvas_.strokeWidth(2.0f);
-            canvas_.stroke();
+                static_cast<float>(state_.waveformViewport.zoomed()
+                    ? state_.waveformViewport.fraction(playSource) : playSource / total);
+            if (x >= uiLayout::chopWaveform.x &&
+                x <= uiLayout::chopWaveform.x + uiLayout::chopWaveform.width) {
+                canvas_.beginPath();
+                canvas_.moveTo(x, uiLayout::chopWaveform.y + 4.0f);
+                canvas_.lineTo(x, uiLayout::chopWaveform.y + uiLayout::chopWaveform.height - 4.0f);
+                canvas_.strokeColor(colors.selection);
+                canvas_.strokeWidth(2.0f);
+                canvas_.stroke();
+            }
         }
 
         const int displayedPads = state_.chopSplitMode ? 2 : 3;

@@ -740,6 +740,54 @@ PadMetadata SamplerEngine::padMetadata(std::uint32_t pad) const noexcept {
     return m;
 }
 
+bool SamplerEngine::summarizePadRange(const std::uint32_t firstPad,
+                                      const std::uint32_t padCount,
+                                      const std::uint64_t start,
+                                      const std::uint64_t end,
+                                      sms::audio::WaveformSummary& result) const noexcept {
+    if (padCount == 0U || padCount > 3U || firstPad >= kPadCount ||
+        padCount > kPadCount - firstPad || start >= end)
+        return false;
+    std::array<std::uint64_t, 4> edges{};
+    double rate = 0.0;
+    for (std::uint32_t i = 0; i < padCount; ++i) {
+        const auto& pad = pads_[firstPad + i];
+        const auto frames = pad.publishedFrames.load(std::memory_order_acquire);
+        edges[i + 1U] = edges[i] + frames;
+        if (frames != 0U) {
+            const double sourceRate = pad.sourceSampleRate.load(std::memory_order_acquire);
+            if (rate != 0.0 && std::abs(rate - sourceRate) > 0.5)
+                return false;
+            rate = sourceRate;
+        }
+    }
+    if (end > edges[padCount] || end - start > UINT32_MAX)
+        return false;
+    result = {};
+    result.pad = firstPad;
+    result.frames = static_cast<std::uint32_t>(end - start);
+    result.sampleRate = rate > 1.0 ? rate : sample_rate_;
+    for (std::size_t bin = 0; bin < sms::audio::kWaveformBins; ++bin) {
+        const auto first = start + (end - start) * bin / sms::audio::kWaveformBins;
+        const auto last = start + (end - start) * (bin + 1U) / sms::audio::kWaveformBins;
+        float low = 1.0f;
+        float high = -1.0f;
+        for (auto frame = first; frame < std::max(first + 1U, last) && frame < end; ++frame) {
+            std::uint32_t localPad = 0U;
+            while (localPad + 1U < padCount && frame >= edges[localPad + 1U])
+                ++localPad;
+            const auto localFrame = static_cast<std::uint32_t>(frame - edges[localPad]);
+            const float left = sampleAt(firstPad + localPad, localFrame, 0U);
+            const float right = sampleAt(firstPad + localPad, localFrame, 1U);
+            low = std::min({low, left, right});
+            high = std::max({high, left, right});
+        }
+        result.minimum[bin] = low <= high ? low : 0.0f;
+        result.maximum[bin] = low <= high ? high : 0.0f;
+    }
+    return true;
+}
+
 bool SamplerEngine::exportPad(std::uint32_t pad, PadData& destination) const {
     if (pad >= kPadCount) return false;
     const auto& p = pads_[pad];

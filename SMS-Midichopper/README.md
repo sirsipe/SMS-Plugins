@@ -50,35 +50,32 @@ cp -a build/bin/SMS-Midichopper.lv2 ~/.lv2/
 5. Select Bank A–D and play from MIDI note 36 upward. The base is configurable.
 
 The menu selects MIDI bank mode. **All Banks** (default) assigns gapless notes;
-**Selected Bank** reuses the base-note range. Note-on activates its bank.
-Layout changes regroup slots without changing notes. All Banks limits the
-effective base to 64 so every layout fits MIDI 0–127.
+**Selected Bank** reuses the base-note range. All Banks limits the base note to
+64 so every layout fits MIDI 0–127.
 
-Layouts provide 16 pads (4×4), 12 (3×4), or 8 (4×2).
-Banks retain 16 slots; smaller layouts hide slots without deleting samples.
-Sequential capture skips hidden slots. All Banks uses contiguous layout pages.
+Layouts provide 16, 12, or 8 pads. Smaller layouts hide slots without deleting
+samples; sequential capture skips them.
 
-**Sample Editor** groups waveform and ADSR above per-pad Gain, Pan, and Tune;
-main-view controls add global values. Edits reach active voices next block except
-Start, which applies on retrigger. Rechopping keeps mixer settings unless it
-empties a pad. **Play on Select** auditions selections. Arm hides the editor.
+**Sample Editor** groups waveform and ADSR above per-pad Gain, Pan, and Tune.
+Edits reach active voices next block except Start, which applies on retrigger.
+**Play on Select** auditions selections. Arm hides the editor.
+Over the waveform, **Ctrl + wheel** zooms around the pointer and **Shift + wheel**
+scrolls horizontally. Zoom reveals a fresh summary of the visible audio, down
+to a 16-frame window. Selecting another pad or reopening the editor resets the view.
 
-Right-click a middle pad and choose **Adjust cut points** to edit it with its
-neighbor slots, including empty ones. See the [cut-point guide](Docs/CHOP-EDITOR.md).
+Right-click a middle pad for **Adjust cut points**. See the
+[cut-point guide](Docs/CHOP-EDITOR.md).
 
 Drag or wheel knobs. **Shift** gives 10× precision; **Ctrl** steps
 Gain/Volume 1 dB, Pan 10%, and Tune one semitone. Double-click a value to type
 (Pan: −100…100); Enter applies; click elsewhere to cancel. Double-click knob or
 middle-click knob/value to reset. The wheel adjusts ADSR,
 Fixed Length, Max Voices, Pre-roll, Start/End, and cut points.
-Arm shows capture and chop controls. Play shows playback controls and hides
-chop actions. Global mixer and bottom Monitor controls remain available. Click
-Monitor to cycle through Off, On, and Auto. Auto passes input only while
-armed; On passes it always. Default remains On.
+On waveform handles, Ctrl/Shift wheel controls the view. Monitor cycles through
+Off, On, and Auto; Auto passes input while armed. Default remains On.
 
 Right-click pads to copy, paste, import, export, clear, split, or collapse a gap.
-Split shifts pads right; Collapse shifts the next run left. Both stay within the
-bank. See
+Both stay within the bank. See
 [WAV files](Docs/WAV-FILES.md) for formats and Linux requirements.
 
 Max Voices limits simultaneous pads. At the limit, a new trigger stops the

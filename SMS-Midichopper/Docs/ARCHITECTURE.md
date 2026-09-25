@@ -1,6 +1,6 @@
 # SMS-Midichopper architecture
 
-Audience: engine, adapter, state, UI.
+Audience: developers.
 
 SMS-Midichopper separates these layers:
 
@@ -13,7 +13,6 @@ SMS-Midichopper separates these layers:
 - `../Common-Src` contains reusable sample, DSP, state, and UI geometry code.
 - `../Common-UI` contains the shared theme, DPF/NanoVG base, controls,
   context-menu and hover primitives, pad layouts, and waveform editor pieces.
-- `../third_party/DPF` is the shared framework submodule.
 
 ## MIDI mapping
 
@@ -31,10 +30,8 @@ labels use the same mapping as the engine. Selected Bank reuses one note range,
 with `active_bank` choosing its target, and retains the released fixed 16-slot
 bank organization.
 
-The Cut Point Editor replaces normal MIDI playback with exclusive raw audition.
-Its three notes select proposed slices; Split Sample maps the target and next
-notes to virtual halves. Other notes and All Banks activation stay suppressed
-until the editor closes.
+The Cut Point Editor uses exclusive raw audition. Its three notes select proposed
+slices; Split Sample maps two notes to virtual halves. Other notes stay silent.
 
 ## Capture model
 
@@ -42,9 +39,8 @@ Arming chooses the first empty visible pad, or the first when full; idle
 selection overrides it. A hidden output reports the target. The first
 Sequential note-on begins capture; later note-ons publish sample-accurate
 boundaries and advance through Bank D. Selected Bank skips hidden slots;
-All Banks uses contiguous pages. Note-off does not
-affect capture. Active recording ignores retargeting. Disarming or Finalize
-publishes the last slice.
+All Banks uses contiguous pages. Note-off does not affect capture. Disarming or
+Finalize publishes the last slice.
 
 The pre-roll ring holds up to 100 ms. At a boundary, history starts the new
 slice and is trimmed from the previous one. Fixed mode records the chosen
@@ -67,8 +63,7 @@ volume, pan, and tune combine during playback. Active voices refresh mixer,
 ADSR, and End atomics per block; Start remains fixed until retrigger. Output
 updates seed a UI-clocked playhead that briefly holds its final position.
 
-The three-pad raw boundary workflow is documented in
-[Cut Point Editor](../../Docs/AI/CHOP-EDITOR.md).
+See [Cut Point Editor](../../Docs/AI/CHOP-EDITOR.md) for boundary editing.
 
 Pad storage mutations are control-thread work. A shared gate makes `run()`
 output silence while control code copies or replaces storage at a block
@@ -85,10 +80,8 @@ halves. Pad generations cover audio and settings changes so a pending split is
 rejected if its plan becomes stale. Both operations are confined to the active
 visible bank/page.
 
-Four hidden outputs carry raw-input and final-output peaks.
-Meter redraws are 30-FPS capped, change only at LED boundaries, and batch
-colors. Input ignores settings; output follows monitoring,
-voices, envelopes, and gain. Host hard bypass that skips DSP cannot be metered.
+Four hidden outputs carry input and output peaks. Meter redraws are 30-FPS
+capped and change only at LED boundaries. Host hard bypass cannot be metered.
 
 ## Project state
 
@@ -100,7 +93,12 @@ rechopping preserves mixer settings on non-empty results and clears settings
 when a pad becomes empty. The UI retains its snapshot until matching waveform
 and control replies arrive, ignoring stale replies and retrying failures. DSP
 returns a 128-bin min/max summary through DPF state in LV2 or the bounded
-direct-access bus in VST3. Waveform work stays outside the audio callback.
+direct-access bus in VST3. Ctrl-wheel zoom requests a new 128-bin summary of
+the visible frame range, across up to three adjacent pads; Shift-wheel pans.
+Request sequence and range reject stale detail replies. The control thread reads
+sample blocks behind the real-time access gate without copying whole pads.
+Zoom is UI-local and resets on pad or editor change. Waveform work stays outside
+the audio callback.
 
 `pad_clear_request` publishes an atomic command consumed at the next block.
 `pad_file_request` carries an action, pad, and UTF-8 path; LV2 handles it on its
@@ -113,4 +111,3 @@ not filter DSP-only state keys and may send Base64 pad PCM to a newly opened UI.
 
 See [development](../../Docs/AI/DEVELOPMENT.md) and
 [testing](../../Docs/AI/TESTING.md).
-Platform-specific work is confined to DPF/DGL.

@@ -2,6 +2,7 @@
 
 #include "Controls.hpp"
 #include "WaveformEditor.hpp"
+#include "WaveformViewport.hpp"
 
 #include <array>
 #include <cmath>
@@ -66,16 +67,40 @@ inline void drawCutHandle(DGL_NAMESPACE::NanoVG& canvas, const float x, const fl
     canvas.text(x, y + 15.0f, label, nullptr);
 }
 
+inline void drawWaveformViewportLabel(DGL_NAMESPACE::NanoVG& canvas,
+                                      const ui::Rect bounds,
+                                      const waveform::Viewport viewport,
+                                      const double sampleRate)
+{
+    if (!viewport.zoomed() || sampleRate <= 1.0)
+        return;
+    const ScopedCanvasState canvasState(canvas);
+    char label[80];
+    std::snprintf(label, sizeof(label), "ZOOM x%.1f   %.2f-%.2f s",
+        static_cast<double>(viewport.total) / (viewport.end - viewport.start),
+        viewport.start / sampleRate, viewport.end / sampleRate);
+    canvas.fontFace(NANOVG_DEJAVU_SANS_TTF);
+    canvas.fontSize(9.0f);
+    canvas.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_LEFT |
+                     DGL_NAMESPACE::NanoVG::ALIGN_TOP);
+    canvas.fillColor(theme().contentSecondary);
+    canvas.text(bounds.x + 10.0f, bounds.y + 34.0f, label, nullptr);
+}
+
 inline void drawWaveformEditor(DGL_NAMESPACE::NanoVG& canvas, const ui::Rect bounds,
                                const audio::WaveformSummary& summary,
                                const bool hasWaveform,
                                const dsp::SamplePlaybackSettings& settings,
-                               const waveform::EditTarget hovered = waveform::EditTarget::none)
+                               const waveform::EditTarget hovered = waveform::EditTarget::none,
+                               const audio::WaveformSummary* const detail = nullptr,
+                               const waveform::Viewport viewport = {})
 {
     const ScopedCanvasState canvasState(canvas);
     const Theme& colors = theme();
     canvas.fontFace(NANOVG_DEJAVU_SANS_TTF);
     drawInsetSurface(canvas, bounds, 8.0f);
+    const auto& visible = detail != nullptr && viewport.zoomed() ? *detail : summary;
+    canvas.scissor(bounds.x, bounds.y, bounds.width, bounds.height);
     canvas.beginPath();
     canvas.moveTo(bounds.x, bounds.y + bounds.height * 0.5f);
     canvas.lineTo(bounds.x + bounds.width, bounds.y + bounds.height * 0.5f);
@@ -83,42 +108,45 @@ inline void drawWaveformEditor(DGL_NAMESPACE::NanoVG& canvas, const ui::Rect bou
     canvas.strokeWidth(colors.outlineWidth);
     canvas.stroke();
 
-    if (hasWaveform) {
-        const float scale = waveform::displayScale(summary);
+    if (hasWaveform && (!viewport.zoomed() || detail != nullptr)) {
+        const float scale = waveform::displayScale(visible);
         for (std::size_t bin = 0; bin < audio::kWaveformBins; ++bin) {
             const float normalized = (static_cast<float>(bin) + 0.5f) /
                                      static_cast<float>(audio::kWaveformBins);
             const float x = bounds.x + normalized * bounds.width;
             canvas.beginPath();
             canvas.moveTo(x, bounds.y + bounds.height *
-                (0.5f - summary.maximum[bin] * scale * 0.44f));
+                (0.5f - visible.maximum[bin] * scale * 0.44f));
             canvas.lineTo(x, bounds.y + bounds.height *
-                (0.5f - summary.minimum[bin] * scale * 0.44f));
+                (0.5f - visible.minimum[bin] * scale * 0.44f));
             canvas.strokeColor(colors.contentSecondary.withAlpha(0.24f));
             canvas.strokeWidth(1.4f);
             canvas.stroke();
         }
         for (std::size_t bin = 0; bin < audio::kWaveformBins; ++bin) {
-            const float normalized = (static_cast<float>(bin) + 0.5f) /
-                                     static_cast<float>(audio::kWaveformBins);
+            const float displayed = (static_cast<float>(bin) + 0.5f) /
+                                    static_cast<float>(audio::kWaveformBins);
+            const float normalized = viewport.zoomed() ? static_cast<float>(
+                (viewport.start + displayed * (viewport.end - viewport.start)) / viewport.total)
+                : displayed;
             if (normalized < settings.start || normalized > settings.end)
                 continue;
             const float gain = waveform::envelopeGain(normalized, summary, settings);
-            const float x = bounds.x + normalized * bounds.width;
+            const float x = bounds.x + displayed * bounds.width;
             canvas.beginPath();
             canvas.moveTo(x, bounds.y + bounds.height *
-                (0.5f - summary.maximum[bin] * scale * gain * 0.44f));
+                (0.5f - visible.maximum[bin] * scale * gain * 0.44f));
             canvas.lineTo(x, bounds.y + bounds.height *
-                (0.5f - summary.minimum[bin] * scale * gain * 0.44f));
+                (0.5f - visible.minimum[bin] * scale * gain * 0.44f));
             canvas.strokeColor(colors.activityPlayback);
             canvas.strokeWidth(2.3f);
             canvas.stroke();
         }
         char scaleLabel[32];
         if (scale > 1.05f)
-            std::snprintf(scaleLabel, sizeof(scaleLabel), "DISPLAY  x%.1f", scale);
+            std::snprintf(scaleLabel, sizeof(scaleLabel), "AMPLITUDE  x%.1f", scale);
         else
-            std::snprintf(scaleLabel, sizeof(scaleLabel), "DISPLAY  1:1");
+            std::snprintf(scaleLabel, sizeof(scaleLabel), "AMPLITUDE  1:1");
         canvas.fontSize(9.0f);
         canvas.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_RIGHT |
                          DGL_NAMESPACE::NanoVG::ALIGN_TOP);
@@ -130,21 +158,27 @@ inline void drawWaveformEditor(DGL_NAMESPACE::NanoVG& canvas, const ui::Rect bou
                          DGL_NAMESPACE::NanoVG::ALIGN_MIDDLE);
         canvas.fillColor(colors.contentSecondary);
         canvas.text(bounds.x + bounds.width * 0.5f, bounds.y + bounds.height * 0.5f,
-                    "EMPTY PAD", nullptr);
+                    hasWaveform ? "LOADING DETAIL..." : "EMPTY PAD", nullptr);
     }
 
-    const float startX = bounds.x + bounds.width * settings.start;
-    const float endX = bounds.x + bounds.width * settings.end;
+    const float startX = bounds.x + bounds.width * static_cast<float>(
+        viewport.zoomed() ? viewport.fraction(settings.start * viewport.total) : settings.start);
+    const float endX = bounds.x + bounds.width * static_cast<float>(
+        viewport.zoomed() ? viewport.fraction(settings.end * viewport.total) : settings.end);
     canvas.beginPath();
     canvas.rect(bounds.x, bounds.y, std::max(0.0f, startX - bounds.x), bounds.height);
     canvas.rect(endX, bounds.y,
                 std::max(0.0f, bounds.x + bounds.width - endX), bounds.height);
     canvas.fillColor(colors.canvas.withAlpha(0.64f));
     canvas.fill();
-    drawCutHandle(canvas, startX, bounds.y, bounds.height, "START",
-                  hovered == waveform::EditTarget::regionStart);
-    drawCutHandle(canvas, endX, bounds.y, bounds.height, "END",
-                  hovered == waveform::EditTarget::regionEnd);
+    canvas.resetScissor();
+    if (startX >= bounds.x && startX <= bounds.x + bounds.width)
+        drawCutHandle(canvas, startX, bounds.y, bounds.height, "START",
+                      hovered == waveform::EditTarget::regionStart);
+    if (endX >= bounds.x && endX <= bounds.x + bounds.width)
+        drawCutHandle(canvas, endX, bounds.y, bounds.height, "END",
+                      hovered == waveform::EditTarget::regionEnd);
+    drawWaveformViewportLabel(canvas, bounds, viewport, summary.sampleRate);
 }
 
 inline void drawEnvelopeGraph(DGL_NAMESPACE::NanoVG& canvas, const ui::Rect bounds,

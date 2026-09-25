@@ -3,6 +3,7 @@
 #include "Audio/WaveformSummary.hpp"
 #include "DSP/SamplePlaybackSettings.hpp"
 #include "UI/Geometry.hpp"
+#include "WaveformViewport.hpp"
 
 #include <algorithm>
 #include <array>
@@ -74,6 +75,19 @@ struct EnvelopeGeometry {
         ? EditTarget::regionStart : EditTarget::regionEnd;
 }
 
+[[nodiscard]] inline EditTarget nearestRegionHandle(
+    const float x, const ui::Rect bounds,
+    const dsp::SamplePlaybackSettings& settings,
+    const Viewport viewport) noexcept
+{
+    if (!viewport.zoomed())
+        return nearestRegionHandle(x, bounds, settings);
+    const float startX = viewport.xForFrame(settings.start * viewport.total, bounds);
+    const float endX = viewport.xForFrame(settings.end * viewport.total, bounds);
+    return std::abs(x - startX) <= std::abs(x - endX)
+        ? EditTarget::regionStart : EditTarget::regionEnd;
+}
+
 inline void updateRegion(dsp::SamplePlaybackSettings& settings, const EditTarget target,
                          const float x, const ui::Rect bounds) noexcept
 {
@@ -82,6 +96,22 @@ inline void updateRegion(dsp::SamplePlaybackSettings& settings, const EditTarget
         settings.start = std::min(normalized, settings.end - kInteractiveRegionMinimum);
     else if (target == EditTarget::regionEnd)
         settings.end = std::max(normalized, settings.start + kInteractiveRegionMinimum);
+    settings = dsp::sanitize(settings);
+}
+
+inline void updateRegion(dsp::SamplePlaybackSettings& settings, const EditTarget target,
+                         const float x, const ui::Rect bounds,
+                         const Viewport viewport) noexcept
+{
+    if (!viewport.zoomed()) {
+        updateRegion(settings, target, x, bounds);
+        return;
+    }
+    const float normalized = static_cast<float>(viewport.frameAt(x, bounds) / viewport.total);
+    if (target == EditTarget::regionStart)
+        settings.start = std::min(normalized, settings.end - dsp::kMinimumPlaybackRegion);
+    else if (target == EditTarget::regionEnd)
+        settings.end = std::max(normalized, settings.start + dsp::kMinimumPlaybackRegion);
     settings = dsp::sanitize(settings);
 }
 
@@ -102,6 +132,29 @@ inline void adjustRegionByWheel(dsp::SamplePlaybackSettings& settings,
     else if (target == EditTarget::regionEnd)
         settings.end = std::clamp(settings.end + change,
                                   settings.start + kInteractiveRegionMinimum, 1.0f);
+    settings = dsp::sanitize(settings);
+}
+
+inline void adjustRegionByWheel(dsp::SamplePlaybackSettings& settings,
+                                const EditTarget target, const float verticalDelta,
+                                const std::uint32_t sourceFrames,
+                                const ui::Rect bounds, const Viewport viewport) noexcept
+{
+    if (!viewport.zoomed()) {
+        adjustRegionByWheel(settings, target, verticalDelta, sourceFrames, bounds);
+        return;
+    }
+    if (sourceFrames == 0U || verticalDelta == 0.0f)
+        return;
+    const float step = std::max(1.0f / sourceFrames,
+        static_cast<float>(viewport.end - viewport.start) /
+            (sourceFrames * bounds.width));
+    if (target == EditTarget::regionStart)
+        settings.start = std::clamp(settings.start + (verticalDelta > 0 ? step : -step),
+            0.0f, settings.end - dsp::kMinimumPlaybackRegion);
+    else if (target == EditTarget::regionEnd)
+        settings.end = std::clamp(settings.end + (verticalDelta > 0 ? step : -step),
+            settings.start + dsp::kMinimumPlaybackRegion, 1.0f);
     settings = dsp::sanitize(settings);
 }
 

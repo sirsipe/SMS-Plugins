@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Configuration.hpp"
+#include "Audio/WaveformSummary.hpp"
 #include "DSP/AdsrEnvelope.hpp"
 #include "DSP/SampleMixerSettings.hpp"
 #include "DSP/SamplePlaybackSettings.hpp"
@@ -152,6 +153,10 @@ public:
     void selectCaptureTarget(std::uint32_t pad) noexcept;
     /** Copy a stable, already-published pad snapshot on the control/UI thread. */
     [[nodiscard]] bool exportPad(std::uint32_t pad, PadData& destination) const;
+    /** Summarize a visible range across adjacent pads; call behind the control-thread gate. */
+    [[nodiscard]] bool summarizePadRange(std::uint32_t firstPad, std::uint32_t padCount,
+                                         std::uint64_t start, std::uint64_t end,
+                                         sms::audio::WaveformSummary& result) const noexcept;
     /** Import/replaces a pad; state restoration may opt out of the normal editor reset. */
     [[nodiscard]] bool importPad(std::uint32_t pad, const PadData& source,
                                  bool resetEditorSettings = true);

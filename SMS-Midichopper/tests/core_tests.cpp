@@ -73,6 +73,31 @@ void live_peak_meter() {
           "new controls remain appended after released and hidden parameters");
 }
 
+void visible_waveform_range() {
+    midichopper::SamplerEngine engine(48000.0, 1.0);
+    midichopper::PadData pad;
+    pad.sampleRate = 48000.0;
+    pad.frames = 256;
+    pad.stereo.assign(512, 0.0f);
+    pad.stereo[200U * 2U] = 0.8f;
+    check(engine.importPad(0, pad), "import first waveform pad");
+    pad.stereo.assign(512, 0.0f);
+    pad.stereo[20U * 2U + 1U] = -0.6f;
+    check(engine.importPad(1, pad), "import second waveform pad");
+    sms::audio::WaveformSummary summary;
+    check(engine.summarizePadRange(0, 2, 180, 290, summary) &&
+          summary.frames == 110U && summary.pad == 0U &&
+          *std::max_element(summary.maximum.begin(), summary.maximum.end()) > 0.79f &&
+          *std::min_element(summary.minimum.begin(), summary.minimum.end()) < -0.59f,
+          "visible waveform reads exact frames across a pad boundary");
+    check(engine.summarizePadRange(0, 1, 190, 210, summary) &&
+          *std::max_element(summary.maximum.begin(), summary.maximum.end()) > 0.79f &&
+          *std::min_element(summary.minimum.begin(), summary.minimum.end()) >= 0.0f,
+          "deep zoom excludes audio outside the visible range");
+    check(!engine.summarizePadRange(0, 2, 180, 513, summary),
+          "visible waveform rejects ranges past source audio");
+}
+
 void sequential_boundaries_and_preroll() {
     midichopper::SamplerEngine e(1000.0, 1.0);
     midichopper::EngineSettings s;
@@ -1420,6 +1445,7 @@ void unbounded_midi_source_preserves_late_note_off() {
 
 int main() {
     live_peak_meter();
+    visible_waveform_range();
     sequential_boundaries_and_preroll();
     rechop_and_raw_preview();
     rechop_empty_neighbors();

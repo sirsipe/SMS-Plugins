@@ -21,6 +21,10 @@ clamps each cut between its neighbor and source edge. Cuts may coincide or meet
 an edge, producing a zero-length pad. Empty edge slots begin at their source
 edge and gain the prefix or suffix when moved inward. Buttons preview non-empty
 proposed slices.
+Ctrl-wheel zooms around the pointer; Shift-wheel pans within the source. The
+visible range gets a fresh raw 128-bin summary. Modified wheel input over a
+handle controls the viewport; unmodified wheel still moves the cut. Navigation,
+Apply refresh, and Exit reset the viewport. Zoom never changes source offsets.
 
 From entry through Apply/loading, the editor owns MIDI exclusively; all notes
 are silent until its waveform data is ready. Then the three displayed notes

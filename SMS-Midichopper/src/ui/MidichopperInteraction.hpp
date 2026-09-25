@@ -9,6 +9,7 @@
 #include "MidichopperLayout.hpp"
 #include "PadLayout.hpp"
 #include "WaveformEditor.hpp"
+#include "WaveformViewport.hpp"
 
 #include <cstdint>
 #include <optional>
@@ -370,6 +371,7 @@ struct InteractionContext {
     const sms::ui::waveform::EnvelopeGeometry* envelope = nullptr;
     std::span<const sms::audio::WaveformSummary> chopWaveforms;
     std::span<const std::int64_t> chopOffsets;
+    sms::ui::waveform::Viewport waveformViewport;
 };
 
 /** Resolve exactly one enabled interactive target using the same overlay priority as clicks. */
@@ -416,7 +418,8 @@ interactiveTargetAt(const sms::ui::Point point, const InteractionContext& contex
         if (context.chopApplying)
             return sms::ui::kNoInteractiveTarget;
         const int boundary = chop::boundaryAt(
-            point, uiLayout::chopWaveform, context.chopWaveforms, context.chopOffsets);
+            point, uiLayout::chopWaveform, context.chopWaveforms,
+            context.chopOffsets, context.waveformViewport);
         if (boundary >= 0 && (!context.chopSplitMode || boundary == 0))
             return target(InteractiveType::chopBoundary, boundary);
         const int previewPads = context.chopSplitMode ? 2 : static_cast<int>(chop::kPadCount);
@@ -443,7 +446,8 @@ interactiveTargetAt(const sms::ui::Point point, const InteractionContext& contex
         if (uiLayout::editorWaveform.contains(point) && context.editorSettings != nullptr) {
             return target(InteractiveType::regionHandle, static_cast<int>(
                 sms::ui::waveform::nearestRegionHandle(
-                    point.x, uiLayout::editorWaveform, *context.editorSettings)));
+                    point.x, uiLayout::editorWaveform, *context.editorSettings,
+                    context.waveformViewport)));
         }
         if (uiLayout::envelopeGraph.contains(point) && context.envelope != nullptr) {
             const auto editTarget = sms::ui::waveform::hitEnvelopeHandle(point, *context.envelope);

@@ -13,6 +13,7 @@
 #include "Parameters.hpp"
 #include "PluginUiBridge.hpp"
 #include "StateCodec.hpp"
+#include "WaveformDetailProtocol.hpp"
 #include "SamplerEngine.hpp"
 
 #include <algorithm>
@@ -65,9 +66,13 @@ constexpr std::uint32_t kMixerStateOffset = kChopMidiPreviewState + 1U;
 constexpr std::uint32_t kPadStructureRequestState =
     kMixerStateOffset + midichopper::kPadCount;
 constexpr std::uint32_t kPadStructureStatusState = kPadStructureRequestState + 1U;
-constexpr std::uint32_t kStateCount = kPadStructureStatusState + 1U;
+constexpr std::uint32_t kWaveformDetailRequestState = kPadStructureStatusState + 1U;
+constexpr std::uint32_t kWaveformDetailDataState = kWaveformDetailRequestState + 1U;
+constexpr std::uint32_t kStateCount = kWaveformDetailDataState + 1U;
 constexpr const char* kWaveformRequestKey = "waveform_request";
 constexpr const char* kWaveformDataKey = "waveform_data";
+constexpr const char* kWaveformDetailRequestKey = "waveform_detail_request";
+constexpr const char* kWaveformDetailDataKey = "waveform_detail_data";
 constexpr const char* kPadClearRequestKey = "pad_clear_request";
 constexpr const char* kPadFileRequestKey = "pad_file_request";
 constexpr const char* kPadFileBusyKey = "pad_file_busy";
@@ -473,6 +478,16 @@ protected:
             state.label = "Pad Structure Request";
             state.defaultValue = "";
             state.hints = kStateIsOnlyForDSP;
+        } else if (index == kWaveformDetailRequestState) {
+            state.key = kWaveformDetailRequestKey;
+            state.label = "Visible Waveform Request";
+            state.defaultValue = "";
+            state.hints = kStateIsOnlyForDSP;
+        } else if (index == kWaveformDetailDataState) {
+            state.key = kWaveformDetailDataKey;
+            state.label = "Visible Waveform Data";
+            state.defaultValue = "";
+            state.hints = kStateIsOnlyForUI;
         } else {
             state.key = kPadStructureStatusKey;
             state.label = "Pad Structure Status";
@@ -562,6 +577,9 @@ protected:
         if (std::strcmp(key, kPadStructureRequestKey) == 0 ||
             std::strcmp(key, kPadStructureStatusKey) == 0)
             return String();
+        if (std::strcmp(key, kWaveformDetailRequestKey) == 0 ||
+            std::strcmp(key, kWaveformDetailDataKey) == 0)
+            return String();
         return String();
     }
 
@@ -623,6 +641,26 @@ protected:
             return;
         }
         if (std::strcmp(key, kWaveformDataKey) == 0)
+            return;
+        if (std::strcmp(key, kWaveformDetailRequestKey) == 0) {
+            midichopper::plugin::WaveformDetailRequest request;
+            if (value != nullptr &&
+                midichopper::plugin::decodeWaveformDetailRequest(value, request)) {
+                sms::audio::WaveformSummary summary;
+                bool summarized = false;
+                if (withSamplerPaused([&] {
+                        summarized = sampler_.summarizePadRange(
+                            request.firstPad, request.padCount,
+                            request.start, request.end, summary);
+                    }) && summarized) {
+                    const auto encoded = midichopper::plugin::encodeWaveformDetailReply(
+                        {request, summary});
+                    publishUiState(kWaveformDetailDataKey, encoded.c_str());
+                }
+            }
+            return;
+        }
+        if (std::strcmp(key, kWaveformDetailDataKey) == 0)
             return;
         if (std::strcmp(key, kPadClearRequestKey) == 0) {
             const char* const input = value != nullptr ? value : "";

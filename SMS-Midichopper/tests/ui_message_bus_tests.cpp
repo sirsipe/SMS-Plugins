@@ -1,6 +1,7 @@
 #include "Audio/WaveformSummary.hpp"
 #include "PadStructureProtocol.hpp"
 #include "UiMessageBus.hpp"
+#include "WaveformDetailProtocol.hpp"
 
 #include <cstdlib>
 #include <cstring>
@@ -72,6 +73,11 @@ void boundsAndRealPayload()
     const auto encoded = midichopper::plugin::encodeSplitPlanReady(ready);
     check(bus.publish("pad_structure_status", encoded.c_str()),
           "split plan with waveform fits the message bound");
+    const midichopper::plugin::WaveformDetailReply detail{
+        {9U, 1U, 1U, 0U, 48000U}, waveform};
+    const auto detailEncoded = midichopper::plugin::encodeWaveformDetailReply(detail);
+    check(bus.publish("waveform_detail_data", detailEncoded.c_str()),
+          "zoomed waveform reply fits the VST3 message bound");
     auto reader = initial;
     midichopper::plugin::UiMessageBus::Message message;
     bool skipped = false;

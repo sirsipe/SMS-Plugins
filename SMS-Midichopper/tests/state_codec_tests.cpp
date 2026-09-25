@@ -1,5 +1,6 @@
 #include "StateCodec.hpp"
 #include "Audio/WaveformSummary.hpp"
+#include "WaveformDetailProtocol.hpp"
 #include "ChopEditorProtocol.hpp"
 #include "PadStructureProtocol.hpp"
 
@@ -278,6 +279,27 @@ void padStructureProtocolRoundTrip()
 
 int main()
 {
+    using namespace midichopper::plugin;
+    const WaveformDetailRequest detail{73U, 12U, 3U, 1000U, 1128U};
+    WaveformDetailRequest decodedDetail;
+    check(decodeWaveformDetailRequest(encodeWaveformDetailRequest(detail), decodedDetail) &&
+          decodedDetail.sequence == 73U && decodedDetail.start == 1000U &&
+          decodedDetail.end == 1128U,
+          "visible waveform request round-trips its generation and frame range");
+    sms::audio::WaveformSummary detailSummary;
+    detailSummary.pad = 12U;
+    detailSummary.frames = 128U;
+    detailSummary.maximum[0] = 0.75f;
+    WaveformDetailReply detailReply{detail, detailSummary};
+    WaveformDetailReply decodedReply;
+    check(decodeWaveformDetailReply(encodeWaveformDetailReply(detailReply), decodedReply) &&
+          decodedReply.request.sequence == 73U &&
+          decodedReply.waveform.maximum[0] > 0.74f,
+          "visible waveform reply preserves identity and detail");
+    check(!decodeWaveformDetailRequest("WD1;1;63;3;0;128", decodedDetail) &&
+          !decodeWaveformDetailRequest("WD1;1;0;1;2;2", decodedDetail) &&
+          !decodeWaveformDetailRequest("WD1;1;0;1;0;128junk", decodedDetail),
+          "visible waveform requests reject invalid pad and frame bounds");
     roundTrip();
     longPadStateRoundTrip();
     rejectsDamage();
