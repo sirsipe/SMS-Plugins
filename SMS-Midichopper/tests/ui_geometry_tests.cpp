@@ -9,6 +9,7 @@
 #include "PadLayout.hpp"
 #include "UI/Geometry.hpp"
 #include "WaveformEditor.hpp"
+#include "../src/plugin/DistrhoPluginInfo.h"
 
 #include <cmath>
 #include <array>
@@ -45,6 +46,40 @@ void padLayouts()
           "four-by-two arrangement");
     check(grid.hit({15.0f, 25.0f}) == 0 && eight.localIndex(0) == 4,
           "grid hit testing composes with pad mapping");
+}
+
+void wideCanvasGeometry()
+{
+    namespace layout = midichopper::ui::layout;
+    const sms::ui::Rect canvas{0.0f, 0.0f,
+        static_cast<float>(layout::canvasWidth), static_cast<float>(layout::canvasHeight)};
+    const auto inside = [](const sms::ui::Rect outer, const sms::ui::Rect inner) {
+        return inner.x >= outer.x && inner.y >= outer.y &&
+            inner.x + inner.width <= outer.x + outer.width &&
+            inner.y + inner.height <= outer.y + outer.height;
+    };
+    check(layout::canvasWidth * 9U == layout::canvasHeight * 16U &&
+          layout::minimumWidth * 9U == layout::minimumHeight * 16U,
+          "logical and minimum window sizes use a 16:9 shape");
+    check(DISTRHO_UI_DEFAULT_WIDTH == layout::canvasWidth &&
+          DISTRHO_UI_DEFAULT_HEIGHT == layout::canvasHeight,
+          "format metadata agrees with the logical canvas");
+    check(inside(canvas, layout::inputMeter) && inside(canvas, layout::outputMeter) &&
+          inside(layout::contentBounds, layout::mainPanel) &&
+          inside(layout::contentBounds, layout::sidePanel) &&
+          inside(layout::contentBounds, layout::footer) &&
+          layout::mainPanel.x + layout::mainPanel.width < layout::sidePanel.x,
+          "meters, panels, and footer fit without overlap");
+    check(inside(layout::mainPanel, layout::mainPadBounds) &&
+          inside(layout::mainPanel, layout::editorWaveform) &&
+          inside(layout::mainPanel, layout::chopWaveform) &&
+          inside(layout::mainPanel, layout::chopPadButton(2)) &&
+          inside(layout::mainPanel, layout::editorSlider(3)),
+          "expanded main-view controls remain inside the panel");
+    check(inside(layout::sidePanel, layout::editorPadBounds) &&
+          inside(layout::sidePanel, layout::monitor) &&
+          inside(layout::sidePanel, layout::chopNext),
+          "side-view controls remain inside the side panel");
 }
 
 void hamburgerMenuGeometry()
@@ -662,6 +697,7 @@ void chopEditorGeometry()
 int main()
 {
     padLayouts();
+    wideCanvasGeometry();
     hamburgerMenuGeometry();
     contextMenuGeometry();
     interactionTargets();

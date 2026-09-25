@@ -103,7 +103,8 @@ port 6080; do not use the VNC mouse during an automated sequence.
 From `/workspaces/SMS-Plugins`, `test-plugin` runs the release VST3/LV2 build,
 CTest, `lv2info`, launches the built LV2 directly in Carla, resolves its visible
 window, clicks ARM at its layout coordinate, and saves an exact-window PNG under
-the ignored `build/gui-test/` directory. Use `test-plugin --keep-open` for more
+the ignored `build/gui-test/` directory. It sets VNC to 1920x1080 so the window
+fits. Use `test-plugin --keep-open` for more
 interactions. `screenshot-window WINDOW_ID OUTPUT.png` refuses desktop-wide
 capture. Resolve and activate the window again after every relaunch or resize.
 

@@ -26,6 +26,8 @@ export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-xcb}"
 export LIBGL_ALWAYS_SOFTWARE="${LIBGL_ALWAYS_SOFTWARE:-1}"
 
 desktop-health
+# The 16:9 default window is wider than the VNC desktop's initial 1280 pixels.
+xrandr --output VNC-0 --mode 1920x1080
 
 git -C "$repository_root" submodule update --init --recursive
 cmake -S "$repository_root/SMS-Midichopper" -B "$build_dir" -G Ninja \
@@ -76,8 +78,8 @@ for launch_attempt in $(seq 1 80); do
         if [ "$width" -lt 700 ] || [ "$height" -lt 500 ]; then
             continue
         fi
-        score=$(( (${width} - 1040) * (${width} - 1040) + \
-            (${height} - 680) * (${height} - 680) ))
+        score=$(( (${width} - 1344) * (${width} - 1344) + \
+            (${height} - 756) * (${height} - 756) ))
         if [ "$score" -lt "$best_score" ]; then
             plugin_window="$candidate"
             best_score="$score"
@@ -97,8 +99,8 @@ fi
 window_name="$(DISPLAY="$DISPLAY" xdotool getwindowname "$plugin_window")"
 DISPLAY="$DISPLAY" xdotool windowactivate --sync "$plugin_window"
 # The original controls are translated by contentOffsetX in MidichopperLayout.hpp.
-# ARM is centered at logical coordinate (898, 166).
-DISPLAY="$DISPLAY" xdotool mousemove --sync --window "$plugin_window" 898 166
+# ARM is centered at logical coordinate (1202, 166).
+DISPLAY="$DISPLAY" xdotool mousemove --sync --window "$plugin_window" 1202 166
 DISPLAY="$DISPLAY" xdotool click 1
 sleep 0.5
 

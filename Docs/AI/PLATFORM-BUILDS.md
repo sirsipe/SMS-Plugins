@@ -27,7 +27,7 @@ planning multi-output routing.
 defines four-character brand `SMSM` and plugin `MdCh` identifiers. With stereo
 input/output and MIDI input, DPF automatically classifies the AU as `aumf`, a
 music effect. DPF's AU wrapper does not support host-driven UI resizing, so the
-default 1040x680 editor and host behavior need explicit testing.
+default 1344x756 editor and host behavior need explicit testing.
 
 ## Current gaps
 
