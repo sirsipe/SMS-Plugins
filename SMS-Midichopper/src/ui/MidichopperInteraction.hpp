@@ -186,7 +186,7 @@ inline void resetMixerKnob(sms::dsp::SampleMixerSettings& settings,
     case 2: settings.tuneSemitones = 0.0f; break;
     case 3: settings.lowpass = 0.0f; break;
     case 4: settings.highpass = 0.0f; break;
-    case 5: settings.filterSlope = 1.0f; break;
+    case 5: settings.filterSlope = 0.0f; break;
     case 6: settings.dirty = 0.0f; break;
     default: return;
     }

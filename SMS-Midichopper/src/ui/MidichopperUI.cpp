@@ -200,7 +200,7 @@ public:
           fPadContextClearArmed(false),
           fPadContextPointerCaptured(false),
           fEditorMode(false),
-          fPlayOnSelect(false),
+          fPlayOnSelect(true),
           fDragTarget(WaveformEditTarget::none),
           fMixerDragIndex(-1),
           fGlobalMixerDragIndex(-1),

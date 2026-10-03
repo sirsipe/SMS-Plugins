@@ -21,7 +21,7 @@ struct SampleMixerSettings {
     float tuneSemitones = 0.0f;
     float lowpass = 0.0f;
     float highpass = 0.0f;
-    float filterSlope = 1.0f; // 0 = 6, 1 = 12, 2 = 24 dB/octave
+    float filterSlope = 0.0f; // 0 = 6, 1 = 12, 2 = 24 dB/octave
     float dirty = 0.0f;
 };
 
@@ -42,7 +42,7 @@ struct SampleMixerSettings {
                                kMinimumFilterAmount, kMaximumFilterAmount);
     value.highpass = std::clamp(finiteOr(value.highpass, 0.0f),
                                 kMinimumFilterAmount, kMaximumFilterAmount);
-    value.filterSlope = std::clamp(std::round(finiteOr(value.filterSlope, 1.0f)), 0.0f, 2.0f);
+    value.filterSlope = std::clamp(std::round(finiteOr(value.filterSlope, 0.0f)), 0.0f, 2.0f);
     value.dirty = finiteOr(value.dirty, 0.0f) >= 0.5f ? 1.0f : 0.0f;
     return value;
 }

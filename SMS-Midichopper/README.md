@@ -75,7 +75,9 @@ middle-click knob/value to reset. The wheel adjusts ADSR,
 Fixed Length, Max Voices, Pre-roll, Start/End, and cut points.
 Fixed Length, Max Voices, and Pre-roll also respond to dragging.
 On waveform handles, Ctrl/Shift wheel controls the view. Monitor cycles through
-Off, On, and Auto; Auto passes input while armed. Default remains On.
+Off, On, and Auto; Auto passes input while armed.
+New sessions start with Auto monitoring, one voice, Play on Select enabled,
+and 6 dB/octave filter slopes.
 
 Right-click pads to copy, paste, import, export, clear, split, or collapse a gap.
 Both stay within the bank. See

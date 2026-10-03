@@ -58,9 +58,9 @@ struct EngineSettings {
     float tuneSemitones = 0.0f;
     float lowpass = 0.0f;
     float highpass = 0.0f;
-    float filterSlope = 1.0f;
+    float filterSlope = 0.0f;
     float dirty = 0.0f;
-    std::uint8_t maxVoices = static_cast<std::uint8_t>(kPadsPerBank);
+    std::uint8_t maxVoices = 1U;
 };
 
 /** A non-real-time copy of one pad, suitable for project state and UI work. */

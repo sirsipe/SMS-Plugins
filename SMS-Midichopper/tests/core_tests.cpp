@@ -28,8 +28,21 @@ void checkPadSettingsCleared(const midichopper::SamplerEngine& engine,
           playback.sustainLevel == 1.0f && playback.releaseSeconds == 0.0f &&
           mixer.gainDecibels == 0.0f && mixer.pan == 0.0f &&
           mixer.tuneSemitones == 0.0f && mixer.lowpass == 0.0f &&
-          mixer.highpass == 0.0f && mixer.filterSlope == 1.0f &&
+          mixer.highpass == 0.0f && mixer.filterSlope == 0.0f &&
           mixer.dirty == 0.0f, message);
+}
+
+void newSessionDefaults()
+{
+    namespace ranges = midichopper::plugin::parameterRanges;
+    check(ranges::maxVoices.defaultValue == 1.0f &&
+          ranges::inputMonitor.defaultValue == 2.0f &&
+          ranges::filterSlope.defaultValue == 0.0f,
+          "host defaults match the new-session controls");
+    check(midichopper::EngineSettings{}.maxVoices == 1U &&
+          midichopper::EngineSettings{}.filterSlope == 0.0f &&
+          sms::dsp::SampleMixerSettings{}.filterSlope == 0.0f,
+          "engine and pad mixer defaults match the host controls");
 }
 
 void live_peak_meter() {
@@ -1553,6 +1566,7 @@ void unbounded_midi_source_preserves_late_note_off() {
 }
 
 int main() {
+    newSessionDefaults();
     live_peak_meter();
     color_effects();
     visible_waveform_range();
