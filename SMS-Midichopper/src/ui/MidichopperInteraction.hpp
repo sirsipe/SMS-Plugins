@@ -31,6 +31,8 @@ enum class InteractiveType : int {
     regionHandle,
     envelopeNode,
     envelopeSlider,
+    waveformZoom,
+    waveformScroll,
     mixerKnob,
     globalMixerKnob,
     mixerValueLabel,
@@ -450,6 +452,12 @@ interactiveTargetAt(const sms::ui::Point point, const InteractionContext& contex
             return target(InteractiveType::chopNext);
         if (context.chopApplying)
             return sms::ui::kNoInteractiveTarget;
+        if (context.chopReady && context.waveformViewport.total != 0U) {
+            if (uiLayout::chopZoom.contains(point))
+                return target(InteractiveType::waveformZoom);
+            if (uiLayout::chopScroll.contains(point))
+                return target(InteractiveType::waveformScroll);
+        }
         const int boundary = chop::boundaryAt(
             point, uiLayout::chopWaveform, context.chopWaveforms,
             context.chopOffsets, context.waveformViewport);
@@ -466,6 +474,12 @@ interactiveTargetAt(const sms::ui::Point point, const InteractionContext& contex
     if (context.editorMode) {
         if (uiLayout::closeEditor.contains(point))
             return target(InteractiveType::closeEditor);
+        if (context.waveformViewport.total != 0U) {
+            if (uiLayout::editorZoom.contains(point))
+                return target(InteractiveType::waveformZoom);
+            if (uiLayout::editorScroll.contains(point))
+                return target(InteractiveType::waveformScroll);
+        }
         if (!context.captureActive) {
             for (int bank = 0; bank < static_cast<int>(kBankCount); ++bank) {
                 if (uiLayout::editorBank(bank).contains(point))

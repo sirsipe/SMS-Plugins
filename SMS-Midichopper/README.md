@@ -64,6 +64,8 @@ Edits reach active voices next block except Start, which applies on retrigger.
 Over the waveform, **Ctrl + wheel** zooms around the pointer and **Shift + wheel**
 scrolls horizontally. Zoom reveals a fresh summary of the visible audio, down
 to a 16-frame window. Selecting another pad or reopening the editor resets the view.
+You can also drag the vertical zoom control left of the waveform and the
+horizontal window box below it; the box shows which part of the sample is visible.
 
 Right-click a middle pad for **Adjust cut points**. See the
 [cut-point guide](Docs/CHOP-EDITOR.md).

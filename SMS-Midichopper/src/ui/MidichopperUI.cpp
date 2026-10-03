@@ -1065,6 +1065,8 @@ protected:
             }
             if (fChopEditorMode)
             {
+                if (beginViewportDrag(clicked, x, y))
+                    return true;
                 if (midichopper::ui::isTarget(
                         clicked, midichopper::ui::InteractiveType::chopBoundary)) {
                     fChopActiveBoundary = clicked.index;
@@ -1104,6 +1106,8 @@ protected:
             }
             if (fEditorMode)
             {
+                if (beginViewportDrag(clicked, x, y))
+                    return true;
                 if ((midichopper::ui::isTarget(clicked,
                          midichopper::ui::InteractiveType::mixerKnob) ||
                      midichopper::ui::isTarget(clicked,
@@ -1421,6 +1425,11 @@ protected:
             requestRepaint();
             return true;
         }
+        else if (fViewportDrag >= 0)
+        {
+            fViewportDrag = -1;
+            return true;
+        }
         else if (fEditorMode && fDragTarget != WaveformEditTarget::none)
         {
             commitEditorSettings();
@@ -1474,6 +1483,10 @@ protected:
         const auto position = toLogicalPosition(ev.pos);
         const float x = position.getX() - uiLayout::contentOffsetX;
         const float y = position.getY();
+        if (fViewportDrag >= 0) {
+            updateViewportDrag(x, y);
+            return true;
+        }
         if (fChopEditorMode && fChopActiveBoundary >= 0) {
             const auto boundary = static_cast<std::size_t>(fChopActiveBoundary);
             const auto total = midichopper::ui::chop::totalFrames(fChopWaveforms);
@@ -1923,6 +1936,8 @@ private:
         midichopper::ui::KnobAdjustment::normal;
     int fGlobalMixerDragIndex;
     int fMainSliderDrag = -1;
+    int fViewportDrag = -1;
+    float fViewportScrollGrabX = 0.0f;
     float fGlobalMixerDragStartY = 0.0f;
     sms::dsp::SampleMixerSettings fGlobalMixerDragStart{};
     midichopper::ui::KnobAdjustment fGlobalMixerDragAdjustment =
@@ -2029,6 +2044,49 @@ private:
     static float normalizedX(const float x, const sms::ui::Rect bounds) noexcept
     {
         return std::clamp((x - bounds.x) / bounds.width, 0.0f, 1.0f);
+    }
+
+    bool beginViewportDrag(const sms::ui::InteractiveTarget clicked,
+                           const float x, const float y)
+    {
+        if (!midichopper::ui::isTarget(clicked,
+                midichopper::ui::InteractiveType::waveformZoom) &&
+            !midichopper::ui::isTarget(clicked,
+                midichopper::ui::InteractiveType::waveformScroll))
+            return false;
+        fViewportDrag = clicked.type;
+        if (midichopper::ui::isTarget(clicked,
+                midichopper::ui::InteractiveType::waveformScroll)) {
+            const auto track = fChopEditorMode ? uiLayout::chopScroll : uiLayout::editorScroll;
+            const auto thumb = fWaveformViewport.scrollThumb(track);
+            fViewportScrollGrabX = thumb.contains({x, y})
+                ? x - thumb.x : thumb.width * 0.5f;
+        }
+        updateViewportDrag(x, y);
+        return true;
+    }
+
+    void updateViewportDrag(const float x, const float y)
+    {
+        bool changed = false;
+        if (fViewportDrag == static_cast<int>(
+                midichopper::ui::InteractiveType::waveformZoom)) {
+            const auto track = fChopEditorMode ? uiLayout::chopZoom : uiLayout::editorZoom;
+            changed = fWaveformViewport.setZoomPosition(std::clamp(
+                (track.y + track.height - 6.0f - y) / (track.height - 12.0f),
+                0.0f, 1.0f));
+        } else if (fViewportDrag == static_cast<int>(
+                midichopper::ui::InteractiveType::waveformScroll)) {
+            const auto track = fChopEditorMode ? uiLayout::chopScroll : uiLayout::editorScroll;
+            const auto thumb = fWaveformViewport.scrollThumb(track);
+            if (track.width > thumb.width)
+                changed = fWaveformViewport.setScrollPosition(
+                    (x - fViewportScrollGrabX - track.x) / (track.width - thumb.width));
+        }
+        if (changed) {
+            scheduleWaveformDetail();
+            requestRepaint();
+        }
     }
 
     void updateMainSliderDrag(const float x)

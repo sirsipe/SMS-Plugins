@@ -296,6 +296,14 @@ void interactionTargets()
                   interaction::InteractiveType::playOnSelect),
           "play-on-select stays inside the side panel and is hidden outside the editor");
     context.editorMode = true;
+    context.waveformViewport.reset(8000U);
+    check(interaction::isTarget(
+              interaction::interactiveTargetAt(center(layout::editorZoom), context),
+              interaction::InteractiveType::waveformZoom) &&
+          interaction::isTarget(
+              interaction::interactiveTargetAt(center(layout::editorScroll), context),
+              interaction::InteractiveType::waveformScroll),
+          "sample editor exposes zoom and scroll controls");
     check(interaction::isTarget(
               interaction::interactiveTargetAt(center(layout::playOnSelect), context),
               interaction::InteractiveType::playOnSelect),
@@ -344,6 +352,14 @@ void interactionTargets()
     context.chopWaveforms = chopWaveforms;
     context.chopOffsets = chopOffsets;
     context.chopReady = true;
+    context.waveformViewport.reset(300U);
+    check(interaction::isTarget(
+              interaction::interactiveTargetAt(center(layout::chopZoom), context),
+              interaction::InteractiveType::waveformZoom) &&
+          interaction::isTarget(
+              interaction::interactiveTargetAt(center(layout::chopScroll), context),
+              interaction::InteractiveType::waveformScroll),
+          "cut editor exposes zoom and scroll controls");
     const auto cut = interaction::interactiveTargetAt(
         center(interaction::chop::boundaryHandle(
             layout::chopWaveform, chopWaveforms, chopOffsets, 0)), context);
@@ -568,6 +584,20 @@ void waveformGeometry()
     check(viewport.pan(-1.0f) && viewport.start == 1800U &&
           viewport.xForFrame(1800.0, viewBounds) == viewBounds.x,
           "shift wheel pans by part of the visible duration");
+    check(viewport.setZoomPosition(1.0f) && viewport.end - viewport.start == 16U &&
+          std::abs(viewport.zoomPosition() - 1.0f) < 0.001f,
+          "zoom slider reaches the minimum window");
+    check(viewport.setScrollPosition(1.0f) && viewport.end == viewport.total &&
+          std::abs(viewport.scrollPosition() - 1.0f) < 0.001f,
+          "scroll slider reaches the final source frame");
+    const auto thumb = viewport.scrollThumb(viewBounds);
+    check(thumb.x + thumb.width == viewBounds.x + viewBounds.width &&
+          thumb.width < viewBounds.width,
+          "scroll thumb shows the visible source window");
+    viewport.reset(20000000U);
+    static_cast<void>(viewport.setZoomPosition(1.0f));
+    check(viewport.scrollThumb(viewBounds).width >= 12.0f,
+          "deep zoom keeps the scroll window visible");
     viewport.reset(8000U);
     check(!viewport.zoomed() && viewport.start == 0U && viewport.end == 8000U,
           "new pad or editor entry restores the full waveform");
