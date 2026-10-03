@@ -136,6 +136,28 @@ void contextMenuGeometry()
                        followingAction.y + followingAction.height * 0.5f}) == 2,
           "context-menu separators are compact, inert, and preserve row identities");
 
+    std::array<sms::ui::ContextMenuItemKind, 15> padMenuKinds{};
+    padMenuKinds.fill(sms::ui::ContextMenuItemKind::action);
+    for (const std::size_t separatorRow : {2U, 6U, 10U, 13U})
+        padMenuKinds[separatorRow] = sms::ui::ContextMenuItemKind::separator;
+    const sms::ui::ContextMenuGeometry padMenu(
+        {955.0f, 675.0f}, padMenuKinds, canvas);
+    const auto colorSubmenu = sms::ui::ContextMenuGeometry::submenu(
+        padMenu, 1, 7, canvas);
+    check(colorSubmenu.bounds().x + colorSubmenu.bounds().width <= padMenu.bounds().x + 2.0f &&
+          colorSubmenu.bounds().y >= canvas.y &&
+          colorSubmenu.bounds().y + colorSubmenu.bounds().height <= canvas.y + canvas.height &&
+          colorSubmenu.hit({colorSubmenu.item(6).x + 1.0f,
+                            colorSubmenu.item(6).y + 1.0f}) == 6,
+          "color submenu opens left at the canvas edge with every color clickable");
+    const sms::ui::ContextMenuGeometry innerMenu(
+        {200.0f, 200.0f}, padMenuKinds, canvas);
+    const auto rightSubmenu = sms::ui::ContextMenuGeometry::submenu(
+        innerMenu, 1, 7, canvas);
+    check(rightSubmenu.bounds().x >= innerMenu.bounds().x + innerMenu.bounds().width - 2.0f &&
+          rightSubmenu.item(0).y == innerMenu.item(1).y,
+          "color submenu opens right and aligns with its parent row");
+
     sms::ui::HoverState hover;
     const auto item = midichopper::ui::target(midichopper::ui::InteractiveType::pad, 0);
     check(hover.target() == sms::ui::kNoInteractiveTarget && hover.update(item) &&
@@ -373,6 +395,14 @@ void interactionTargets()
               interaction::interactiveTargetAt(center(context.padContextMenu.item(1)), context),
               interaction::InteractiveType::padContextItem, 1),
           "enabled context item takes overlay hover priority");
+    context.padColorMenuOpen = true;
+    context.padColorMenu = sms::ui::ContextMenuGeometry::submenu(
+        context.padContextMenu, 1, 7, layout::contentBounds);
+    context.padColorMenuItemCount = 7;
+    check(interaction::isTarget(
+              interaction::interactiveTargetAt(center(context.padColorMenu.item(6)), context),
+              interaction::InteractiveType::padColorItem, 6),
+          "submenu choice takes overlay priority and keeps its own identity");
 }
 
 void padPressTracking()

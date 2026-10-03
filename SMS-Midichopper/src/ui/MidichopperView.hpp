@@ -39,6 +39,9 @@ struct ViewState {
     bool padContextMenuOpen = false;
     sms::ui::ContextMenuGeometry padContextMenu;
     std::span<const sms::ui::ContextMenuItemView> padContextMenuItems;
+    bool padColorMenuOpen = false;
+    sms::ui::ContextMenuGeometry padColorMenu;
+    std::span<const sms::ui::ContextMenuItemView> padColorMenuItems;
     sms::ui::InteractiveTarget hoveredTarget;
     sms::ui::InteractiveTarget mixerValueEntryTarget;
     const char* mixerValueEntryText = "";
@@ -51,6 +54,7 @@ struct ViewState {
     std::array<float, 2> outputLevels{};
     std::span<const char> padState;
     std::span<const char> padActivity;
+    std::span<const int> padColors;
     const sms::dsp::SamplePlaybackSettings& editorSettings;
     const sms::dsp::SampleMixerSettings& mixerSettings;
     const sms::audio::WaveformSummary& waveform;

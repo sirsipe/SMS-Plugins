@@ -23,6 +23,7 @@ enum class InteractiveType : int {
     menuLayout,
     menuMidiBankMode,
     padContextItem,
+    padColorItem,
     closeEditor,
     bank,
     pad,
@@ -355,6 +356,7 @@ struct InteractionContext {
     bool chopSplitMode = false;
     bool menuOpen = false;
     bool padContextMenuOpen = false;
+    bool padColorMenuOpen = false;
     bool armed = false;
     bool fixedCapture = false;
     bool captureActive = false;
@@ -366,6 +368,8 @@ struct InteractionContext {
     bool chopNextEnabled = false;
     int padLayout = 0;
     sms::ui::ContextMenuGeometry padContextMenu;
+    sms::ui::ContextMenuGeometry padColorMenu;
+    int padColorMenuItemCount = 0;
     std::span<const bool> padContextMenuEnabled;
     const sms::dsp::SamplePlaybackSettings* editorSettings = nullptr;
     const sms::ui::waveform::EnvelopeGeometry* envelope = nullptr;
@@ -381,6 +385,11 @@ interactiveTargetAt(const sms::ui::Point point, const InteractionContext& contex
     namespace uiLayout = layout;
 
     if (context.padContextMenuOpen) {
+        if (context.padColorMenuOpen) {
+            const int colorItem = context.padColorMenu.hit(point);
+            if (colorItem >= 0 && colorItem < context.padColorMenuItemCount)
+                return target(InteractiveType::padColorItem, colorItem);
+        }
         const int item = context.padContextMenu.hit(point);
         if (item >= 0 && item < static_cast<int>(context.padContextMenuEnabled.size()) &&
             context.padContextMenuEnabled[static_cast<std::size_t>(item)])

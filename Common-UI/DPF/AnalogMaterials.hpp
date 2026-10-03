@@ -238,6 +238,7 @@ struct PadSurfaceState {
     bool hovered = false;
     bool pressed = false;
     bool enabled = true;
+    const DGL_NAMESPACE::Color* tint = nullptr;
 };
 
 inline void drawRubberPad(DGL_NAMESPACE::NanoVG& canvas, const ui::Rect bounds,
@@ -271,6 +272,13 @@ inline void drawRubberPad(DGL_NAMESPACE::NanoVG& canvas, const ui::Rect bounds,
         bounds.x, bounds.y + bounds.height + depression,
         colors.rubberTop.withAlpha(alpha), colors.rubberBottom.withAlpha(alpha)));
     canvas.fill();
+    if (state.tint != nullptr && state.enabled) {
+        canvas.beginPath();
+        canvas.roundedRect(bounds.x + 2.0f, bounds.y + 2.0f + depression,
+                           bounds.width - 4.0f, bounds.height - 4.0f, radius - 2.0f);
+        canvas.fillColor(state.tint->withAlpha(colors.padTintAlpha));
+        canvas.fill();
+    }
     if ((state.occupied || state.active || state.recording) && state.enabled) {
         canvas.beginPath();
         canvas.roundedRect(bounds.x + 2.0f, bounds.y + 2.0f + depression,

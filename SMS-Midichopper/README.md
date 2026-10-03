@@ -78,6 +78,9 @@ Right-click pads to copy, paste, import, export, clear, split, or collapse a gap
 Both stay within the bank. See
 [WAV files](Docs/WAV-FILES.md) for formats and Linux requirements.
 
+Right-click a pad, open **Color**, and choose **None** or one of six colors to tint
+it. Each pad keeps its color when the project is reopened, including empty pads.
+
 Max Voices limits simultaneous pads. At the limit, a new trigger stops the
 oldest voice; set it to one for monophonic playback.
 

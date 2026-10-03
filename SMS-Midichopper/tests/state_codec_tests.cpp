@@ -3,6 +3,7 @@
 #include "WaveformDetailProtocol.hpp"
 #include "ChopEditorProtocol.hpp"
 #include "PadStructureProtocol.hpp"
+#include "PadColorState.hpp"
 
 #include <cmath>
 #include <cstdlib>
@@ -280,6 +281,16 @@ void padStructureProtocolRoundTrip()
 int main()
 {
     using namespace midichopper::plugin;
+    check(decodePadColorIndex("0", 6) == 0 &&
+          decodePadColorIndex("4", 6) == 4 &&
+          decodePadColorIndex("6", 6) == 6,
+          "saved pad palette indices decode");
+    check(decodePadColorIndex("6", 5) == 0 &&
+          decodePadColorIndex("7", 6) == 0 &&
+          decodePadColorIndex("-1", 6) == 0 &&
+          decodePadColorIndex("2x", 6) == 0 &&
+          decodePadColorIndex("", 6) == 0,
+          "unavailable or malformed pad colors fall back to no color");
     const WaveformDetailRequest detail{73U, 12U, 3U, 1000U, 1128U};
     WaveformDetailRequest decodedDetail;
     check(decodeWaveformDetailRequest(encodeWaveformDetailRequest(detail), decodedDetail) &&

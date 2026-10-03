@@ -30,9 +30,6 @@ labels use the same mapping as the engine. Selected Bank reuses one note range,
 with `active_bank` choosing its target, and retains the released fixed 16-slot
 bank organization.
 
-The Cut Point Editor uses exclusive raw audition. Its three notes select proposed
-slices; Split Sample maps two notes to virtual halves. Other notes stay silent.
-
 ## Capture model
 
 Arming chooses the first empty visible pad, or the first when full; idle
@@ -60,8 +57,7 @@ against Arm before passing the engine's boolean monitor gate each block.
 Playback uses linear interpolation for source-rate conversion and semitone
 varispeed. Each pad has non-destructive region/ADSR and mixer settings; global
 volume, pan, and tune combine during playback. Active voices refresh mixer,
-ADSR, and End atomics per block; Start remains fixed until retrigger. Output
-updates seed a UI-clocked playhead that briefly holds its final position.
+ADSR, and End atomics per block; Start remains fixed until retrigger.
 
 See [Cut Point Editor](../../Docs/AI/CHOP-EDITOR.md) for boundary editing.
 
@@ -99,6 +95,10 @@ Request sequence and range reject stale detail replies. The control thread reads
 sample blocks behind the real-time access gate without copying whole pads.
 Zoom is UI-local and resets on pad or editor change. Waveform work stays outside
 the audio callback.
+
+Each pad slot also saves a `pad_color_01..64` theme palette index. Zero removes
+the tint. The UI treats an unavailable index as no color; colors stay with pad
+slots through sample edits and moves.
 
 `pad_clear_request` publishes an atomic command consumed at the next block.
 `pad_file_request` carries an action, pad, and UTF-8 path; LV2 handles it on its

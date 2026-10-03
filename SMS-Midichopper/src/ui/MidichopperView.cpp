@@ -58,11 +58,17 @@ public:
         drawFooter();
         if (state_.menuOpen)
             drawMenuOverlay();
-        if (state_.padContextMenuOpen)
+        if (state_.padContextMenuOpen) {
             sms::ui::dpf::drawContextMenu(canvas_, state_.padContextMenu,
                 state_.padContextMenuItems,
                 hovered(InteractiveType::padContextItem)
                     ? state_.hoveredTarget.index : -1);
+            if (state_.padColorMenuOpen)
+                sms::ui::dpf::drawContextMenu(canvas_, state_.padColorMenu,
+                    state_.padColorMenuItems,
+                    hovered(InteractiveType::padColorItem)
+                        ? state_.hoveredTarget.index : -1);
+        }
         canvas_.restore();
     }
 
@@ -306,9 +312,13 @@ private:
             const bool playing = (!state_.armed && active) || state_.pressedPad == localPad;
             const bool selected = state_.selectedPad == pad;
             const bool padHovered = hovered(InteractiveType::pad, localPad);
+            const int color = state_.padColors[static_cast<std::size_t>(pad)];
+            const auto* tint = color > 0 &&
+                color <= static_cast<int>(colors.padColors.size())
+                ? &colors.padColors[static_cast<std::size_t>(color - 1)].tint : nullptr;
             sms::ui::dpf::drawRubberPad(canvas_, cell,
                 {occupied, playing, recording, selected, padHovered,
-                 state_.pressedPad == localPad, true});
+                 state_.pressedPad == localPad, true, tint});
 
             char padNumber[12];
             std::snprintf(padNumber, sizeof(padNumber), "%02d", localPad + 1);
@@ -724,9 +734,13 @@ private:
             const bool active = state_.padActivity[static_cast<std::size_t>(localPad)] != '0';
             const bool selected = pad == state_.selectedPad;
             const bool padHovered = hovered(InteractiveType::pad, localPad);
+            const int color = state_.padColors[static_cast<std::size_t>(pad)];
+            const auto* tint = color > 0 &&
+                color <= static_cast<int>(colors.padColors.size())
+                ? &colors.padColors[static_cast<std::size_t>(color - 1)].tint : nullptr;
             sms::ui::dpf::drawRubberPad(canvas_, cell,
                 {occupied, active, false, selected, padHovered,
-                 state_.pressedPad == localPad, true}, 6.0f);
+                 state_.pressedPad == localPad, true, tint}, 6.0f);
             char label[12];
             std::snprintf(label, sizeof(label), "%02d", localPad + 1);
             canvas_.fontSize(11.0f);

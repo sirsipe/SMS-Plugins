@@ -8,6 +8,7 @@
  * State contract used by the sample editor:
  *   pad_edit_01..64  compact non-destructive cut-point and ADSR settings
  *   pad_mix_01..64   independent gain, pan, and tune settings
+ *   pad_color_01..64 persistent one-based theme tint indices (zero is none)
  *   waveform_request selected pad index sent from UI to DSP
  *   waveform_data    compact 128-bin min/max summary returned by DSP
  *   pad_clear_request one-based pad command consumed at an audio block boundary
@@ -52,6 +53,7 @@
 #include "MidichopperView.hpp"
 #include "WaveformDetailProtocol.hpp"
 #include "PadClipboardProtocol.hpp"
+#include "PadColorState.hpp"
 #include "PadFileActionProtocol.hpp"
 #include "PadStructureProtocol.hpp"
 #include "Parameters.hpp"
@@ -91,6 +93,7 @@ inline constexpr auto kEditorSnapshotRetryInterval = std::chrono::milliseconds(2
 
 enum class PadMenuAction : int {
     editSample = 0,
+    color,
     adjustCutPoints,
     splitSample,
     collapseGap,
@@ -110,6 +113,7 @@ struct PadMenuEntry {
 
 inline constexpr std::array kPadMenuEntries{
     PadMenuEntry{PadMenuAction::editSample},
+    PadMenuEntry{PadMenuAction::color},
     PadMenuEntry{PadMenuAction::count, sms::ui::ContextMenuItemKind::separator},
     PadMenuEntry{PadMenuAction::adjustCutPoints},
     PadMenuEntry{PadMenuAction::splitSample},
@@ -124,6 +128,9 @@ inline constexpr std::array kPadMenuEntries{
     PadMenuEntry{PadMenuAction::count, sms::ui::ContextMenuItemKind::separator},
     PadMenuEntry{PadMenuAction::clear},
 };
+inline constexpr int kPadColorMenuRow = 1;
+inline constexpr std::size_t kPadColorMenuItemCount =
+    sms::ui::dpf::Theme::padColorCount + 1U;
 
 constexpr auto padMenuItemKinds() noexcept
 {
@@ -155,6 +162,7 @@ std::array<std::string, midichopper::kPadCount> makePadStateKeys(const char* con
 
 const auto kPadEditStateKeys = makePadStateKeys("pad_edit_");
 const auto kPadMixerStateKeys = makePadStateKeys("pad_mix_");
+const auto kPadColorStateKeys = makePadStateKeys("pad_color_");
 
 } // namespace
 
@@ -203,6 +211,7 @@ public:
     {
         fPadState.fill('0');
         fPadStatus.fill('0');
+        fPadColors.fill(0);
         fChopOffsets.fill(0);
         fStatus[0] = '\0';
 
@@ -785,6 +794,9 @@ protected:
         else if (parseMixerState(key, value))
         {
         }
+        else if (parsePadColorState(key, value))
+        {
+        }
         else
             return;
         requestRepaint();
@@ -874,8 +886,22 @@ protected:
             contextMenuItems[index] = entry.kind == sms::ui::ContextMenuItemKind::separator
                 ? sms::ui::ContextMenuItemView{
                     "", false, false, sms::ui::ContextMenuItemKind::separator}
-                : padMenuActionView(entry.action, collapseLabel);
+                : padMenuActionView(entry, collapseLabel);
         }
+        std::array<sms::ui::ContextMenuItemView, kPadColorMenuItemCount>
+            colorMenuItems{};
+        const int selectedColor = fPadContextTarget >= 0
+            ? fPadColors[static_cast<std::size_t>(fPadContextTarget)] : 0;
+        colorMenuItems[0] = {"NONE", true, false,
+                             sms::ui::ContextMenuItemKind::action,
+                             selectedColor == 0};
+        const auto& palette = sms::ui::dpf::theme().padColors;
+        for (std::size_t index = 0; index < palette.size(); ++index)
+            colorMenuItems[index + 1U] = {
+                palette[index].name, true, false,
+                sms::ui::ContextMenuItemKind::action,
+                selectedColor == static_cast<int>(index + 1U),
+                static_cast<int>(index)};
         const midichopper::ui::ViewState view{
             fArm, fRecordMode, fFixedLength, fPlaybackMode, fMonitor,
             fStartPad, fPreRoll, fBaseNote, fMidiBankMode, fGain, fGlobalPan, fGlobalTune,
@@ -883,10 +909,12 @@ protected:
             fSelectedPad, fCurrentPad, fPadPress.pad(), fClearArmed, fMenuOpen,
             fPadContextMenuOpen, fPadContextMenu,
             std::span<const sms::ui::ContextMenuItemView>{contextMenuItems},
+            fPadColorMenuOpen, fPadColorMenu,
+            std::span<const sms::ui::ContextMenuItemView>{colorMenuItems},
             fHover.target(),
             fMixerValueEntryTarget, fMixerValueEntryText.data(),
             fEditorMode, fChopEditorMode, fChopSplitMode, fPlayOnSelect, fHasWaveform,
-            fInputLevels, fOutputLevels, fPadState, fPadStatus,
+            fInputLevels, fOutputLevels, fPadState, fPadStatus, fPadColors,
             fEditorSettings, fMixerSettings, fWaveform, fPlaybackPosition,
             std::span<const sms::audio::WaveformSummary>{
                 fChopWaveforms.data(), fChopWaveforms.size()},
@@ -978,10 +1006,15 @@ protected:
             {
                 fPadContextPointerCaptured = true;
                 if (midichopper::ui::isTarget(
+                        clicked, midichopper::ui::InteractiveType::padColorItem)) {
+                    selectPadColor(clicked.index);
+                    return true;
+                }
+                if (midichopper::ui::isTarget(
                         clicked, midichopper::ui::InteractiveType::padContextItem)) {
                     const auto row = static_cast<std::size_t>(clicked.index);
                     if (row < kPadMenuEntries.size())
-                        invokePadMenuAction(kPadMenuEntries[row].action);
+                        invokePadMenuAction(kPadMenuEntries[row]);
                     return true;
                 }
                 closePadContextMenu();
@@ -1408,6 +1441,18 @@ protected:
             return true;
         }
         const auto hovered = resolveInteractiveTarget(x, y);
+        if (fPadContextMenuOpen) {
+            if (midichopper::ui::isTarget(
+                    hovered, midichopper::ui::InteractiveType::padContextItem,
+                    kPadColorMenuRow)) {
+                openPadColorMenu();
+            } else if (fPadColorMenuOpen &&
+                       midichopper::ui::isTarget(
+                           hovered, midichopper::ui::InteractiveType::padContextItem)) {
+                fPadColorMenuOpen = false;
+                requestRepaint();
+            }
+        }
         if (fHover.update(hovered))
             requestRepaint();
         return hovered.valid() || fMenuOpen || fPadContextMenuOpen;
@@ -1735,8 +1780,10 @@ private:
     std::chrono::steady_clock::time_point fClearDeadline{};
     bool fMenuOpen;
     bool fPadContextMenuOpen;
+    bool fPadColorMenuOpen = false;
     int fPadContextTarget;
     sms::ui::ContextMenuGeometry fPadContextMenu;
+    sms::ui::ContextMenuGeometry fPadColorMenu;
     sms::ui::HoverState fHover;
     bool fPadContextClearArmed;
     std::chrono::steady_clock::time_point fPadContextClearDeadline{};
@@ -1799,6 +1846,7 @@ private:
     midichopper::plugin::PadClipboardResultEventTracker fPadClipboardResultEvents;
     std::array<char, midichopper::kPadsPerBank> fPadState;
     std::array<char, midichopper::kPadsPerBank> fPadStatus;
+    std::array<int, midichopper::kPadCount> fPadColors{};
     sms::dsp::SamplePlaybackSettings fEditorSettings{};
     int fEditorSettingsPad = -1;
     sms::dsp::SamplePlaybackSettings fDragStartSettings{};
@@ -1849,6 +1897,7 @@ private:
         context.chopSplitMode = fChopSplitMode;
         context.menuOpen = fMenuOpen;
         context.padContextMenuOpen = fPadContextMenuOpen;
+        context.padColorMenuOpen = fPadColorMenuOpen;
         context.armed = fArm;
         context.fixedCapture = fRecordMode >= 0.5f;
         context.captureActive = fArm && fCurrentPad >= 0;
@@ -1861,6 +1910,8 @@ private:
         context.padLayout = fLayout;
         context.padContextMenu = fPadContextMenu;
         context.padContextMenuEnabled = menuEnabled;
+        context.padColorMenu = fPadColorMenu;
+        context.padColorMenuItemCount = static_cast<int>(kPadColorMenuItemCount);
         context.editorSettings = &fEditorSettings;
         context.envelope = &envelope;
         context.chopWaveforms = fChopWaveforms;
@@ -1891,6 +1942,7 @@ private:
         fPadContextMenu = sms::ui::ContextMenuGeometry(
             anchor, std::span<const sms::ui::ContextMenuItemKind>{kPadMenuItemKinds},
             uiLayout::contentBounds);
+        fPadColorMenuOpen = false;
         static_cast<void>(fHover.clear());
         fPadContextClearArmed = false;
         fPadContextCollapseArmed = false;
@@ -1900,10 +1952,34 @@ private:
     void closePadContextMenu() noexcept
     {
         fPadContextMenuOpen = false;
+        fPadColorMenuOpen = false;
         fPadContextTarget = -1;
         static_cast<void>(fHover.clear());
         fPadContextClearArmed = false;
         fPadContextCollapseArmed = false;
+    }
+
+    void openPadColorMenu()
+    {
+        if (fPadColorMenuOpen || !padMenuActionEnabled(PadMenuAction::color))
+            return;
+        fPadColorMenu = sms::ui::ContextMenuGeometry::submenu(
+            fPadContextMenu, kPadColorMenuRow,
+            static_cast<int>(kPadColorMenuItemCount), uiLayout::contentBounds);
+        fPadColorMenuOpen = true;
+        requestRepaint();
+    }
+
+    void selectPadColor(const int item)
+    {
+        if (!fPadColorMenuOpen || !padMenuActionEnabled(PadMenuAction::color) ||
+            item < 0 || item >= static_cast<int>(kPadColorMenuItemCount))
+            return;
+        const auto pad = static_cast<std::size_t>(fPadContextTarget);
+        fPadColors[pad] = item;
+        setState(kPadColorStateKeys[pad].c_str(), std::to_string(item).c_str());
+        closePadContextMenu();
+        requestRepaint();
     }
 
     [[nodiscard]] bool padContextTargetOccupied() const noexcept
@@ -2017,6 +2093,9 @@ private:
     {
         switch (action) {
         case PadMenuAction::editSample: return padEditSampleEnabled();
+        case PadMenuAction::color:
+            return fPadContextMenuOpen && fPadContextTarget >= 0 &&
+                   fPadContextTarget < static_cast<int>(midichopper::kPadCount);
         case PadMenuAction::copy: return padCopyEnabled();
         case PadMenuAction::paste: return padPasteEnabled();
         case PadMenuAction::adjustCutPoints: return padCutPointsEnabled();
@@ -2033,12 +2112,16 @@ private:
     }
 
     [[nodiscard]] sms::ui::ContextMenuItemView padMenuActionView(
-        const PadMenuAction action, const char* const collapseLabel) const noexcept
+        const PadMenuEntry entry, const char* const collapseLabel) const noexcept
     {
+        const PadMenuAction action = entry.action;
         const bool enabled = padMenuActionEnabled(action);
         switch (action) {
         case PadMenuAction::editSample:
             return {"EDIT SAMPLE", enabled, false};
+        case PadMenuAction::color:
+            return {"COLOR", enabled, false,
+                    sms::ui::ContextMenuItemKind::action, false, -1, true};
         case PadMenuAction::adjustCutPoints:
             return {"ADJUST CUT POINTS", enabled, false};
         case PadMenuAction::splitSample:
@@ -2065,8 +2148,9 @@ private:
         return {};
     }
 
-    void invokePadMenuAction(const PadMenuAction action)
+    void invokePadMenuAction(const PadMenuEntry entry)
     {
+        const PadMenuAction action = entry.action;
         if (!padMenuActionEnabled(action))
             return;
         switch (action) {
@@ -2076,6 +2160,9 @@ private:
             beginSampleEditor(pad);
             return;
         }
+        case PadMenuAction::color:
+            openPadColorMenu();
+            return;
         case PadMenuAction::copy:
             requestPadClipboard(PadClipboardAction::copy);
             return;
@@ -3222,6 +3309,18 @@ private:
                     fMixerSettingsPad = decodedPad;
                 }
             }
+            return true;
+        }
+        return false;
+    }
+
+    bool parsePadColorState(const char* const key, const char* const value)
+    {
+        for (std::size_t pad = 0; pad < kPadColorStateKeys.size(); ++pad) {
+            if (std::strcmp(key, kPadColorStateKeys[pad].c_str()) != 0)
+                continue;
+            fPadColors[pad] = midichopper::plugin::decodePadColorIndex(
+                value, static_cast<int>(sms::ui::dpf::theme().padColors.size()));
             return true;
         }
         return false;

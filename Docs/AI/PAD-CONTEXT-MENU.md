@@ -1,9 +1,8 @@
 # Pad context menu
 
 Audience: agents changing pad interactions. The shared menu and actions below
-are implemented. [Issue #10](https://github.com/sirsipe/SMS-Plugins/issues/10)
-also requests MIDI assignment and optional color. This is a general pad action
-surface, not a WAV-specific menu.
+are implemented. MIDI assignment is outside this menu's current scope. This is
+a general pad menu.
 
 ## Interaction contract
 
@@ -16,7 +15,7 @@ MIDI note-on closes it; note-off does not. Clamp it to the logical canvas under
 UI scaling. A dismissing pointer event must not activate the control underneath.
 If target state changes externally, close the menu or recompute enablement.
 
-Enabled actions highlight on hover. Repaint only when the hovered target
+Enabled actions highlight on hover. Repaint when the hovered target
 changes; disabled entries stay non-interactive.
 
 Keep reusable hover identity, transitions, geometry, and themed drawing in
@@ -31,16 +30,25 @@ disabled-item behavior, hover transitions, and DPF drawing belong in
 the NanoVG adapter belongs inside it. The menu must not own sampler, host,
 clipboard, MIDI-mapping, or filesystem responsibilities.
 
-The model must admit Clear/Delete, Copy, Paste, WAV Import/Export, MIDI
-assignment, color, separators, and later actions without another menu type or a
-large conditional event handler. Do not add abstractions for hypothetical menu
-features until an action needs them.
+Add later actions without another menu type or a large conditional handler.
+Avoid abstractions until an action needs them.
 
 ## Implemented actions
 
 **Edit Sample** is the first action. In Play it is enabled only for an occupied
 target and opens the Sample Editor focused on that pad. It remains visible but
 disabled when the menu is opened inside the Sample Editor.
+
+**Color** follows Edit Sample and opens a submenu on hover or click. The submenu
+opens beside the parent, switching sides at the canvas edge. It offers None plus
+every entry in
+`Common-UI/DPF/Theme.hpp::padColors`; the theme determines the number, names,
+and tint colors. Selecting one tints that pad in Play and Sample Editor, even
+when the pad is empty. A marker shows its current selection. Each of the 64
+physical pad slots saves a one-based palette index in `pad_color_01..64`; zero
+means None. Invalid values and indices absent from the current theme display
+as None. Colors label pad slots, so Clear, Copy/Paste, Collapse Gap, and Split
+Sample leave each slot's color in place.
 
 **Clear Pad** uses the engine's single-pad
 clear behavior. It is enabled only when the clicked pad contains audio. The

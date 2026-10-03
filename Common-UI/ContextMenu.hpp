@@ -18,6 +18,9 @@ struct ContextMenuItemView {
     bool enabled = true;
     bool dangerous = false;
     ContextMenuItemKind kind = ContextMenuItemKind::action;
+    bool selected = false;
+    int paletteIndex = -1;
+    bool hasSubmenu = false;
 };
 
 /** Framework-neutral placement and hit testing for a single-column menu. */
@@ -56,6 +59,19 @@ public:
     }
 
     [[nodiscard]] Rect bounds() const noexcept { return bounds_; }
+
+    [[nodiscard]] static ContextMenuGeometry submenu(
+        const ContextMenuGeometry& parent, const int parentRow,
+        const int itemCount, const Rect canvas,
+        const float requestedWidth = 172.0f) noexcept
+    {
+        const Rect row = parent.item(parentRow);
+        const float right = parent.bounds().x + parent.bounds().width - 2.0f;
+        const float left = parent.bounds().x - requestedWidth + 2.0f;
+        const bool fitsRight = right + requestedWidth <= canvas.x + canvas.width;
+        return {{fitsRight ? right : left, row.y - 5.0f}, itemCount,
+                canvas, requestedWidth};
+    }
 
     [[nodiscard]] Rect item(const int index) const noexcept
     {

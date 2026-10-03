@@ -2,9 +2,27 @@
 
 #include "DistrhoUI.hpp"
 
+#include <array>
+
 namespace sms::ui::dpf {
 
 struct Theme {
+    struct PadColor {
+        const char* name;
+        DGL_NAMESPACE::Color tint;
+    };
+
+    // Saved pad colors use one-based palette indices; zero means no tint.
+    static constexpr std::size_t padColorCount = 6;
+    std::array<PadColor, padColorCount> padColors{{
+        {"RED", {224, 67, 75}},
+        {"ORANGE", {235, 137, 52}},
+        {"YELLOW", {230, 196, 62}},
+        {"GREEN", {83, 192, 102}},
+        {"BLUE", {80, 150, 224}},
+        {"PURPLE", {172, 107, 215}},
+    }};
+    float padTintAlpha = 0.32f;
     DGL_NAMESPACE::Color canvas{15, 15, 18};
     DGL_NAMESPACE::Color surface{27, 27, 33};
     DGL_NAMESPACE::Color surfaceRaised{39, 39, 47};

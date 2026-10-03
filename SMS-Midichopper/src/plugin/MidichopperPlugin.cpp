@@ -7,6 +7,7 @@
 #include "DSP/PeakMeter.hpp"
 #include "PadClipboard.hpp"
 #include "PadClipboardProtocol.hpp"
+#include "PadColorState.hpp"
 #include "PadFileActionProtocol.hpp"
 #include "PadFileActions.hpp"
 #include "PadStructureProtocol.hpp"
@@ -48,6 +49,7 @@ std::array<std::string, midichopper::kPadCount> makePadStateKeys(const char* con
 const auto kPadStateKeys = makePadStateKeys("pad_");
 const auto kPadEditStateKeys = makePadStateKeys("pad_edit_");
 const auto kPadMixerStateKeys = makePadStateKeys("pad_mix_");
+const auto kPadColorStateKeys = makePadStateKeys("pad_color_");
 
 constexpr std::uint32_t kAudioStateCount = midichopper::kPadCount;
 constexpr std::uint32_t kEditStateOffset = kAudioStateCount;
@@ -68,7 +70,8 @@ constexpr std::uint32_t kPadStructureRequestState =
 constexpr std::uint32_t kPadStructureStatusState = kPadStructureRequestState + 1U;
 constexpr std::uint32_t kWaveformDetailRequestState = kPadStructureStatusState + 1U;
 constexpr std::uint32_t kWaveformDetailDataState = kWaveformDetailRequestState + 1U;
-constexpr std::uint32_t kStateCount = kWaveformDetailDataState + 1U;
+constexpr std::uint32_t kPadColorStateOffset = kWaveformDetailDataState + 1U;
+constexpr std::uint32_t kStateCount = kPadColorStateOffset + midichopper::kPadCount;
 constexpr const char* kWaveformRequestKey = "waveform_request";
 constexpr const char* kWaveformDataKey = "waveform_data";
 constexpr const char* kWaveformDetailRequestKey = "waveform_detail_request";
@@ -488,6 +491,11 @@ protected:
             state.label = "Visible Waveform Data";
             state.defaultValue = "";
             state.hints = kStateIsOnlyForUI;
+        } else if (index >= kPadColorStateOffset) {
+            state.key = kPadColorStateKeys[index - kPadColorStateOffset].c_str();
+            state.label = "Pad Color";
+            state.defaultValue = "0";
+            state.hints = 0;
         } else {
             state.key = kPadStructureStatusKey;
             state.label = "Pad Structure Status";
@@ -556,6 +564,11 @@ protected:
                 return String(midichopper::plugin::encodeMixerSettings(
                     sampler_.padMixerSettings(pad)).c_str());
         }
+        for (std::uint32_t pad = 0; pad < midichopper::kPadCount; ++pad) {
+            if (std::strcmp(key, kPadColorStateKeys[pad].c_str()) == 0)
+                return String(std::to_string(
+                    padColors_[pad].load(std::memory_order_relaxed)).c_str());
+        }
         if (std::strcmp(key, kWaveformRequestKey) == 0)
             return String("0");
         if (std::strcmp(key, kWaveformDataKey) == 0)
@@ -585,6 +598,13 @@ protected:
 
     void setState(const char* const key, const char* const value) override
     {
+        for (std::uint32_t pad = 0; pad < midichopper::kPadCount; ++pad) {
+            if (std::strcmp(key, kPadColorStateKeys[pad].c_str()) != 0)
+                continue;
+            padColors_[pad].store(midichopper::plugin::decodePadColorIndex(
+                value != nullptr ? value : "", 255), std::memory_order_relaxed);
+            return;
+        }
         for (std::uint32_t pad = 0; pad < midichopper::kPadCount; ++pad) {
             if (std::strcmp(key, kPadStateKeys[pad].c_str()) != 0)
                 continue;
@@ -1463,6 +1483,7 @@ private:
     sms::dsp::StereoPeakMeter inputMeter_;
     sms::dsp::StereoPeakMeter outputMeter_;
     std::array<std::atomic<float>, midichopper::plugin::kParameterCount> parameters_{};
+    std::array<std::atomic<int>, midichopper::kPadCount> padColors_{};
     std::atomic<std::uint32_t> pendingCommands_{0};
     std::atomic<std::uint64_t> pendingClearPads_{0};
     std::atomic<std::uint32_t> pendingCaptureTarget_{0};

@@ -41,6 +41,33 @@ inline void drawContextMenu(DGL_NAMESPACE::NanoVG& canvas,
             canvas.fill();
         }
 
+        if (item.selected) {
+            canvas.beginPath();
+            canvas.roundedRect(bounds.x + 3.0f, bounds.y + 5.0f,
+                               3.0f, bounds.height - 10.0f, 1.5f);
+            canvas.fillColor(colors.selection);
+            canvas.fill();
+        }
+        if (item.paletteIndex >= 0 &&
+            item.paletteIndex < static_cast<int>(colors.padColors.size())) {
+            canvas.beginPath();
+            canvas.circle(bounds.x + 17.0f, bounds.y + bounds.height * 0.5f, 5.5f);
+            canvas.fillColor(colors.padColors[static_cast<std::size_t>(item.paletteIndex)].tint);
+            canvas.fill();
+        }
+        if (item.hasSubmenu) {
+            const float x = bounds.x + bounds.width - 13.0f;
+            const float y = bounds.y + bounds.height * 0.5f;
+            canvas.beginPath();
+            canvas.moveTo(x - 2.0f, y - 4.0f);
+            canvas.lineTo(x + 2.0f, y);
+            canvas.lineTo(x - 2.0f, y + 4.0f);
+            canvas.strokeColor(item.enabled ? colors.contentPrimary
+                                            : colors.contentSecondary.withAlpha(0.45f));
+            canvas.strokeWidth(1.3f);
+            canvas.stroke();
+        }
+
         canvas.fontFace(NANOVG_DEJAVU_SANS_TTF);
         canvas.fontSize(11.0f);
         canvas.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_LEFT |
@@ -48,7 +75,8 @@ inline void drawContextMenu(DGL_NAMESPACE::NanoVG& canvas,
         canvas.fillColor(item.enabled
             ? (hovered ? accent : colors.contentPrimary)
             : colors.contentSecondary.withAlpha(0.45f));
-        canvas.text(bounds.x + 11.0f, bounds.y + bounds.height * 0.5f,
+        canvas.text(bounds.x + (item.paletteIndex >= 0 ? 29.0f : 11.0f),
+                    bounds.y + bounds.height * 0.5f,
                     item.label, nullptr);
     }
 }

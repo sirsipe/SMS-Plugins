@@ -11,7 +11,8 @@ Consumers can link the header-only `sms_common_ui` CMake target to inherit the
 shared UI and framework-neutral source include paths.
 
 - `DPF/NanoUI.hpp`: logical-canvas scaling and repaint lifecycle.
-- `DPF/Theme.hpp`: semantic colors, drawing metrics, and hover opacity.
+- `DPF/Theme.hpp`: semantic colors, configurable pad tint palette, drawing
+  metrics, and hover opacity.
 - `DPF/AnalogMaterials.hpp`: scalable chassis, recessed-panel, rubber-pad,
   physical-control, LED, screw, and powder-coat rendering primitives.
 - `DPF/Controls.hpp`: reusable NanoVG panel, segment, slider, and action
