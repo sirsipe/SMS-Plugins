@@ -149,6 +149,13 @@ void SamplerEngine::setSettings(const EngineSettings& s) noexcept {
     settings_.tuneSemitones = std::clamp(
         std::isfinite(settings_.tuneSemitones) ? settings_.tuneSemitones : 0.0f,
         -24.0f, 24.0f);
+    const auto globalColor = sms::dsp::sanitize(sms::dsp::SampleMixerSettings{
+        0.0f, 0.0f, 0.0f, settings_.lowpass, settings_.highpass,
+        settings_.filterSlope, settings_.dirty});
+    settings_.lowpass = globalColor.lowpass;
+    settings_.highpass = globalColor.highpass;
+    settings_.filterSlope = globalColor.filterSlope;
+    settings_.dirty = globalColor.dirty;
     settings_.maxVoices = static_cast<std::uint8_t>(
         std::clamp<std::uint32_t>(settings_.maxVoices, 1U, kPadsPerBank));
     if (settings_.armed)
@@ -419,6 +426,12 @@ void SamplerEngine::startVoice(std::uint32_t pad, std::uint8_t velocity) noexcep
         static_cast<double>(mixer.tuneSemitones + settings_.tuneSemitones) / 12.0);
     p.mixerGainLeft = gain * (pan > 0.0f ? 1.0f - pan : 1.0f);
     p.mixerGainRight = gain * (pan < 0.0f ? 1.0f + pan : 1.0f);
+    p.dirtyPlayback = mixer.dirty >= 0.5f || settings_.dirty >= 0.5f;
+    p.padFilters.reset();
+    p.globalFilters.reset();
+    p.padFilters.configure(mixer, sample_rate_);
+    p.globalFilters.configure({0.0f, 0.0f, 0.0f, settings_.lowpass,
+        settings_.highpass, settings_.filterSlope, settings_.dirty}, sample_rate_);
     p.playStep = (sourceRate / sample_rate_) * tuneRatio;
     const float regionSeconds = static_cast<float>(endFrame - startFrame) /
         static_cast<float>((sourceRate > 1.0 ? sourceRate : sample_rate_) *
@@ -482,6 +495,10 @@ void SamplerEngine::refreshActiveVoiceSettings(const std::uint32_t pad) noexcept
         static_cast<double>(mixer.tuneSemitones + settings_.tuneSemitones) / 12.0);
     voice.mixerGainLeft = gain * (pan > 0.0f ? 1.0f - pan : 1.0f);
     voice.mixerGainRight = gain * (pan < 0.0f ? 1.0f + pan : 1.0f);
+    voice.dirtyPlayback = mixer.dirty >= 0.5f || settings_.dirty >= 0.5f;
+    voice.padFilters.configure(mixer, sample_rate_);
+    voice.globalFilters.configure({0.0f, 0.0f, 0.0f, settings_.lowpass,
+        settings_.highpass, settings_.filterSlope, settings_.dirty}, sample_rate_);
     const double sourceRate = voice.sourceSampleRate.load(std::memory_order_relaxed);
     voice.playStep = (sourceRate / sample_rate_) * tuneRatio;
     const float regionSeconds = static_cast<float>(voice.voiceEndFrame - voice.voiceStartFrame) /
@@ -660,10 +677,26 @@ void SamplerEngine::process(const float* inputLeft, const float* inputRight,
             }
             const float envelopeGain = p.envelope.next();
             const float voiceGain = p.velocityGain * envelopeGain;
-            outL += ((sampleAt(pad, i, 0U) * (1.0f - frac)) +
-                     sampleAt(pad, j, 0U) * frac) * voiceGain * p.mixerGainLeft;
-            outR += ((sampleAt(pad, i, 1U) * (1.0f - frac)) +
-                     sampleAt(pad, j, 1U) * frac) * voiceGain * p.mixerGainRight;
+            float sampleL, sampleR;
+            if (p.dirtyPlayback) {
+                const auto sourceRate = p.sourceSampleRate.load(std::memory_order_relaxed);
+                const auto sourceI = sms::dsp::dirtySourceFrame(i, sourceRate);
+                const auto sourceJ = sms::dsp::dirtySourceFrame(j, sourceRate);
+                const float first = sms::dsp::dirtyMono(
+                    sampleAt(pad, sourceI, 0U), sampleAt(pad, sourceI, 1U));
+                const float second = sms::dsp::dirtyMono(
+                    sampleAt(pad, sourceJ, 0U), sampleAt(pad, sourceJ, 1U));
+                sampleL = sampleR = first * (1.0f - frac) + second * frac;
+            } else {
+                sampleL = sampleAt(pad, i, 0U) * (1.0f - frac) +
+                          sampleAt(pad, j, 0U) * frac;
+                sampleR = sampleAt(pad, i, 1U) * (1.0f - frac) +
+                          sampleAt(pad, j, 1U) * frac;
+            }
+            p.padFilters.process(sampleL, sampleR);
+            p.globalFilters.process(sampleL, sampleR);
+            outL += sampleL * voiceGain * p.mixerGainLeft;
+            outR += sampleR * voiceGain * p.mixerGainRight;
             p.playPosition += step;
             if (p.playPosition >= n || !p.envelope.active()) {
                 p.playing = false;
@@ -1317,7 +1350,7 @@ void SamplerEngine::mixChopPreview(float& left, float& right) noexcept {
 sms::dsp::SamplePlaybackSettings SamplerEngine::padPlaybackSettings(const std::uint32_t pad) const noexcept {
     if (pad >= kPadCount) return {};
     const auto& p = pads_[pad];
-    return sms::dsp::sanitize({
+    return sms::dsp::sanitize(sms::dsp::SamplePlaybackSettings{
         p.regionStart.load(std::memory_order_acquire),
         p.regionEnd.load(std::memory_order_acquire),
         p.attackSeconds.load(std::memory_order_acquire),
@@ -1358,6 +1391,10 @@ sms::dsp::SampleMixerSettings SamplerEngine::padMixerSettings(
         p.mixerGainDecibels.load(std::memory_order_acquire),
         p.mixerPan.load(std::memory_order_acquire),
         p.mixerTuneSemitones.load(std::memory_order_acquire),
+        p.mixerLowpass.load(std::memory_order_acquire),
+        p.mixerHighpass.load(std::memory_order_acquire),
+        p.mixerFilterSlope.load(std::memory_order_acquire),
+        p.mixerDirty.load(std::memory_order_acquire),
     });
 }
 
@@ -1370,10 +1407,18 @@ void SamplerEngine::setPadMixerSettings(
     const bool changed =
         p.mixerGainDecibels.load(std::memory_order_acquire) != settings.gainDecibels ||
         p.mixerPan.load(std::memory_order_acquire) != settings.pan ||
-        p.mixerTuneSemitones.load(std::memory_order_acquire) != settings.tuneSemitones;
+        p.mixerTuneSemitones.load(std::memory_order_acquire) != settings.tuneSemitones ||
+        p.mixerLowpass.load(std::memory_order_acquire) != settings.lowpass ||
+        p.mixerHighpass.load(std::memory_order_acquire) != settings.highpass ||
+        p.mixerFilterSlope.load(std::memory_order_acquire) != settings.filterSlope ||
+        p.mixerDirty.load(std::memory_order_acquire) != settings.dirty;
     p.mixerGainDecibels.store(settings.gainDecibels, std::memory_order_release);
     p.mixerPan.store(settings.pan, std::memory_order_release);
     p.mixerTuneSemitones.store(settings.tuneSemitones, std::memory_order_release);
+    p.mixerLowpass.store(settings.lowpass, std::memory_order_release);
+    p.mixerHighpass.store(settings.highpass, std::memory_order_release);
+    p.mixerFilterSlope.store(settings.filterSlope, std::memory_order_release);
+    p.mixerDirty.store(settings.dirty, std::memory_order_release);
     if (changed)
         p.generation.fetch_add(1U, std::memory_order_release);
 }

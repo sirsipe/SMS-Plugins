@@ -1,7 +1,7 @@
 # Testing reference
 
-Audience: AI agents. Run commands from the repository root after the
-[build](DEVELOPMENT.md). Use the relevant layers below; record what actually ran.
+Run commands from the repository root after the [build](DEVELOPMENT.md).
+Record which checks ran.
 
 ## Automated checks
 
@@ -15,8 +15,8 @@ For focused iteration, use `ctest --test-dir build --output-on-failure -R NAME`:
 
 | CTest name | Coverage |
 | --- | --- |
-| `sampler-core` | Capture, banks/layouts, storage, voices, region/ADSR, pad/global mixer sums, raw chop preview/repartition, resampling, clipboard, lifecycle, and more than 1,024 MIDI events per block |
-| `state-codec` | Audio, editor-state, cut commands, and visible waveform request/reply round trips; malformed/corrupt state |
+| `sampler-core` | Capture, banks/layouts, storage, voices, region/ADSR, pad/global mixer sums, filter response and dirty conversion, raw chop preview/repartition, resampling, clipboard, lifecycle, and more than 1,024 MIDI events per block |
+| `state-codec` | Audio, editor-state, MX1/MX2 mixer compatibility, cut commands, and visible waveform request/reply round trips; malformed/corrupt state |
 | `ui-geometry` | Pad mapping, editor snapshot assembly, waveform/chop geometry, viewport mapping, hit testing, wheel editing |
 | `ui-message-bus` | Bounded VST3 message ordering, independent view cursors, explicit gap reporting on wrap, and large replies |
 | `wav-codec` | WAV formats, validation, file actions, offline render, real-time access gate |

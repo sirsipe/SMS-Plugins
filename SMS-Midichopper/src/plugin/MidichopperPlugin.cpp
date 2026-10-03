@@ -270,6 +270,23 @@ protected:
             setupParameter(index, parameter, "Global Tune", "global_tune", "st",
                            0, "Varispeed semitones added to each pad's Tune value.");
             break;
+        case kParameterGlobalLowpass:
+            setupParameter(index, parameter, "Global Lowpass", "global_lowpass", "",
+                           0, "Lowpass amount, 0 = off; resonance rises with amount.");
+            break;
+        case kParameterGlobalHighpass:
+            setupParameter(index, parameter, "Global Highpass", "global_highpass", "",
+                           0, "Highpass amount, 0 = off; resonance rises with amount.");
+            break;
+        case kParameterGlobalFilterSlope:
+            setupParameter(index, parameter, "Global Filter Slope", "global_filter_slope", "",
+                           kParameterIsInteger, "0 = 6, 1 = 12, 2 = 24 dB per octave.");
+            break;
+        case kParameterGlobalDirty:
+            setupParameter(index, parameter, "Global Dirty", "global_dirty", "",
+                           kParameterIsBoolean | kParameterIsInteger,
+                           "Mono 12-bit, 26.04 kHz sample-and-hold before filters and tune.");
+            break;
         case kParameterFinalize:
             setupParameter(index, parameter, "Finalize", "finalize", "",
                            kParameterIsBoolean | kParameterIsInteger | kParameterIsTrigger,
@@ -1290,6 +1307,10 @@ private:
         settings.gain = decibelsToGain(clampedParameter(kParameterOutputGainDb));
         settings.pan = clampedParameter(kParameterGlobalPan);
         settings.tuneSemitones = clampedParameter(kParameterGlobalTuneSemitones);
+        settings.lowpass = clampedParameter(kParameterGlobalLowpass);
+        settings.highpass = clampedParameter(kParameterGlobalHighpass);
+        settings.filterSlope = clampedParameter(kParameterGlobalFilterSlope);
+        settings.dirty = clampedParameter(kParameterGlobalDirty);
         settings.maxVoices = static_cast<std::uint8_t>(clampedParameter(kParameterMaxVoices));
         settings.activeBank = static_cast<std::uint8_t>(
             clampedParameter(kParameterActiveBank) - parameterRanges::activeBank.minimum);

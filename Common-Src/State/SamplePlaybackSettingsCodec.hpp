@@ -42,8 +42,8 @@ namespace sms::state {
     }
     if (*cursor != '\0')
         return false;
-    destination = dsp::sanitize({values[0], values[1], values[2],
-                                 values[3], values[4], values[5]});
+    destination = dsp::sanitize(dsp::SamplePlaybackSettings{
+        values[0], values[1], values[2], values[3], values[4], values[5]});
     return true;
 }
 

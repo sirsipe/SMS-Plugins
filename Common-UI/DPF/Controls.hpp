@@ -83,6 +83,17 @@ inline void drawSlider(DGL_NAMESPACE::NanoVG& canvas,
     canvas.strokeColor(colors.contentPrimary.withAlpha(0.22f));
     canvas.strokeWidth(0.8f);
     canvas.stroke();
+    canvas.beginPath();
+    canvas.circle(capX, y + 3.0f, 5.1f);
+    canvas.strokeColor(colors.edgeHighlight.withAlpha(0.55f));
+    canvas.strokeWidth(1.0f);
+    canvas.stroke();
+    canvas.beginPath();
+    canvas.moveTo(capX - 2.6f, y + 3.0f);
+    canvas.lineTo(capX + 2.6f, y + 3.0f);
+    canvas.strokeColor(colors.recessEdge);
+    canvas.strokeWidth(1.2f);
+    canvas.stroke();
     if (hovered) {
         canvas.strokeColor(accent.withAlpha(colors.hoverHaloAlpha));
         canvas.strokeWidth(3.0f);
@@ -103,6 +114,21 @@ inline void drawKnob(DGL_NAMESPACE::NanoVG& canvas,
     constexpr float sweep = pi * 1.5f;
     const float angle = startAngle + normalized * sweep;
 
+    for (int tick = 0; tick <= 10; ++tick) {
+        const float tickAngle = startAngle + sweep * static_cast<float>(tick) / 10.0f;
+        const float inner = radius + 3.0f;
+        const float outer = radius + (tick % 5 == 0 ? 8.0f : 6.0f);
+        canvas.beginPath();
+        canvas.moveTo(centerX + std::cos(tickAngle) * inner,
+                      centerY + std::sin(tickAngle) * inner);
+        canvas.lineTo(centerX + std::cos(tickAngle) * outer,
+                      centerY + std::sin(tickAngle) * outer);
+        canvas.strokeColor(tick <= static_cast<int>(std::lround(normalized * 10.0f))
+            ? accent.withAlpha(0.75f) : colors.contentSecondary.withAlpha(0.36f));
+        canvas.strokeWidth(tick % 5 == 0 ? 1.5f : 1.0f);
+        canvas.stroke();
+    }
+
     canvas.beginPath();
     canvas.circle(centerX + 1.0f, centerY + 2.0f, radius + 2.0f);
     canvas.fillPaint(canvas.radialGradient(centerX, centerY, radius * 0.35f, radius + 3.0f,
@@ -111,11 +137,25 @@ inline void drawKnob(DGL_NAMESPACE::NanoVG& canvas,
     canvas.beginPath();
     canvas.circle(centerX, centerY, radius);
     canvas.fillPaint(canvas.linearGradient(centerX, centerY - radius,
-        centerX, centerY + radius, colors.surfaceRaised.plus(12), colors.recessEdge));
+        centerX, centerY + radius, colors.edgeHighlight.withAlpha(0.75f),
+        colors.recessEdge));
     canvas.fill();
     canvas.strokeColor(hovered ? accent : colors.outline.withAlpha(0.8f));
     canvas.strokeWidth(hovered ? 2.0f : 1.0f);
     canvas.stroke();
+    canvas.beginPath();
+    canvas.circle(centerX, centerY, radius - 3.0f);
+    canvas.fillPaint(canvas.radialGradient(centerX - radius * 0.3f,
+        centerY - radius * 0.35f, 2.0f, radius * 1.25f,
+        colors.surfaceRaised.plus(24), colors.controlBottom));
+    canvas.fill();
+    canvas.strokeColor(colors.edgeHighlight.withAlpha(0.30f));
+    canvas.strokeWidth(0.8f);
+    canvas.stroke();
+    canvas.beginPath();
+    canvas.circle(centerX, centerY, radius * 0.18f);
+    canvas.fillColor(colors.recessEdge.withAlpha(0.65f));
+    canvas.fill();
 
     canvas.beginPath();
     canvas.moveTo(centerX + std::cos(angle) * radius * 0.35f,

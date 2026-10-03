@@ -27,7 +27,9 @@ void checkPadSettingsCleared(const midichopper::SamplerEngine& engine,
           playback.attackSeconds == 0.0f && playback.decaySeconds == 0.0f &&
           playback.sustainLevel == 1.0f && playback.releaseSeconds == 0.0f &&
           mixer.gainDecibels == 0.0f && mixer.pan == 0.0f &&
-          mixer.tuneSemitones == 0.0f, message);
+          mixer.tuneSemitones == 0.0f && mixer.lowpass == 0.0f &&
+          mixer.highpass == 0.0f && mixer.filterSlope == 1.0f &&
+          mixer.dirty == 0.0f, message);
 }
 
 void live_peak_meter() {
@@ -69,8 +71,115 @@ void live_peak_meter() {
           kParameterPlaybackPosition == kParameterChopPreviewPosition + 1U &&
           kParameterGlobalPan == kParameterPlaybackPosition + 1U &&
           kParameterGlobalTuneSemitones == kParameterGlobalPan + 1U &&
-          kParameterGlobalTuneSemitones + 1U == kParameterCount,
+          kParameterGlobalLowpass == kParameterGlobalTuneSemitones + 1U &&
+          kParameterGlobalDirty + 1U == kParameterCount,
           "new controls remain appended after released and hidden parameters");
+}
+
+void color_effects()
+{
+    using sms::dsp::ColorFilters;
+    sms::dsp::SampleMixerSettings color;
+    ColorFilters filter;
+    color.lowpass = 0.5f;
+    color.filterSlope = 0.0f;
+    auto energy = [&](const float hz) {
+        filter.reset();
+        filter.configure(color, 48000.0);
+        double sum = 0.0;
+        for (int i = 0; i < 4096; ++i) {
+            float left = std::sin(2.0 * 3.141592653589793 * hz * i / 48000.0);
+            float right = left;
+            filter.process(left, right);
+            if (i >= 1024) sum += static_cast<double>(left) * left;
+        }
+        return sum;
+    };
+    const auto lowEnergy = energy(100.0f);
+    const auto highEnergy6 = energy(5000.0f);
+    check(lowEnergy > highEnergy6 * 5.0, "lowpass attenuates high frequencies");
+    color.filterSlope = 2.0f;
+    const auto highEnergy24 = energy(5000.0f);
+    check(highEnergy24 < highEnergy6 * 0.1,
+          "24 dB lowpass is steeper than 6 dB lowpass");
+    color.lowpass = 0.0f;
+    color.highpass = 0.5f;
+    filter.reset();
+    filter.configure(color, 48000.0);
+    const auto highPassLowEnergy = energy(100.0f);
+    const auto highPassHighEnergy = energy(5000.0f);
+    check(highPassHighEnergy > highPassLowEnergy * 5.0,
+          "highpass attenuates low frequencies");
+
+    check(sms::dsp::dirtySourceFrame(1U, 48000.0) == 0U &&
+          sms::dsp::dirtySourceFrame(2U, 48000.0) == 1U,
+          "dirty clock holds source frames at 26.04 kHz");
+    const float crushed = sms::dsp::dirtyMono(0.3f, -0.1f);
+    close(crushed, std::round(0.1f * 2047.0f) / 2047.0f,
+          "dirty mode folds to mono and quantizes to 12 bits");
+
+    midichopper::SamplerEngine engine(48000.0, 1.0);
+    midichopper::PadData source;
+    source.sampleRate = 48000.0;
+    source.frames = 64U;
+    source.stereo.assign(128U, 0.0f);
+    for (std::uint32_t frame = 0; frame < source.frames; ++frame) {
+        source.stereo[frame * 2U] = 0.3f + 0.01f * static_cast<float>(frame);
+        source.stereo[frame * 2U + 1U] = -0.1f;
+    }
+    check(engine.importPad(0, source), "import dirty source");
+    auto settings = engine.settings();
+    settings.monitorInput = false;
+    settings.dirty = 1.0f;
+    engine.setSettings(settings);
+    const midichopper::MidiEvent on{0U, 36U, 127U, midichopper::MidiEventType::NoteOn};
+    float left[3]{}, right[3]{};
+    engine.process(nullptr, nullptr, left, right, 3U, &on, 1U);
+    close(left[0], right[0], "global dirty mode renders mono");
+    close(left[0], left[1], "global dirty mode holds successive source samples");
+    settings.dirty = 0.0f;
+    engine.setSettings(settings);
+    auto padColor = engine.padMixerSettings(0);
+    padColor.dirty = 1.0f;
+    engine.setPadMixerSettings(0, padColor);
+    engine.process(nullptr, nullptr, left, right, 3U, &on, 1U);
+    close(left[0], right[0], "pad dirty mode renders mono");
+
+    midichopper::SamplerEngine filtered(48000.0, 1.0);
+    midichopper::PadData wave;
+    wave.sampleRate = 48000.0;
+    wave.frames = 2048U;
+    wave.stereo.resize(4096U);
+    for (std::uint32_t frame = 0; frame < wave.frames; ++frame) {
+        const float sample = std::sin(2.0 * 3.141592653589793 *
+            5000.0 * static_cast<double>(frame) / 48000.0);
+        wave.stereo[frame * 2U] = wave.stereo[frame * 2U + 1U] = sample;
+    }
+    check(filtered.importPad(0, wave), "import filter test tone");
+    auto filterSettings = filtered.settings();
+    filterSettings.monitorInput = false;
+    filtered.setSettings(filterSettings);
+    const auto renderEnergy = [&] {
+        std::array<float, 1024> outputL{}, outputR{};
+        filtered.process(nullptr, nullptr, outputL.data(), outputR.data(),
+                         static_cast<std::uint32_t>(outputL.size()), &on, 1U);
+        double energy = 0.0;
+        for (std::size_t frame = 256; frame < outputL.size(); ++frame)
+            energy += static_cast<double>(outputL[frame]) * outputL[frame];
+        return energy;
+    };
+    const double dryEnergy = renderEnergy();
+    auto padFilter = filtered.padMixerSettings(0);
+    padFilter.lowpass = 0.5f;
+    filtered.setPadMixerSettings(0, padFilter);
+    check(renderEnergy() < dryEnergy * 0.1,
+          "pad lowpass reaches playback voices");
+    padFilter.lowpass = 0.0f;
+    filtered.setPadMixerSettings(0, padFilter);
+    filterSettings.lowpass = 0.5f;
+    filtered.setSettings(filterSettings);
+    check(renderEnergy() < dryEnergy * 0.1,
+          "global lowpass reaches playback voices");
 }
 
 void visible_waveform_range() {
@@ -1445,6 +1554,7 @@ void unbounded_midi_source_preserves_late_note_off() {
 
 int main() {
     live_peak_meter();
+    color_effects();
     visible_waveform_range();
     sequential_boundaries_and_preroll();
     rechop_and_raw_preview();

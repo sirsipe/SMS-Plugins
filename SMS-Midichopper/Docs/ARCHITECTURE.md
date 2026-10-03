@@ -1,8 +1,6 @@
 # SMS-Midichopper architecture
 
-Audience: developers.
-
-SMS-Midichopper separates these layers:
+The layers are:
 
 - `src/core` is the framework-free C++20 capture/playback engine.
 - `src/plugin` adapts DPF parameters, audio, MIDI, and state; start with
@@ -58,6 +56,7 @@ Playback uses linear interpolation for source-rate conversion and semitone
 varispeed. Each pad has non-destructive region/ADSR and mixer settings; global
 volume, pan, and tune combine during playback. Active voices refresh mixer,
 ADSR, and End atomics per block; Start remains fixed until retrigger.
+The filter and Dirty processing contract is in [Mixing](../../Docs/AI/MIXING.md).
 
 See [Cut Point Editor](../../Docs/AI/CHOP-EDITOR.md) for boundary editing.
 

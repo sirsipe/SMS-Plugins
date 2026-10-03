@@ -11,12 +11,18 @@ inline constexpr float kMinimumSamplePan = -1.0f;
 inline constexpr float kMaximumSamplePan = 1.0f;
 inline constexpr float kMinimumTuneSemitones = -24.0f;
 inline constexpr float kMaximumTuneSemitones = 24.0f;
+inline constexpr float kMinimumFilterAmount = 0.0f;
+inline constexpr float kMaximumFilterAmount = 1.0f;
 
-/** Independent per-sample level, stereo balance, and musical tuning settings. */
+/** Per-sample level, balance, varispeed, and color settings. */
 struct SampleMixerSettings {
     float gainDecibels = 0.0f;
     float pan = 0.0f;
     float tuneSemitones = 0.0f;
+    float lowpass = 0.0f;
+    float highpass = 0.0f;
+    float filterSlope = 1.0f; // 0 = 6, 1 = 12, 2 = 24 dB/octave
+    float dirty = 0.0f;
 };
 
 [[nodiscard]] inline SampleMixerSettings sanitize(SampleMixerSettings value) noexcept
@@ -32,6 +38,12 @@ struct SampleMixerSettings {
     value.tuneSemitones = std::clamp(finiteOr(value.tuneSemitones, 0.0f),
                                      kMinimumTuneSemitones,
                                      kMaximumTuneSemitones);
+    value.lowpass = std::clamp(finiteOr(value.lowpass, 0.0f),
+                               kMinimumFilterAmount, kMaximumFilterAmount);
+    value.highpass = std::clamp(finiteOr(value.highpass, 0.0f),
+                                kMinimumFilterAmount, kMaximumFilterAmount);
+    value.filterSlope = std::clamp(std::round(finiteOr(value.filterSlope, 1.0f)), 0.0f, 2.0f);
+    value.dirty = finiteOr(value.dirty, 0.0f) >= 0.5f ? 1.0f : 0.0f;
     return value;
 }
 

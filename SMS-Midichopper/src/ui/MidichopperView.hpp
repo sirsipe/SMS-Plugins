@@ -28,6 +28,10 @@ struct ViewState {
     float outputGainDb = 0.0f;
     float globalPan = 0.0f;
     float globalTuneSemitones = 0.0f;
+    float globalLowpass = 0.0f;
+    float globalHighpass = 0.0f;
+    float globalFilterSlope = 1.0f;
+    float globalDirty = 0.0f;
     int maxVoices = static_cast<int>(kPadsPerBank);
     int bank = 0;
     int layout = 0;

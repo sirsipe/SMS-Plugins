@@ -57,6 +57,8 @@ Layouts provide 16, 12, or 8 pads. Smaller layouts hide slots without deleting
 samples; sequential capture skips them.
 
 **Sample Editor** groups waveform and ADSR above per-pad Gain, Pan, and Tune.
+Both mixers offer Lowpass, Highpass, Slope, and Dirty. See the
+[mixing guide](Docs/MIXING.md).
 Edits reach active voices next block except Start, which applies on retrigger.
 **Play on Select** auditions selections. Arm hides the editor.
 Over the waveform, **Ctrl + wheel** zooms around the pointer and **Shift + wheel**

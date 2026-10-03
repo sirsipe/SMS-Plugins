@@ -3,6 +3,7 @@
 #include "Configuration.hpp"
 #include "Audio/WaveformSummary.hpp"
 #include "DSP/AdsrEnvelope.hpp"
+#include "DSP/ColorEffects.hpp"
 #include "DSP/SampleMixerSettings.hpp"
 #include "DSP/SamplePlaybackSettings.hpp"
 
@@ -55,6 +56,10 @@ struct EngineSettings {
     float gain = 1.0f;
     float pan = 0.0f;
     float tuneSemitones = 0.0f;
+    float lowpass = 0.0f;
+    float highpass = 0.0f;
+    float filterSlope = 1.0f;
+    float dirty = 0.0f;
     std::uint8_t maxVoices = static_cast<std::uint8_t>(kPadsPerBank);
 };
 
@@ -228,6 +233,9 @@ private:
         float velocityGain = 1.0f;
         float mixerGainLeft = 1.0f;
         float mixerGainRight = 1.0f;
+        bool dirtyPlayback = false;
+        sms::dsp::ColorFilters padFilters;
+        sms::dsp::ColorFilters globalFilters;
         sms::dsp::AdsrEnvelope envelope;
         float recordPeak = 0.0f;
         double recordSumSquares = 0.0;
@@ -248,6 +256,10 @@ private:
         std::atomic<float> mixerGainDecibels{0.0f};
         std::atomic<float> mixerPan{0.0f};
         std::atomic<float> mixerTuneSemitones{0.0f};
+        std::atomic<float> mixerLowpass{0.0f};
+        std::atomic<float> mixerHighpass{0.0f};
+        std::atomic<float> mixerFilterSlope{1.0f};
+        std::atomic<float> mixerDirty{0.0f};
         Pad() = default;
         Pad(const Pad&) = delete;
         Pad& operator=(const Pad&) = delete;

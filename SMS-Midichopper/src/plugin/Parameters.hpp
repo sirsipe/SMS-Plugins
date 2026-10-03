@@ -43,6 +43,10 @@ enum Parameter : std::uint32_t {
     kParameterPlaybackPosition,
     kParameterGlobalPan,
     kParameterGlobalTuneSemitones,
+    kParameterGlobalLowpass,
+    kParameterGlobalHighpass,
+    kParameterGlobalFilterSlope,
+    kParameterGlobalDirty,
     kParameterCount,
 };
 
@@ -90,6 +94,8 @@ inline constexpr ParameterRange chopPreviewPosition{
 inline constexpr ParameterRange playbackPosition = chopPreviewPosition;
 inline constexpr ParameterRange globalPan{0.0f, -1.0f, 1.0f};
 inline constexpr ParameterRange globalTuneSemitones{0.0f, -24.0f, 24.0f};
+inline constexpr ParameterRange filterAmount{0.0f, 0.0f, 1.0f};
+inline constexpr ParameterRange filterSlope{1.0f, 0.0f, 2.0f};
 } // namespace parameterRanges
 
 [[nodiscard]] inline constexpr bool inputMonitorEnabled(const float mode,
@@ -172,6 +178,10 @@ private:
     case kParameterPlaybackPosition: return parameterRanges::playbackPosition;
     case kParameterGlobalPan: return parameterRanges::globalPan;
     case kParameterGlobalTuneSemitones: return parameterRanges::globalTuneSemitones;
+    case kParameterGlobalLowpass:
+    case kParameterGlobalHighpass: return parameterRanges::filterAmount;
+    case kParameterGlobalFilterSlope: return parameterRanges::filterSlope;
+    case kParameterGlobalDirty: return parameterRanges::toggle;
     default: return parameterRanges::toggle;
     }
 }

@@ -174,6 +174,10 @@ inline void resetMixerKnob(sms::dsp::SampleMixerSettings& settings,
     case 0: settings.gainDecibels = 0.0f; break;
     case 1: settings.pan = 0.0f; break;
     case 2: settings.tuneSemitones = 0.0f; break;
+    case 3: settings.lowpass = 0.0f; break;
+    case 4: settings.highpass = 0.0f; break;
+    case 5: settings.filterSlope = 1.0f; break;
+    case 6: settings.dirty = 0.0f; break;
     default: return;
     }
     settings = sms::dsp::sanitize(settings);
@@ -247,17 +251,27 @@ inline constexpr float kFineKnobScale = 0.1f;
     return std::clamp(adjusted, minimum, maximum);
 }
 
-/** Map a bipolar control so its zero value is drawn at twelve o'clock. */
+/** Map unipolar values over the full sweep and bipolar zero to twelve o'clock. */
 [[nodiscard]] inline float bipolarKnobPosition(const float value,
                                               const float minimum,
                                               const float maximum) noexcept
 {
     if (!std::isfinite(value) || !std::isfinite(minimum) || !std::isfinite(maximum) ||
-        minimum >= 0.0f || maximum <= 0.0f)
+        minimum >= maximum)
         return 0.5f;
+    if (minimum >= 0.0f || maximum <= 0.0f)
+        return std::clamp((value - minimum) / (maximum - minimum), 0.0f, 1.0f);
     return value < 0.0f
         ? 0.5f * std::clamp(value / -minimum + 1.0f, 0.0f, 1.0f)
         : 0.5f + 0.5f * std::clamp(value / maximum, 0.0f, 1.0f);
+}
+
+[[nodiscard]] inline float slopeValueAtX(const float x,
+                                         const sms::ui::Rect bounds) noexcept
+{
+    const auto track = layout::slopeTrack(bounds);
+    const float position = std::clamp((x - track.x) / track.width, 0.0f, 1.0f);
+    return position < 0.25f ? 0.0f : position < 0.75f ? 1.0f : 2.0f;
 }
 
 /** Editor data only needs reloading when the requested pad changes. */
@@ -467,8 +481,8 @@ interactiveTargetAt(const sms::ui::Point point, const InteractionContext& contex
             if (uiLayout::editorSlider(slider).contains(point))
                 return target(InteractiveType::envelopeSlider, slider);
         }
-        for (int slider = 0; slider < 3; ++slider) {
-            if (uiLayout::mixerValueLabel(slider).contains(point))
+        for (int slider = 0; slider < 7; ++slider) {
+            if (slider != 5 && uiLayout::mixerValueLabel(slider).contains(point))
                 return target(InteractiveType::mixerValueLabel, slider);
             if (uiLayout::mixerKnob(slider).contains(point))
                 return target(InteractiveType::mixerKnob, slider);
@@ -516,8 +530,8 @@ interactiveTargetAt(const sms::ui::Point point, const InteractionContext& contex
     }
     if (uiLayout::monitor.contains(point))
         return target(InteractiveType::monitor);
-    for (int knob = 0; knob < 3; ++knob) {
-        if (uiLayout::globalMixerValueLabel(knob).contains(point))
+    for (int knob = 0; knob < 7; ++knob) {
+        if (knob != 5 && uiLayout::globalMixerValueLabel(knob).contains(point))
             return target(InteractiveType::globalMixerValueLabel, knob);
         if (uiLayout::globalMixerKnob(knob).contains(point))
             return target(InteractiveType::globalMixerKnob, knob);

@@ -10,6 +10,7 @@ the row needed for the task. Paths in commands are relative to the repo root.
 | Dev Container setup | [Development](DEVELOPMENT.md), [Testing](TESTING.md) | [Configuration](../../.devcontainer/devcontainer.json) |
 | Tests, LV2 discovery, host/UI checks | [Testing](TESTING.md) | [Tests](../../SMS-Midichopper/tests/) |
 | Engine, parameters, state, UI | [Midichopper architecture](../../SMS-Midichopper/Docs/ARCHITECTURE.md) | [Plugin source](../../SMS-Midichopper/src/) |
+| Filter and Dirty implementation | [Mixing contract](MIXING.md) | [DSP](../../Common-Src/DSP/ColorEffects.hpp) |
 | Shared DSP, codecs, geometry | [Common-Src map](../../Common-Src/README.md) | [Common-Src](../../Common-Src/) |
 | Shared DPF UI, pads, waveform | [Common-UI map](../../Common-UI/README.md) | [Common-UI](../../Common-UI/) |
 | Feature scope and direction | [Vision](../../SMS-Midichopper/Docs/VISION.md) | Intended scope; not an implementation checklist |
@@ -18,6 +19,7 @@ the row needed for the task. Paths in commands are relative to the repo root.
 | Pad WAV import/export | [WAV I/O design](PAD-WAV-IO.md) | Formats, real-time boundary, dialogs, support notes |
 | VST3 state and outputs | [DPF VST3 constraints](DPF-VST3-CONSTRAINTS.md) | UI synchronization and fixed/dynamic bus boundaries |
 | User-visible behavior | [Plugin guide](../../SMS-Midichopper/README.md) | Verify against affected source/tests |
+| User mixing controls | [Mixing guide](../../SMS-Midichopper/Docs/MIXING.md) | Pad and global effects |
 | User WAV workflow | [WAV file guide](../../SMS-Midichopper/Docs/WAV-FILES.md) | Current formats and Linux requirements |
 | User cut-point workflow | [Adjust cut points](../../SMS-Midichopper/Docs/CHOP-EDITOR.md) | Context action, raw preview, Apply/Exit behavior |
 | Project overview | [Project README](../../README.md) | Human entry point |
@@ -25,6 +27,6 @@ the row needed for the task. Paths in commands are relative to the repo root.
 | CI, release preparation | [Releasing](../RELEASING.md) | [Workflows](../../.github/workflows/) |
 | Agent integration | [Development](DEVELOPMENT.md) | [Claude alias](../../CLAUDE.md), [Copilot adapter](../../.github/copilot-instructions.md) |
 
-Every repository-owned Markdown page belongs here, except this index itself.
+Index every repository-owned Markdown page except this index.
 Shared source maps and architecture are AI references despite their historical
 paths. Do not read external framework docs until a task requires them.

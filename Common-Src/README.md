@@ -9,7 +9,9 @@ host, or a specific plug-in's state model.
 - `DSP/SamplePlaybackSettings.hpp`: sanitized, non-destructive sample region
   and ADSR value type.
 - `DSP/SampleMixerSettings.hpp`: sanitized per-sample gain, stereo balance, and
-  semitone tune value type.
+  semitone tune, filter, and dirty-mode settings.
+- `DSP/ColorEffects.hpp`: allocation-free per-voice stereo filters and 26.04 kHz,
+  12-bit mono source conversion.
 - `DSP/AdsrEnvelope.hpp`: allocation-free per-voice linear ADSR processor with
   phase-preserving live setting updates.
 - `DSP/PeakMeter.hpp`: allocation-free stereo sample-peak follower with hold
@@ -22,7 +24,8 @@ host, or a specific plug-in's state model.
   that lets a control thread access callback-owned state immediately while the
   callback is idle, or at a block boundary while it is running.
 - `State/SamplePlaybackSettingsCodec.hpp`: versioned settings serialization.
-- `State/SampleMixerSettingsCodec.hpp`: versioned mixer-settings serialization.
+- `State/SampleMixerSettingsCodec.hpp`: versioned mixer-settings serialization;
+  MX1 pad states load with the new effects off.
 - `UI/Geometry.hpp`: renderer-independent rectangles and reusable pad-grid
   layout/hit testing.
 

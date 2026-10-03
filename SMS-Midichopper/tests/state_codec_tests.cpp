@@ -115,6 +115,10 @@ void mixerStateRoundTrip()
     original.gainDecibels = -7.25f;
     original.pan = 0.375f;
     original.tuneSemitones = -11.5f;
+    original.lowpass = 0.6f;
+    original.highpass = 0.2f;
+    original.filterSlope = 2.0f;
+    original.dirty = 1.0f;
     const std::string encoded = midichopper::plugin::encodeMixerSettings(original);
     sms::dsp::SampleMixerSettings decoded;
     check(midichopper::plugin::decodeMixerSettings(encoded.c_str(), decoded),
@@ -125,7 +129,13 @@ void mixerStateRoundTrip()
           "mixer pan round-trips");
     check(std::abs(decoded.tuneSemitones - original.tuneSemitones) < 1.0e-6f,
           "mixer tune round-trips");
+    check(decoded.lowpass == original.lowpass &&
+          decoded.highpass == original.highpass &&
+          decoded.filterSlope == original.filterSlope &&
+          decoded.dirty == original.dirty,
+          "mixer effects round-trip");
     check(!midichopper::plugin::decodeMixerSettings("MX1;broken", decoded) &&
+          !midichopper::plugin::decodeMixerSettings("MX2;0;0;0;0;0;1", decoded) &&
           !midichopper::plugin::decodeMixerSettings("SP1;0;0;0", decoded),
           "malformed and wrong-version mixer state is rejected");
 
@@ -135,6 +145,9 @@ void mixerStateRoundTrip()
           decoded.pan == sms::dsp::kMaximumSamplePan &&
           decoded.tuneSemitones == sms::dsp::kMaximumTuneSemitones,
           "decoded mixer state clamps to supported ranges");
+    check(decoded.lowpass == 0.0f && decoded.highpass == 0.0f &&
+          decoded.filterSlope == 1.0f && decoded.dirty == 0.0f,
+          "legacy mixer state restores with effects bypassed");
 }
 
 void chopProtocolRoundTrip()

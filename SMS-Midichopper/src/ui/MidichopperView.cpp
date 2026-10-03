@@ -118,6 +118,72 @@ private:
             hovered(type, index));
     }
 
+    void drawDirtySwitch(const sms::ui::Rect bounds, const InteractiveType type,
+                         const bool enabled)
+    {
+        const auto& colors = sms::ui::dpf::theme();
+        const float centerX = bounds.x + bounds.width * 0.5f;
+        const float slotY = bounds.y + 20.0f;
+        canvas_.fontFace(NANOVG_DEJAVU_SANS_TTF);
+        canvas_.fontSize(9.0f);
+        canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_CENTER |
+                          DGL_NAMESPACE::NanoVG::ALIGN_TOP);
+        canvas_.fillColor(colors.contentSecondary);
+        canvas_.text(centerX, bounds.y, "DIRTY", nullptr);
+        canvas_.beginPath();
+        canvas_.roundedRect(centerX - 23.0f, slotY, 46.0f, 23.0f, 11.0f);
+        canvas_.fillPaint(canvas_.linearGradient(centerX, slotY, centerX,
+            slotY + 23.0f, colors.shadow, colors.recess));
+        canvas_.fill();
+        canvas_.strokeColor(colors.recessEdge);
+        canvas_.strokeWidth(1.5f);
+        canvas_.stroke();
+        const float leverX = centerX + (enabled ? 11.0f : -11.0f);
+        canvas_.beginPath();
+        canvas_.circle(leverX, slotY + 11.5f, 9.5f);
+        canvas_.fillPaint(canvas_.radialGradient(leverX - 3.0f, slotY + 7.0f,
+            1.0f, 14.0f, enabled ? colors.controlAccent.plus(28) : colors.edgeHighlight,
+            enabled ? colors.controlAccent.minus(45) : colors.controlBottom));
+        canvas_.fill();
+        canvas_.strokeColor(hovered(type, 6) ? colors.controlAccent : colors.outline);
+        canvas_.strokeWidth(1.3f);
+        canvas_.stroke();
+        canvas_.fillColor(enabled ? colors.controlAccent : colors.contentSecondary);
+        canvas_.text(centerX, bounds.y + 56.0f, enabled ? "ON" : "OFF", nullptr);
+    }
+
+    void drawSlopeSlider(const sms::ui::Rect bounds, const InteractiveType type,
+                         const float slope)
+    {
+        const auto& colors = sms::ui::dpf::theme();
+        const auto track = uiLayout::slopeTrack(bounds);
+        const int index = std::clamp(static_cast<int>(std::lround(slope)), 0, 2);
+        canvas_.fontFace(NANOVG_DEJAVU_SANS_TTF);
+        canvas_.fontSize(9.0f);
+        canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_CENTER |
+                          DGL_NAMESPACE::NanoVG::ALIGN_TOP);
+        canvas_.fillColor(colors.contentSecondary);
+        canvas_.text(bounds.x + bounds.width * 0.5f, bounds.y + 2.0f, "SLOPE", nullptr);
+        char value[20];
+        std::snprintf(value, sizeof(value), "%d dB", index == 0 ? 6 : index == 1 ? 12 : 24);
+        canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_RIGHT |
+                          DGL_NAMESPACE::NanoVG::ALIGN_TOP);
+        canvas_.fillColor(colors.contentPrimary);
+        canvas_.text(track.x + track.width, bounds.y + 5.0f, value, nullptr);
+        sms::ui::dpf::drawSlider(canvas_, track.x, track.y, track.width,
+            static_cast<float>(index) * 0.5f, colors.controlAccent,
+            hovered(type, 5));
+        for (int tick = 0; tick < 3; ++tick) {
+            const float tickX = track.x + track.width * static_cast<float>(tick) * 0.5f;
+            canvas_.beginPath();
+            canvas_.moveTo(tickX, track.y - 4.0f);
+            canvas_.lineTo(tickX, track.y - 1.0f);
+            canvas_.strokeColor(colors.contentSecondary.withAlpha(0.65f));
+            canvas_.strokeWidth(1.0f);
+            canvas_.stroke();
+        }
+    }
+
     void drawGlobalMixer()
     {
         const auto& colors = sms::ui::dpf::theme();
@@ -130,6 +196,8 @@ private:
         char volume[24];
         char pan[24];
         char tune[24];
+        char low[16];
+        char high[16];
         std::snprintf(volume, sizeof(volume), "%+.1f dB", state_.outputGainDb);
         if (std::abs(state_.globalPan) < 0.005f)
             std::snprintf(pan, sizeof(pan), "CENTER");
@@ -137,16 +205,26 @@ private:
             std::snprintf(pan, sizeof(pan), "%c%d", state_.globalPan < 0.0f ? 'L' : 'R',
                 static_cast<int>(std::lround(std::abs(state_.globalPan) * 100.0f)));
         std::snprintf(tune, sizeof(tune), "%+.2f st", state_.globalTuneSemitones);
+        std::snprintf(low, sizeof(low), "%.0f%%", state_.globalLowpass * 100.0f);
+        std::snprintf(high, sizeof(high), "%.0f%%", state_.globalHighpass * 100.0f);
         drawMixerKnob(uiLayout::globalMixerKnob(0), InteractiveType::globalMixerKnob,
             0, "VOLUME", state_.outputGainDb, plugin::parameterRanges::outputGainDb.minimum,
             plugin::parameterRanges::outputGainDb.maximum, volume);
         drawMixerKnob(uiLayout::globalMixerKnob(1), InteractiveType::globalMixerKnob,
             1, "PAN", state_.globalPan, plugin::parameterRanges::globalPan.minimum,
             plugin::parameterRanges::globalPan.maximum, pan);
+        drawDirtySwitch(uiLayout::globalMixerKnob(6), InteractiveType::globalMixerKnob,
+            state_.globalDirty >= 0.5f);
         drawMixerKnob(uiLayout::globalMixerKnob(2), InteractiveType::globalMixerKnob,
             2, "TUNE", state_.globalTuneSemitones,
             plugin::parameterRanges::globalTuneSemitones.minimum,
             plugin::parameterRanges::globalTuneSemitones.maximum, tune);
+        drawMixerKnob(uiLayout::globalMixerKnob(3), InteractiveType::globalMixerKnob,
+            3, "LOWPASS", state_.globalLowpass, 0.0f, 1.0f, low);
+        drawMixerKnob(uiLayout::globalMixerKnob(4), InteractiveType::globalMixerKnob,
+            4, "HIGHPASS", state_.globalHighpass, 0.0f, 1.0f, high);
+        drawSlopeSlider(uiLayout::globalMixerKnob(5), InteractiveType::globalMixerKnob,
+            state_.globalFilterSlope);
     }
 
     [[nodiscard]] int globalPad(const int localPad) const noexcept
@@ -449,6 +527,8 @@ private:
         char gain[24];
         char pan[24];
         char tune[24];
+        char low[16];
+        char high[16];
         std::snprintf(gain, sizeof(gain), "%+.1f dB", state_.mixerSettings.gainDecibels);
         if (std::abs(state_.mixerSettings.pan) < 0.005f)
             std::snprintf(pan, sizeof(pan), "CENTER");
@@ -457,6 +537,8 @@ private:
                 state_.mixerSettings.pan < 0.0f ? 'L' : 'R',
                 static_cast<int>(std::lround(std::abs(state_.mixerSettings.pan) * 100.0f)));
         std::snprintf(tune, sizeof(tune), "%+.2f st", state_.mixerSettings.tuneSemitones);
+        std::snprintf(low, sizeof(low), "%.0f%%", state_.mixerSettings.lowpass * 100.0f);
+        std::snprintf(high, sizeof(high), "%.0f%%", state_.mixerSettings.highpass * 100.0f);
         drawMixerKnob(uiLayout::mixerKnob(0), InteractiveType::mixerKnob,
             0, "GAIN", state_.mixerSettings.gainDecibels,
             sms::dsp::kMinimumSampleGainDecibels,
@@ -464,10 +546,25 @@ private:
         drawMixerKnob(uiLayout::mixerKnob(1), InteractiveType::mixerKnob,
             1, "PAN", state_.mixerSettings.pan,
             sms::dsp::kMinimumSamplePan, sms::dsp::kMaximumSamplePan, pan);
+        canvas_.beginPath();
+        canvas_.moveTo(uiLayout::padMixerSeparator.x, uiLayout::padMixerSeparator.y);
+        canvas_.lineTo(uiLayout::padMixerSeparator.x,
+                       uiLayout::padMixerSeparator.y + uiLayout::padMixerSeparator.height);
+        canvas_.strokeColor(colors.recessEdge);
+        canvas_.strokeWidth(1.5f);
+        canvas_.stroke();
+        drawDirtySwitch(uiLayout::mixerKnob(6), InteractiveType::mixerKnob,
+            state_.mixerSettings.dirty >= 0.5f);
         drawMixerKnob(uiLayout::mixerKnob(2), InteractiveType::mixerKnob,
             2, "TUNE", state_.mixerSettings.tuneSemitones,
             sms::dsp::kMinimumTuneSemitones,
             sms::dsp::kMaximumTuneSemitones, tune);
+        drawMixerKnob(uiLayout::mixerKnob(3), InteractiveType::mixerKnob,
+            3, "LOWPASS", state_.mixerSettings.lowpass, 0.0f, 1.0f, low);
+        drawMixerKnob(uiLayout::mixerKnob(4), InteractiveType::mixerKnob,
+            4, "HIGHPASS", state_.mixerSettings.highpass, 0.0f, 1.0f, high);
+        drawSlopeSlider(uiLayout::mixerKnob(5), InteractiveType::mixerKnob,
+            state_.mixerSettings.filterSlope);
     }
 
     void drawChopEditor()
@@ -859,7 +956,6 @@ private:
             canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_LEFT |
                               DGL_NAMESPACE::NanoVG::ALIGN_TOP);
             canvas_.fillColor(colors.contentSecondary);
-            canvas_.text(994.0f, uiLayout::chopLabelY, "CHOP", nullptr);
             sms::ui::dpf::drawAction(canvas_, uiLayout::finalizeAction, "FINALIZE",
                 colors.activityPlayback, false, hovered(InteractiveType::finalizeAction));
             sms::ui::dpf::drawAction(canvas_, uiLayout::undoAction, "UNDO",

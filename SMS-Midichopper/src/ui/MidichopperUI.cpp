@@ -499,6 +499,22 @@ protected:
             changed = fGlobalTune != value;
             fGlobalTune = value;
             break;
+        case kParameterGlobalLowpass:
+            changed = fGlobalLowpass != value;
+            fGlobalLowpass = value;
+            break;
+        case kParameterGlobalHighpass:
+            changed = fGlobalHighpass != value;
+            fGlobalHighpass = value;
+            break;
+        case kParameterGlobalFilterSlope:
+            changed = fGlobalFilterSlope != value;
+            fGlobalFilterSlope = value;
+            break;
+        case kParameterGlobalDirty:
+            changed = fGlobalDirty != value;
+            fGlobalDirty = value;
+            break;
         case kParameterMaxVoices: {
             const int maxVoices = std::clamp(static_cast<int>(std::lround(value)),
                 static_cast<int>(parameterRanges::maxVoices.minimum),
@@ -905,6 +921,7 @@ protected:
         const midichopper::ui::ViewState view{
             fArm, fRecordMode, fFixedLength, fPlaybackMode, fMonitor,
             fStartPad, fPreRoll, fBaseNote, fMidiBankMode, fGain, fGlobalPan, fGlobalTune,
+            fGlobalLowpass, fGlobalHighpass, fGlobalFilterSlope, fGlobalDirty,
             fMaxVoices, fBank, fLayout,
             fSelectedPad, fCurrentPad, fPadPress.pad(), fClearArmed, fMenuOpen,
             fPadContextMenuOpen, fPadContextMenu,
@@ -1087,6 +1104,21 @@ protected:
             }
             if (fEditorMode)
             {
+                if ((midichopper::ui::isTarget(clicked,
+                         midichopper::ui::InteractiveType::mixerKnob) ||
+                     midichopper::ui::isTarget(clicked,
+                         midichopper::ui::InteractiveType::mixerValueLabel)) &&
+                    clicked.index >= 5) {
+                    if (clicked.index == 5) {
+                        fMixerDragIndex = 5;
+                        updateMixerDrag(x, y);
+                    } else {
+                        fMixerSettings.dirty = fMixerSettings.dirty >= 0.5f ? 0.0f : 1.0f;
+                        commitMixerSettings();
+                    }
+                    requestRepaint();
+                    return true;
+                }
                 const auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
                     std::chrono::steady_clock::now().time_since_epoch()).count();
                 if (midichopper::ui::isTarget(
@@ -1187,6 +1219,24 @@ protected:
 
             const auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::steady_clock::now().time_since_epoch()).count();
+            if ((midichopper::ui::isTarget(clicked,
+                     midichopper::ui::InteractiveType::globalMixerKnob) ||
+                 midichopper::ui::isTarget(clicked,
+                     midichopper::ui::InteractiveType::globalMixerValueLabel)) &&
+                clicked.index >= 5) {
+                if (clicked.index == 5) {
+                    fGlobalMixerDragIndex = 5;
+                    editParameter(kParameterGlobalFilterSlope, true);
+                    updateGlobalMixerDrag(x, y);
+                } else {
+                    editParameter(kParameterGlobalDirty, true);
+                    setControlValue(kParameterGlobalDirty,
+                        fGlobalDirty >= 0.5f ? 0.0f : 1.0f);
+                    editParameter(kParameterGlobalDirty, false);
+                }
+                requestRepaint();
+                return true;
+            }
             if (midichopper::ui::isTarget(
                     clicked, midichopper::ui::InteractiveType::globalMixerValueLabel)) {
                 if (clicked == fMixerValueEntryTarget)
@@ -1197,7 +1247,8 @@ protected:
                 } else {
                     fGlobalMixerDragIndex = clicked.index;
                     fGlobalMixerDragStartY = y;
-                    fGlobalMixerDragStart = {fGain, fGlobalPan, fGlobalTune};
+                    fGlobalMixerDragStart = {fGain, fGlobalPan, fGlobalTune,
+                        fGlobalLowpass, fGlobalHighpass, fGlobalFilterSlope, fGlobalDirty};
                     fGlobalMixerDragAdjustment = knobAdjustment(ev.mod);
                 }
                 return true;
@@ -1318,7 +1369,8 @@ protected:
                     clicked, midichopper::ui::InteractiveType::globalMixerKnob)) {
                 fGlobalMixerDragIndex = clicked.index;
                 fGlobalMixerDragStartY = y;
-                fGlobalMixerDragStart = {fGain, fGlobalPan, fGlobalTune};
+                fGlobalMixerDragStart = {fGain, fGlobalPan, fGlobalTune,
+                    fGlobalLowpass, fGlobalHighpass, fGlobalFilterSlope, fGlobalDirty};
                 fGlobalMixerDragAdjustment = knobAdjustment(ev.mod);
                 return true;
             }
@@ -1389,6 +1441,8 @@ protected:
         }
         else if (fGlobalMixerDragIndex >= 0)
         {
+            if (fGlobalMixerDragIndex == 5)
+                editParameter(kParameterGlobalFilterSlope, false);
             fGlobalMixerDragIndex = -1;
             requestRepaint();
             return true;
@@ -1433,11 +1487,11 @@ protected:
             return true;
         }
         if (fEditorMode && fMixerDragIndex >= 0) {
-            updateMixerDrag(y);
+            updateMixerDrag(x, y);
             return true;
         }
         if (fGlobalMixerDragIndex >= 0) {
-            updateGlobalMixerDrag(y);
+            updateGlobalMixerDrag(x, y);
             return true;
         }
         const auto hovered = resolveInteractiveTarget(x, y);
@@ -1568,6 +1622,23 @@ protected:
                     sms::dsp::kMinimumTuneSemitones,
                     sms::dsp::kMaximumTuneSemitones, adjustment);
                 break;
+            case 3:
+                fMixerSettings.lowpass = midichopper::ui::knobWheelAdjustedValue(
+                    fMixerSettings.lowpass, delta, 0.025f, 0.1f, 0.0f, 1.0f,
+                    adjustment);
+                break;
+            case 4:
+                fMixerSettings.highpass = midichopper::ui::knobWheelAdjustedValue(
+                    fMixerSettings.highpass, delta, 0.025f, 0.1f, 0.0f, 1.0f,
+                    adjustment);
+                break;
+            case 5:
+                fMixerSettings.filterSlope = std::clamp(fMixerSettings.filterSlope +
+                    static_cast<float>(delta > 0 ? 1 : -1), 0.0f, 2.0f);
+                break;
+            case 6:
+                fMixerSettings.dirty = fMixerSettings.dirty >= 0.5f ? 0.0f : 1.0f;
+                break;
             default:
                 return false;
             }
@@ -1597,6 +1668,25 @@ protected:
                     midichopper::ui::knobWheelAdjustedValue(fGlobalTune, delta, 0.25f, 1.0f,
                         parameterRanges::globalTuneSemitones.minimum,
                         parameterRanges::globalTuneSemitones.maximum, adjustment));
+                break;
+            case 3:
+                setControlValueFromWheel(kParameterGlobalLowpass,
+                    midichopper::ui::knobWheelAdjustedValue(fGlobalLowpass, delta,
+                        0.025f, 0.1f, 0.0f, 1.0f, adjustment));
+                break;
+            case 4:
+                setControlValueFromWheel(kParameterGlobalHighpass,
+                    midichopper::ui::knobWheelAdjustedValue(fGlobalHighpass, delta,
+                        0.025f, 0.1f, 0.0f, 1.0f, adjustment));
+                break;
+            case 5:
+                setControlValueFromWheel(kParameterGlobalFilterSlope,
+                    std::clamp(fGlobalFilterSlope + static_cast<float>(delta > 0 ? 1 : -1),
+                        0.0f, 2.0f));
+                break;
+            case 6:
+                setControlValueFromWheel(kParameterGlobalDirty,
+                    fGlobalDirty >= 0.5f ? 0.0f : 1.0f);
                 break;
             default:
                 return false;
@@ -1768,6 +1858,10 @@ private:
     float fGain;
     float fGlobalPan;
     float fGlobalTune;
+    float fGlobalLowpass = 0.0f;
+    float fGlobalHighpass = 0.0f;
+    float fGlobalFilterSlope = 1.0f;
+    float fGlobalDirty = 0.0f;
     int fMaxVoices;
     int fBank;
     int fLayout;
@@ -3073,7 +3167,7 @@ private:
     void beginMixerValueEntry(const sms::ui::InteractiveTarget target)
     {
         if (!midichopper::ui::isMixerValueLabel(target) ||
-            target.index < 0 || target.index >= 3)
+            target.index < 0 || target.index >= 5)
             return;
 
         float displayedValue = 0.0f;
@@ -3083,6 +3177,8 @@ private:
             case 0: displayedValue = fGain; break;
             case 1: displayedValue = fGlobalPan * 100.0f; break;
             case 2: displayedValue = fGlobalTune; break;
+            case 3: displayedValue = fGlobalLowpass * 100.0f; break;
+            case 4: displayedValue = fGlobalHighpass * 100.0f; break;
             default: return;
             }
             fMixerValueEntryPad = -1;
@@ -3091,6 +3187,8 @@ private:
             case 0: displayedValue = fMixerSettings.gainDecibels; break;
             case 1: displayedValue = fMixerSettings.pan * 100.0f; break;
             case 2: displayedValue = fMixerSettings.tuneSemitones; break;
+            case 3: displayedValue = fMixerSettings.lowpass * 100.0f; break;
+            case 4: displayedValue = fMixerSettings.highpass * 100.0f; break;
             default: return;
             }
             fMixerValueEntryPad = fSelectedPad;
@@ -3118,12 +3216,13 @@ private:
     {
         const auto target = fMixerValueEntryTarget;
         if (!midichopper::ui::isMixerValueLabel(target) ||
-            target.index < 0 || target.index >= 3)
+            target.index < 0 || target.index >= 5)
             return;
 
         float minimum = 0.0f;
         float maximum = 1.0f;
-        float displayScale = target.index == 1 ? 0.01f : 1.0f;
+        float displayScale = (target.index == 1 || target.index == 3 ||
+                              target.index == 4) ? 0.01f : 1.0f;
         std::uint32_t parameter = kParameterOutputGainDb;
         const bool global = midichopper::ui::isTarget(
             target, midichopper::ui::InteractiveType::globalMixerValueLabel);
@@ -3143,6 +3242,12 @@ private:
                 minimum = parameterRanges::globalTuneSemitones.minimum;
                 maximum = parameterRanges::globalTuneSemitones.maximum;
                 parameter = kParameterGlobalTuneSemitones;
+                break;
+            case 3:
+                parameter = kParameterGlobalLowpass;
+                break;
+            case 4:
+                parameter = kParameterGlobalHighpass;
                 break;
             default: return;
             }
@@ -3164,6 +3269,9 @@ private:
             case 2:
                 minimum = sms::dsp::kMinimumTuneSemitones;
                 maximum = sms::dsp::kMaximumTuneSemitones;
+                break;
+            case 3:
+            case 4:
                 break;
             default: return;
             }
@@ -3187,6 +3295,8 @@ private:
             case 0: fMixerSettings.gainDecibels = *value; break;
             case 1: fMixerSettings.pan = *value; break;
             case 2: fMixerSettings.tuneSemitones = *value; break;
+            case 3: fMixerSettings.lowpass = *value; break;
+            case 4: fMixerSettings.highpass = *value; break;
             default: return;
             }
             commitMixerSettings();
@@ -3204,6 +3314,10 @@ private:
             case 0: setControlValue(kParameterOutputGainDb, 0.0f); break;
             case 1: setControlValue(kParameterGlobalPan, 0.0f); break;
             case 2: setControlValue(kParameterGlobalTuneSemitones, 0.0f); break;
+            case 3: setControlValue(kParameterGlobalLowpass, 0.0f); break;
+            case 4: setControlValue(kParameterGlobalHighpass, 0.0f); break;
+            case 5: setControlValue(kParameterGlobalFilterSlope, 1.0f); break;
+            case 6: setControlValue(kParameterGlobalDirty, 0.0f); break;
             default: return false;
             }
             requestRepaint();
@@ -3228,9 +3342,14 @@ private:
         return false;
     }
 
-    void updateGlobalMixerDrag(const float y)
+    void updateGlobalMixerDrag(const float x, const float y)
     {
-        if (fGlobalMixerDragIndex < 0 || fGlobalMixerDragIndex >= 3)
+        if (fGlobalMixerDragIndex == 5) {
+            setControlValue(kParameterGlobalFilterSlope,
+                midichopper::ui::slopeValueAtX(x, uiLayout::globalMixerKnob(5)));
+            return;
+        }
+        if (fGlobalMixerDragIndex < 0 || fGlobalMixerDragIndex >= 5)
             return;
         float startValue = 0.0f;
         float minimum = 0.0f;
@@ -3256,6 +3375,18 @@ private:
             maximum = parameterRanges::globalTuneSemitones.maximum;
             startValue = fGlobalMixerDragStart.tuneSemitones;
             parameter = kParameterGlobalTuneSemitones;
+            break;
+        case 3:
+            minimum = 0.0f; maximum = 1.0f;
+            startValue = fGlobalMixerDragStart.lowpass;
+            steppedIncrement = 0.05f;
+            parameter = kParameterGlobalLowpass;
+            break;
+        case 4:
+            minimum = 0.0f; maximum = 1.0f;
+            startValue = fGlobalMixerDragStart.highpass;
+            steppedIncrement = 0.05f;
+            parameter = kParameterGlobalHighpass;
             break;
         default:
             return;
@@ -3326,9 +3457,16 @@ private:
         return false;
     }
 
-    void updateMixerDrag(const float y)
+    void updateMixerDrag(const float x, const float y)
     {
-        if (fMixerDragIndex < 0 || fMixerDragIndex >= 3)
+        if (fMixerDragIndex == 5) {
+            fMixerSettings.filterSlope = midichopper::ui::slopeValueAtX(
+                x, uiLayout::mixerKnob(5));
+            commitMixerSettings();
+            requestRepaint();
+            return;
+        }
+        if (fMixerDragIndex < 0 || fMixerDragIndex >= 5)
             return;
         float startValue = 0.0f;
         float minimum = 0.0f;
@@ -3351,6 +3489,14 @@ private:
             minimum = sms::dsp::kMinimumTuneSemitones;
             maximum = sms::dsp::kMaximumTuneSemitones;
             break;
+        case 3:
+            startValue = fMixerDragStartSettings.lowpass;
+            steppedIncrement = 0.05f;
+            break;
+        case 4:
+            startValue = fMixerDragStartSettings.highpass;
+            steppedIncrement = 0.05f;
+            break;
         default:
             return;
         }
@@ -3367,6 +3513,8 @@ private:
         case 2:
             fMixerSettings.tuneSemitones = adjusted;
             break;
+        case 3: fMixerSettings.lowpass = adjusted; break;
+        case 4: fMixerSettings.highpass = adjusted; break;
         default:
             return;
         }

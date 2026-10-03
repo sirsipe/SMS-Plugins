@@ -70,12 +70,12 @@ inline constexpr sms::ui::Rect voiceLimit{994.0f, 298.0f, 222.0f, 28.0f};
     return {994.0f, fixedCapture ? 352.0f : 298.0f, 222.0f, 28.0f};
 }
 
-inline constexpr sms::ui::Rect monitor{994.0f, 646.0f, 222.0f, 34.0f};
-inline constexpr float globalMixerLabelY = 500.0f;
-inline constexpr float chopLabelY = 382.0f;
-inline constexpr sms::ui::Rect finalizeAction{994.0f, 402.0f, 70.0f, 34.0f};
-inline constexpr sms::ui::Rect undoAction{1070.0f, 402.0f, 70.0f, 34.0f};
-inline constexpr sms::ui::Rect clearAction{1146.0f, 402.0f, 70.0f, 34.0f};
+inline constexpr sms::ui::Rect monitor{994.0f, 651.0f, 222.0f, 34.0f};
+inline constexpr float globalMixerLabelY = 386.0f;
+inline constexpr sms::ui::Rect padMixerSeparator{354.0f, 586.0f, 1.0f, 77.0f};
+inline constexpr sms::ui::Rect finalizeAction{994.0f, 610.0f, 70.0f, 34.0f};
+inline constexpr sms::ui::Rect undoAction{1070.0f, 610.0f, 70.0f, 34.0f};
+inline constexpr sms::ui::Rect clearAction{1146.0f, 610.0f, 70.0f, 34.0f};
 
 [[nodiscard]] constexpr sms::ui::Rect menuOption(const int index) noexcept
 {
@@ -104,7 +104,16 @@ inline constexpr sms::ui::Rect clearAction{1146.0f, 402.0f, 70.0f, 34.0f};
 
 [[nodiscard]] constexpr sms::ui::Rect mixerKnob(const int index) noexcept
 {
-    return {100.0f + static_cast<float>(index) * 350.0f, 590.0f, 80.0f, 72.0f};
+    switch (index) {
+    case 0: return {90.0f, 590.0f, 80.0f, 72.0f}; // Gain
+    case 1: return {215.0f, 590.0f, 80.0f, 72.0f}; // Pan
+    case 6: return {380.0f, 590.0f, 80.0f, 72.0f}; // Dirty
+    case 2: return {500.0f, 590.0f, 80.0f, 72.0f}; // Tune
+    case 3: return {630.0f, 590.0f, 80.0f, 72.0f}; // Lowpass
+    case 4: return {760.0f, 590.0f, 80.0f, 72.0f}; // Highpass
+    case 5: return {636.0f, 663.0f, 198.0f, 28.0f}; // Slope hit area
+    default: return {};
+    }
 }
 
 [[nodiscard]] constexpr sms::ui::Rect mixerValueLabel(const int index) noexcept
@@ -115,13 +124,27 @@ inline constexpr sms::ui::Rect clearAction{1146.0f, 402.0f, 70.0f, 34.0f};
 
 [[nodiscard]] constexpr sms::ui::Rect globalMixerKnob(const int index) noexcept
 {
-    return {994.0f + static_cast<float>(index) * 74.0f, 520.0f, 68.0f, 72.0f};
+    switch (index) {
+    case 0: return {994.0f, 408.0f, 68.0f, 72.0f}; // Volume
+    case 1: return {1068.0f, 408.0f, 68.0f, 72.0f}; // Pan
+    case 6: return {1142.0f, 408.0f, 68.0f, 72.0f}; // Dirty
+    case 2: return {994.0f, 494.0f, 68.0f, 72.0f}; // Tune
+    case 3: return {1068.0f, 494.0f, 68.0f, 72.0f}; // Lowpass
+    case 4: return {1142.0f, 494.0f, 68.0f, 72.0f}; // Highpass
+    case 5: return {1068.0f, 570.0f, 142.0f, 28.0f}; // Slope hit area
+    default: return {};
+    }
 }
 
 [[nodiscard]] constexpr sms::ui::Rect globalMixerValueLabel(const int index) noexcept
 {
     const auto knob = globalMixerKnob(index);
     return {knob.x, knob.y + 52.0f, knob.width, 18.0f};
+}
+
+[[nodiscard]] constexpr sms::ui::Rect slopeTrack(const sms::ui::Rect bounds) noexcept
+{
+    return {bounds.x + 10.0f, bounds.y + 14.0f, bounds.width - 20.0f, 6.0f};
 }
 
 [[nodiscard]] constexpr sms::ui::Rect chopPadButton(const int index) noexcept
