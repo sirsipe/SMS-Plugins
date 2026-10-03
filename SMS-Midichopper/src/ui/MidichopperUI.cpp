@@ -1327,11 +1327,9 @@ protected:
             }
             if (midichopper::ui::isTarget(clicked, midichopper::ui::InteractiveType::fixedLength))
             {
-                const float t = normalizedX(x, uiLayout::fixedLength);
-                setControlValue(kParameterFixedLengthSeconds,
-                    parameterRanges::fixedLengthSeconds.minimum + t *
-                    (parameterRanges::fixedLengthSeconds.maximum -
-                     parameterRanges::fixedLengthSeconds.minimum));
+                fMainSliderDrag = clicked.type;
+                editParameter(kParameterFixedLengthSeconds, true);
+                updateMainSliderDrag(x);
                 return true;
             }
             if (midichopper::ui::isTarget(clicked, midichopper::ui::InteractiveType::oneShotMode))
@@ -1346,18 +1344,16 @@ protected:
             }
             if (midichopper::ui::isTarget(clicked, midichopper::ui::InteractiveType::voiceLimit))
             {
-                const float t = normalizedX(x, uiLayout::voiceLimit);
-                setControlValue(kParameterMaxVoices,
-                    parameterRanges::maxVoices.minimum + static_cast<float>(std::lround(
-                        t * (parameterRanges::maxVoices.maximum -
-                             parameterRanges::maxVoices.minimum))));
+                fMainSliderDrag = clicked.type;
+                editParameter(kParameterMaxVoices, true);
+                updateMainSliderDrag(x);
                 return true;
             }
             if (midichopper::ui::isTarget(clicked, midichopper::ui::InteractiveType::preRoll))
             {
-                const float t = normalizedX(x, uiLayout::preRoll(fRecordMode >= 0.5f));
-                setControlValue(kParameterPreRollMs,
-                                t * parameterRanges::preRollMs.maximum);
+                fMainSliderDrag = clicked.type;
+                editParameter(kParameterPreRollMs, true);
+                updateMainSliderDrag(x);
                 return true;
             }
             if (midichopper::ui::isTarget(clicked, midichopper::ui::InteractiveType::monitor))
@@ -1447,6 +1443,17 @@ protected:
             requestRepaint();
             return true;
         }
+        else if (fMainSliderDrag >= 0)
+        {
+            const auto type = static_cast<midichopper::ui::InteractiveType>(fMainSliderDrag);
+            const uint32_t parameter = type == midichopper::ui::InteractiveType::fixedLength
+                ? kParameterFixedLengthSeconds
+                : type == midichopper::ui::InteractiveType::voiceLimit
+                    ? kParameterMaxVoices : kParameterPreRollMs;
+            editParameter(parameter, false);
+            fMainSliderDrag = -1;
+            return true;
+        }
         else if (fPadPress.pad() >= 0)
         {
             releasePressedPad();
@@ -1492,6 +1499,10 @@ protected:
         }
         if (fGlobalMixerDragIndex >= 0) {
             updateGlobalMixerDrag(x, y);
+            return true;
+        }
+        if (fMainSliderDrag >= 0) {
+            updateMainSliderDrag(x);
             return true;
         }
         const auto hovered = resolveInteractiveTarget(x, y);
@@ -1911,6 +1922,7 @@ private:
     midichopper::ui::KnobAdjustment fMixerDragAdjustment =
         midichopper::ui::KnobAdjustment::normal;
     int fGlobalMixerDragIndex;
+    int fMainSliderDrag = -1;
     float fGlobalMixerDragStartY = 0.0f;
     sms::dsp::SampleMixerSettings fGlobalMixerDragStart{};
     midichopper::ui::KnobAdjustment fGlobalMixerDragAdjustment =
@@ -2017,6 +2029,25 @@ private:
     static float normalizedX(const float x, const sms::ui::Rect bounds) noexcept
     {
         return std::clamp((x - bounds.x) / bounds.width, 0.0f, 1.0f);
+    }
+
+    void updateMainSliderDrag(const float x)
+    {
+        const auto type = static_cast<midichopper::ui::InteractiveType>(fMainSliderDrag);
+        if (type == midichopper::ui::InteractiveType::fixedLength) {
+            setControlValue(kParameterFixedLengthSeconds,
+                midichopper::ui::mainSliderValueAtX(x, uiLayout::fixedLength,
+                    parameterRanges::fixedLengthSeconds));
+        } else if (type == midichopper::ui::InteractiveType::voiceLimit) {
+            setControlValue(kParameterMaxVoices,
+                midichopper::ui::mainSliderValueAtX(x, uiLayout::voiceLimit,
+                    parameterRanges::maxVoices, true));
+        } else if (type == midichopper::ui::InteractiveType::preRoll) {
+            setControlValue(kParameterPreRollMs,
+                midichopper::ui::mainSliderValueAtX(x,
+                    uiLayout::preRoll(fRecordMode >= 0.5f),
+                    parameterRanges::preRollMs, true));
+        }
     }
 
     [[nodiscard]] std::int64_t clampChopBoundaryOffset(

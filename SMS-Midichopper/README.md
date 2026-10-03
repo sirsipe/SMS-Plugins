@@ -73,6 +73,7 @@ Gain/Volume 1 dB, Pan 10%, and Tune one semitone. Double-click a value to type
 (Pan: −100…100); Enter applies; click elsewhere to cancel. Double-click knob or
 middle-click knob/value to reset. The wheel adjusts ADSR,
 Fixed Length, Max Voices, Pre-roll, Start/End, and cut points.
+Fixed Length, Max Voices, and Pre-roll also respond to dragging.
 On waveform handles, Ctrl/Shift wheel controls the view. Monitor cycles through
 Off, On, and Auto; Auto passes input while armed. Default remains On.
 

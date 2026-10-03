@@ -490,6 +490,28 @@ void wheelAdjustment()
           "zero wheel delta does not change a control");
 }
 
+void mainSliderDragging()
+{
+    namespace interaction = midichopper::ui;
+    namespace layout = midichopper::ui::layout;
+    namespace ranges = midichopper::plugin::parameterRanges;
+    check(interaction::mainSliderValueAtX(layout::voiceLimit.x,
+              layout::voiceLimit, ranges::maxVoices, true) == 1.0f &&
+          interaction::mainSliderValueAtX(layout::voiceLimit.x +
+              layout::voiceLimit.width, layout::voiceLimit,
+              ranges::maxVoices, true) == 16.0f,
+          "max voices drag spans its full integer range");
+    check(interaction::mainSliderValueAtX(-100.0f, layout::fixedLength,
+              ranges::fixedLengthSeconds) == ranges::fixedLengthSeconds.minimum &&
+          interaction::mainSliderValueAtX(2000.0f, layout::fixedLength,
+              ranges::fixedLengthSeconds) == ranges::fixedLengthSeconds.maximum,
+          "fixed length drag clamps outside the slider");
+    check(interaction::mainSliderValueAtX(layout::preRoll(true).x +
+              layout::preRoll(true).width * 0.5f, layout::preRoll(true),
+              ranges::preRollMs, true) == 50.0f,
+          "pre-roll drag follows the fixed capture slider");
+}
+
 void levelMeterGeometry()
 {
     namespace meter = sms::ui::meter;
@@ -804,6 +826,7 @@ int main()
     padPressTracking();
     editorSnapshotCollection();
     wheelAdjustment();
+    mainSliderDragging();
     levelMeterGeometry();
     waveformGeometry();
     chopEditorGeometry();

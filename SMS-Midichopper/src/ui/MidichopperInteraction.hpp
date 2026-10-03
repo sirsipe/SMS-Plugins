@@ -8,6 +8,7 @@
 #include "Interaction.hpp"
 #include "MidichopperLayout.hpp"
 #include "PadLayout.hpp"
+#include "../plugin/Parameters.hpp"
 #include "WaveformEditor.hpp"
 #include "WaveformViewport.hpp"
 
@@ -83,6 +84,15 @@ private:
     int pad_ = -1;
     int midiNote_ = -1;
 };
+
+[[nodiscard]] inline float mainSliderValueAtX(const float x,
+    const sms::ui::Rect bounds, const plugin::ParameterRange range,
+    const bool integral = false) noexcept
+{
+    const float t = std::clamp((x - bounds.x) / bounds.width, 0.0f, 1.0f);
+    const float value = range.minimum + t * (range.maximum - range.minimum);
+    return integral ? std::round(value) : value;
+}
 
 class DoubleClickTracker {
 public:
