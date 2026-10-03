@@ -53,6 +53,7 @@ struct ViewState {
     bool chopEditorMode = false;
     bool chopSplitMode = false;
     bool playOnSelect = true;
+    bool anyPlaybackActive = false;
     bool hasWaveform = false;
     std::array<float, 2> inputLevels{};
     std::array<float, 2> outputLevels{};

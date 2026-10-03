@@ -892,6 +892,10 @@ private:
             canvas_.text(cell.x + cell.width - 9.0f, cell.y + cell.height * 0.5f,
                          note, nullptr);
         }
+        sms::ui::dpf::drawSegment(canvas_, uiLayout::editorPlayStop,
+                                  state_.anyPlaybackActive ? "STOP" : "PLAY",
+                                  state_.anyPlaybackActive, colors.activityPlayback,
+                                  hovered(InteractiveType::playStop));
         sms::ui::dpf::drawSegment(canvas_, uiLayout::playOnSelect, "PLAY ON SELECT",
                                   state_.playOnSelect, colors.activityPlayback,
                                   hovered(InteractiveType::playOnSelect));
@@ -980,6 +984,10 @@ private:
                 static_cast<float>(state_.maxVoices - 1) /
                 (plugin::parameterRanges::maxVoices.maximum - 1.0f),
                 colors.activityPlayback, hovered(InteractiveType::voiceLimit));
+            sms::ui::dpf::drawSegment(canvas_, uiLayout::mainPlayStop,
+                state_.anyPlaybackActive ? "STOP" : "PLAY",
+                state_.anyPlaybackActive, colors.activityPlayback,
+                hovered(InteractiveType::playStop));
         }
 
         drawGlobalMixer();

@@ -396,6 +396,18 @@ protected:
                            kParameterIsOutput | kParameterIsHidden,
                            "Internal UI playhead for the most recently triggered pad.");
             break;
+        case kParameterStopAllPlayback:
+            setupParameter(index, parameter, "Stop All Playback", "stop_all_playback", "",
+                           kParameterIsBoolean | kParameterIsInteger | kParameterIsTrigger |
+                               kParameterIsHidden,
+                           "Immediately cut all playing samples.");
+            break;
+        case kParameterAnyPlaybackActive:
+            setupParameter(index, parameter, "Any Playback Active", "any_playback_active", "",
+                           kParameterIsOutput | kParameterIsBoolean | kParameterIsInteger |
+                               kParameterIsHidden,
+                           "One while any sample or raw preview is playing.");
+            break;
         default:
             if (index >= kFirstPadStatusParameter && index < kFirstPadActivityParameter) {
                 const std::uint32_t pad = index - kFirstPadStatusParameter;
@@ -539,6 +551,11 @@ protected:
             index <= midichopper::plugin::kParameterClearAll && value >= 0.5f) {
             const auto bit = 1U << (index - midichopper::plugin::kParameterFinalize);
             pendingCommands_.fetch_or(bit, std::memory_order_release);
+            parameters_[index].store(0.0f, std::memory_order_relaxed);
+            return;
+        }
+        if (index == midichopper::plugin::kParameterStopAllPlayback && value >= 0.5f) {
+            pendingCommands_.fetch_or(0x8U, std::memory_order_release);
             parameters_[index].store(0.0f, std::memory_order_relaxed);
             return;
         }
@@ -810,6 +827,8 @@ protected:
             sampler_.chopPreviewPosition(), std::memory_order_relaxed);
         parameters_[midichopper::plugin::kParameterPlaybackPosition].store(
             sampler_.playbackPosition(), std::memory_order_relaxed);
+        parameters_[midichopper::plugin::kParameterAnyPlaybackActive].store(
+            sampler_.anyPlaybackActive() ? 1.0f : 0.0f, std::memory_order_relaxed);
     }
 
     void sampleRateChanged(const double newSampleRate) override
@@ -1328,6 +1347,7 @@ private:
         if ((commands & 0x1U) != 0U) sampler_.finalizeRecording();
         if ((commands & 0x2U) != 0U) sampler_.undoLastSlice();
         if ((commands & 0x4U) != 0U) sampler_.clearAllPads();
+        if ((commands & 0x8U) != 0U) sampler_.stopAllPlayback();
         const std::uint64_t clearPads =
             pendingClearPads_.exchange(0U, std::memory_order_acquire);
         if (clearPads != 0U) {

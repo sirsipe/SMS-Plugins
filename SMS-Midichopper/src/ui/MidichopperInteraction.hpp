@@ -38,6 +38,7 @@ enum class InteractiveType : int {
     mixerValueLabel,
     globalMixerValueLabel,
     playOnSelect,
+    playStop,
     openEditor,
     chopBoundary,
     chopPadPreview,
@@ -513,6 +514,8 @@ interactiveTargetAt(const sms::ui::Point point, const InteractionContext& contex
         }
         if (uiLayout::playOnSelect.contains(point))
             return target(InteractiveType::playOnSelect);
+        if (uiLayout::editorPlayStop.contains(point))
+            return target(InteractiveType::playStop);
         return sms::ui::kNoInteractiveTarget;
     }
 
@@ -551,6 +554,8 @@ interactiveTargetAt(const sms::ui::Point point, const InteractionContext& contex
             return target(InteractiveType::gatedMode);
         if (uiLayout::voiceLimit.contains(point))
             return target(InteractiveType::voiceLimit);
+        if (uiLayout::mainPlayStop.contains(point))
+            return target(InteractiveType::playStop);
     }
     if (uiLayout::monitor.contains(point))
         return target(InteractiveType::monitor);

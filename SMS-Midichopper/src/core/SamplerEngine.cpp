@@ -469,6 +469,24 @@ void SamplerEngine::hardStopVoice(const std::uint32_t pad) noexcept {
     voice.publishedPlaying.store(false, std::memory_order_release);
 }
 
+void SamplerEngine::stopAllPlayback() noexcept {
+    for (std::uint32_t pad = 0; pad < kPadCount; ++pad)
+        hardStopVoice(pad);
+    stopChopPreview();
+    playbackPositionOutput_ = 0.0f;
+    playbackPositionHoldFrames_ = 0U;
+    playbackPositionWasActive_ = false;
+}
+
+bool SamplerEngine::anyPlaybackActive() const noexcept {
+    if (chopPreviewActive_)
+        return true;
+    for (const auto& pad : pads_)
+        if (pad.playing)
+            return true;
+    return false;
+}
+
 void SamplerEngine::refreshActiveVoiceSettings(const std::uint32_t pad) noexcept {
     if (pad >= kPadCount || !pads_[pad].playing)
         return;

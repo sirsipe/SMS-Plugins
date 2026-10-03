@@ -290,12 +290,21 @@ void interactionTargets()
           "pre-roll occupies the fixed-length slot only when length is hidden");
     context.armed = false;
     context.fixedCapture = false;
+    check(interaction::isTarget(
+              interaction::interactiveTargetAt(center(layout::mainPlayStop), context),
+              interaction::InteractiveType::playStop),
+          "main view exposes Play/Stop between max voices and mixer");
     check(layout::sidePanel.contains(center(layout::playOnSelect)) &&
               !interaction::isTarget(
                   interaction::interactiveTargetAt(center(layout::playOnSelect), context),
                   interaction::InteractiveType::playOnSelect),
           "play-on-select stays inside the side panel and is hidden outside the editor");
     context.editorMode = true;
+    check(interaction::isTarget(
+              interaction::interactiveTargetAt(center(layout::editorPlayStop), context),
+              interaction::InteractiveType::playStop) &&
+          layout::editorPlayStop.x + layout::editorPlayStop.width < layout::playOnSelect.x,
+          "editor Play/Stop sits left of Play on Select");
     context.waveformViewport.reset(8000U);
     check(interaction::isTarget(
               interaction::interactiveTargetAt(center(layout::editorZoom), context),

@@ -28,7 +28,8 @@ inline constexpr sms::ui::Rect editorZoom{29.0f, 158.0f, 12.0f, 222.0f};
 inline constexpr sms::ui::Rect editorScroll{46.0f, 382.0f, 890.0f, 10.0f};
 inline constexpr sms::ui::Rect envelopeGraph{46.0f, 448.0f, 370.0f, 104.0f};
 inline constexpr sms::ui::Rect editorPadBounds{994.0f, 204.0f, 222.0f, 406.0f};
-inline constexpr sms::ui::Rect playOnSelect{994.0f, 628.0f, 222.0f, 34.0f};
+inline constexpr sms::ui::Rect editorPlayStop{994.0f, 628.0f, 106.0f, 34.0f};
+inline constexpr sms::ui::Rect playOnSelect{1106.0f, 628.0f, 110.0f, 34.0f};
 inline constexpr sms::ui::Rect openEditor{994.0f, 108.0f, 222.0f, 28.0f};
 inline constexpr sms::ui::Rect closeEditor{994.0f, 112.0f, 222.0f, 32.0f};
 inline constexpr sms::ui::Rect chopWaveform{46.0f, 170.0f, 890.0f, 250.0f};
@@ -68,6 +69,7 @@ inline constexpr sms::ui::Rect fixedLength{994.0f, 298.0f, 222.0f, 36.0f};
 inline constexpr sms::ui::Rect oneShotMode{994.0f, 220.0f, 106.0f, 38.0f};
 inline constexpr sms::ui::Rect gatedMode{1108.0f, 220.0f, 108.0f, 38.0f};
 inline constexpr sms::ui::Rect voiceLimit{994.0f, 298.0f, 222.0f, 28.0f};
+inline constexpr sms::ui::Rect mainPlayStop{1049.0f, 342.0f, 112.0f, 32.0f};
 
 [[nodiscard]] constexpr sms::ui::Rect preRoll(const bool fixedCapture) noexcept
 {

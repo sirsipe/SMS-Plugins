@@ -371,6 +371,14 @@ protected:
                 requestRepaint();
             return;
         }
+        if (index == kParameterAnyPlaybackActive) {
+            const bool active = value >= 0.5f;
+            if (fAnyPlaybackActive != active) {
+                fAnyPlaybackActive = active;
+                requestRepaint();
+            }
+            return;
+        }
         if (index >= kFirstPadStatusParameter && index < kFirstPadActivityParameter)
         {
             const auto localPad = static_cast<std::size_t>(index - kFirstPadStatusParameter);
@@ -930,7 +938,8 @@ protected:
             std::span<const sms::ui::ContextMenuItemView>{colorMenuItems},
             fHover.target(),
             fMixerValueEntryTarget, fMixerValueEntryText.data(),
-            fEditorMode, fChopEditorMode, fChopSplitMode, fPlayOnSelect, fHasWaveform,
+            fEditorMode, fChopEditorMode, fChopSplitMode, fPlayOnSelect,
+            fAnyPlaybackActive, fHasWaveform,
             fInputLevels, fOutputLevels, fPadState, fPadStatus, fPadColors,
             fEditorSettings, fMixerSettings, fWaveform, fPlaybackPosition,
             std::span<const sms::audio::WaveformSummary>{
@@ -1108,6 +1117,12 @@ protected:
             {
                 if (beginViewportDrag(clicked, x, y))
                     return true;
+                if (midichopper::ui::isTarget(
+                        clicked, midichopper::ui::InteractiveType::playStop)) {
+                    fPlayButtonPressCaptured = true;
+                    togglePlayStop();
+                    return true;
+                }
                 if ((midichopper::ui::isTarget(clicked,
                          midichopper::ui::InteractiveType::mixerKnob) ||
                      midichopper::ui::isTarget(clicked,
@@ -1223,6 +1238,12 @@ protected:
 
             const auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::steady_clock::now().time_since_epoch()).count();
+            if (midichopper::ui::isTarget(
+                    clicked, midichopper::ui::InteractiveType::playStop)) {
+                fPlayButtonPressCaptured = true;
+                togglePlayStop();
+                return true;
+            }
             if ((midichopper::ui::isTarget(clicked,
                      midichopper::ui::InteractiveType::globalMixerKnob) ||
                  midichopper::ui::isTarget(clicked,
@@ -1428,6 +1449,11 @@ protected:
         else if (fViewportDrag >= 0)
         {
             fViewportDrag = -1;
+            return true;
+        }
+        else if (fPlayButtonPressCaptured)
+        {
+            fPlayButtonPressCaptured = false;
             return true;
         }
         else if (fEditorMode && fDragTarget != WaveformEditTarget::none)
@@ -1884,9 +1910,11 @@ private:
     float fGlobalTune;
     float fGlobalLowpass = 0.0f;
     float fGlobalHighpass = 0.0f;
-    float fGlobalFilterSlope = 1.0f;
+    float fGlobalFilterSlope = 0.0f;
     float fGlobalDirty = 0.0f;
     int fMaxVoices;
+    bool fAnyPlaybackActive = false;
+    bool fPlayButtonPressCaptured = false;
     int fBank;
     int fLayout;
     int fSelectedPad;
@@ -2700,6 +2728,25 @@ private:
 #else
         static_cast<void>(previousMidiNote);
 #endif
+    }
+
+    void togglePlayStop()
+    {
+        if (fAnyPlaybackActive) {
+            releasePressedPad();
+            setParameterValue(kParameterStopAllPlayback, 1.0f);
+            fAnyPlaybackActive = false;
+            stopLocalPlayhead(false);
+        } else if (hasSelectedPad() && bankForGlobalPad(fSelectedPad) == fBank) {
+            const int localPad = localPadForGlobalPad(fSelectedPad);
+            if (localPad >= 0 && localPad < visiblePadCount() &&
+                fPadState[static_cast<std::size_t>(localPad)] != '0' &&
+                fPadState[static_cast<std::size_t>(localPad)] != '.') {
+                pressPlaybackPad(localPad);
+                fAnyPlaybackActive = true;
+            }
+        }
+        requestRepaint();
     }
 
     void startLocalPlayhead(const int pad)

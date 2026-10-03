@@ -205,6 +205,9 @@ public:
     [[nodiscard]] float chopPreviewPosition() const noexcept;
     /** Zero when stopped; otherwise latest triggered pad + 1 plus source position. */
     [[nodiscard]] float playbackPosition() const noexcept;
+    /** Hard-cut every pad voice and raw preview at the next audio block boundary. */
+    void stopAllPlayback() noexcept;
+    [[nodiscard]] bool anyPlaybackActive() const noexcept;
     [[nodiscard]] sms::dsp::SamplePlaybackSettings padPlaybackSettings(std::uint32_t pad) const noexcept;
     void setPadPlaybackSettings(std::uint32_t pad,
                                 const sms::dsp::SamplePlaybackSettings& settings) noexcept;
@@ -258,7 +261,7 @@ private:
         std::atomic<float> mixerTuneSemitones{0.0f};
         std::atomic<float> mixerLowpass{0.0f};
         std::atomic<float> mixerHighpass{0.0f};
-        std::atomic<float> mixerFilterSlope{1.0f};
+        std::atomic<float> mixerFilterSlope{0.0f};
         std::atomic<float> mixerDirty{0.0f};
         Pad() = default;
         Pad(const Pad&) = delete;

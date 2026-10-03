@@ -85,7 +85,9 @@ void live_peak_meter() {
           kParameterGlobalPan == kParameterPlaybackPosition + 1U &&
           kParameterGlobalTuneSemitones == kParameterGlobalPan + 1U &&
           kParameterGlobalLowpass == kParameterGlobalTuneSemitones + 1U &&
-          kParameterGlobalDirty + 1U == kParameterCount,
+          kParameterStopAllPlayback == kParameterGlobalDirty + 1U &&
+          kParameterAnyPlaybackActive == kParameterStopAllPlayback + 1U &&
+          kParameterAnyPlaybackActive + 1U == kParameterCount,
           "new controls remain appended after released and hidden parameters");
 }
 
@@ -1149,6 +1151,38 @@ void maximum_voice_limit() {
           "voice limit clamps to the per-bank pad count");
 }
 
+void stop_all_playback()
+{
+    midichopper::SamplerEngine engine(1000.0, 1.0);
+    midichopper::PadData source;
+    source.sampleRate = 1000.0;
+    source.frames = 100U;
+    source.stereo.assign(200U, 1.0f);
+    check(engine.importPad(0, source) && engine.importPad(1, source),
+          "import stop-button test pads");
+    auto settings = engine.settings();
+    settings.monitorInput = false;
+    settings.maxVoices = 2U;
+    engine.setSettings(settings);
+    const midichopper::MidiEvent events[] = {
+        {0, 36, 127, midichopper::MidiEventType::NoteOn},
+        {0, 37, 127, midichopper::MidiEventType::NoteOn},
+    };
+    float left[4]{};
+    float right[4]{};
+    engine.process(nullptr, nullptr, left, right, 4, events, 2);
+    check(engine.anyPlaybackActive() && engine.padMetadata(0).active &&
+          engine.padMetadata(1).active, "two pads are active before Stop");
+    engine.stopAllPlayback();
+    engine.process(nullptr, nullptr, left, right, 4);
+    check(!engine.anyPlaybackActive() && !engine.padMetadata(0).active &&
+          !engine.padMetadata(1).active && left[0] == 0.0f && right[0] == 0.0f,
+          "Stop cuts every pad without a release tail");
+    engine.process(nullptr, nullptr, left, right, 4, events, 1);
+    check(engine.anyPlaybackActive() && engine.padMetadata(0).active,
+          "playback can restart after Stop");
+}
+
 void sample_region_and_adsr() {
     midichopper::SamplerEngine e(1000.0, 1.0);
     midichopper::PadData source;
@@ -1497,9 +1531,9 @@ void disarm_note_off_gain_and_rate_change() {
 
 void input_monitor_modes() {
     using namespace midichopper::plugin;
-    check(parameterRange(kParameterInputMonitor).defaultValue == 1.0f &&
+    check(parameterRange(kParameterInputMonitor).defaultValue == 2.0f &&
           parameterRange(kParameterInputMonitor).maximum == 2.0f,
-          "monitor keeps its released default and exposes Auto");
+          "monitor defaults to Auto and exposes all three modes");
     check(nextInputMonitorMode(0.0f) == 1.0f &&
           nextInputMonitorMode(1.0f) == 2.0f &&
           nextInputMonitorMode(2.0f) == 0.0f,
@@ -1584,6 +1618,7 @@ int main() {
     playback_trigger_notifications();
     shared_storage_blocks();
     maximum_voice_limit();
+    stop_all_playback();
     sample_region_and_adsr();
     sample_mixer_and_varispeed();
     live_sample_editor_updates();

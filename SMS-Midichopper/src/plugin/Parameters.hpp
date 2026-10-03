@@ -47,6 +47,8 @@ enum Parameter : std::uint32_t {
     kParameterGlobalHighpass,
     kParameterGlobalFilterSlope,
     kParameterGlobalDirty,
+    kParameterStopAllPlayback,
+    kParameterAnyPlaybackActive,
     kParameterCount,
 };
 
@@ -182,6 +184,8 @@ private:
     case kParameterGlobalHighpass: return parameterRanges::filterAmount;
     case kParameterGlobalFilterSlope: return parameterRanges::filterSlope;
     case kParameterGlobalDirty: return parameterRanges::toggle;
+    case kParameterStopAllPlayback: return parameterRanges::toggle;
+    case kParameterAnyPlaybackActive: return parameterRanges::toggle;
     default: return parameterRanges::toggle;
     }
 }
