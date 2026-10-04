@@ -2,8 +2,8 @@
 
 SMS means SudoMetalStudio, the creator's YouTube channel. This AI-developed
 project builds native Linux audio plugins. SMS-Anvil Sampler, a live chopping
-sampler, is the first plugin and is under development. Linux LV2 is primary;
-DPF also provides optional VST3 and CLAP builds.
+sampler, is the first plugin and is under development. VST3 is the preferred
+format; DPF also provides LV2 and CLAP builds.
 
 ## Start small
 
@@ -46,7 +46,7 @@ DPF also provides optional VST3 and CLAP builds.
 - Maintain one authoritative home per fact and link to it. Index every new or
   moved Markdown page in the task index; repair links and remove obsolete text.
   No session transcripts, duplicated plans, or speculative features as facts.
-- Limits: this file 600 words; index 350; Copilot adapter 100; human pages 600;
+- Limits: this file 600 words; index 350; Copilot adapter 100; human pages 1000;
   AI reference pages 900. These are ceilings, not targets. Split by task only
   when useful; do not create many pages merely to bypass limits.
 - Run `python3 scripts/check_docs.py` and `git diff --check` before handoff.

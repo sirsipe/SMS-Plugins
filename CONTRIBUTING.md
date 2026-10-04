@@ -1,5 +1,7 @@
 # Contributing
 
+**I DO NOT ACCEPT PULL REQUESTS**
+
 SMS-Plugins is developed with AI and human testing. Report bugs and propose work
 in [GitHub Issues](https://github.com/sirsipe/SMS-Plugins/issues). For bugs,
 include the plugin version, Linux/host versions, reproduction steps, and expected

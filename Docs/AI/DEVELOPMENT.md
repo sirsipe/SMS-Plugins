@@ -4,7 +4,7 @@ Audience: AI agents. All commands run from the repository root.
 
 ## Build
 
-Dependencies and default LV2 build/install commands live in the
+Dependencies and build/install commands live in the
 [plugin guide](../../SMS-AnvilSampler/README.md). The
 [CMake project](../../SMS-AnvilSampler/CMakeLists.txt) requires CMake 3.22+ and
 C++20. Initialize the pinned [DPF submodule](../../.gitmodules) before configuring.

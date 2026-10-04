@@ -1,6 +1,16 @@
 # SudoMetalStudio Plugins
 
-Native Linux audio plugins developed with AI and human testing.
+_Professionally developed, **Linux-native** audio plugins._
+Windows and macOS versions may follow later.
+
+> Like many modern **professional** developers, I too use AI-assisted development tools - and I don't hide it, as some do, for fear of being shunned.
+>
+> Today's AI tools make software development more accessible than ever, but they also give experienced developers extraordinarily powerful tools for turning ideas into real, maintainable products. AI doesn't replace engineering experience, architecture, testing, judgment, or responsibility for the end result.
+>
+> _For many of us, it's the extra pair of hands we always wished we had._
+>
+
+I choose **quality over quantity**. Slow and steady. I only build what I'm also willing and able to maintain. The focus is on usability and simple, clear functionality.
 
 ## Plugins
 
@@ -9,10 +19,15 @@ Native Linux audio plugins developed with AI and human testing.
 
 ![SMS-Anvil Sampler interface](SMS-AnvilSampler/Docs/SMS-AnvilSampler-v0.0.5.png)
 
+
 ## Quick Start: AI autopilot in an isolated container
 
-Requirements: Ubuntu Linux and ChatGPT Plus, or another plan that includes
-GPT-5.6 Sol.
+> For those interested in learning containerized AI-driven development, here's a quick start for you. You are more than welcome to fork and learn, but please note:
+>
+> **I do NOT take pull requests**.
+>
+
+Requirements: Ubuntu Linux and a ChatGPT plan with Codex access, such as Plus.
 
 1. Install [Visual Studio Code](https://code.visualstudio.com/) and its
    [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers).
@@ -27,8 +42,7 @@ GPT-5.6 Sol.
    sudo reboot
    ```
 
-   **Reboot before opening VS Code.** Logging out may leave VS Code background
-   processes without Docker permission.
+   **Reboot before opening VS Code.** Logging out may leave VS Code background processes without Docker permission.
 
 3. Clone and open the repository:
 
@@ -41,8 +55,9 @@ GPT-5.6 Sol.
    build downloads the complete audio, GUI, and AI toolchain and can take
    several minutes. Later starts are much faster.
 
-5. Open the Codex panel on the right and sign in. Select **Full access**,
-   **GPT-5.6 Sol**, and **High** reasoning for autopilot-style work.
+5. Open the Codex panel on the right and sign in. Select **Full access** for the
+   isolated container and choose a model available to your account. Start with
+   the default reasoning effort; increase it when a task needs deeper analysis.
 
 6. Try this prompt:
 
