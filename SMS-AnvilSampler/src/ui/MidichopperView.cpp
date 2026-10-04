@@ -322,8 +322,29 @@ private:
     void drawHeader()
     {
         const auto& colors = sms::ui::dpf::theme();
+        DGL_NAMESPACE::Rectangle<float> textBounds;
+        canvas_.fontFace(NANOVG_DEJAVU_SANS_TTF);
+        canvas_.fontSize(26.0f);
+        canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_LEFT |
+                          DGL_NAMESPACE::NanoVG::ALIGN_TOP);
+        canvas_.fillColor(colors.contentPrimary);
+        canvas_.text(32.0f, 26.0f, "SMS-ANVIL SAMPLER", nullptr);
+        canvas_.textBounds(32.0f, 26.0f, "SMS-ANVIL SAMPLER", nullptr, textBounds);
+        float textRight = textBounds.getX() + textBounds.getWidth();
+        canvas_.fontSize(12.0f);
+        canvas_.fillColor(colors.contentSecondary);
+        canvas_.text(34.0f, 58.0f, "SEQUENTIAL CHOP  /  LIVE SAMPLE WORKSTATION", nullptr);
+        canvas_.textBounds(34.0f, 58.0f,
+                           "SEQUENTIAL CHOP  /  LIVE SAMPLE WORKSTATION", nullptr, textBounds);
+        textRight = std::max(textRight, textBounds.getX() + textBounds.getWidth());
+        canvas_.fontSize(10.0f);
+        canvas_.text(34.0f, 76.0f, "Version " ANVILSAMPLER_VERSION_STRING, nullptr);
+        canvas_.textBounds(34.0f, 76.0f,
+                           "Version " ANVILSAMPLER_VERSION_STRING, nullptr, textBounds);
+        textRight = std::max(textRight, textBounds.getX() + textBounds.getWidth());
+
         if (state_.logo != nullptr && state_.logo->isValid()) {
-            constexpr float x = 190.0f;
+            const float x = textRight + 14.0f;
             constexpr float y = 13.0f;
             constexpr float width = 170.0f;
             constexpr float height = 78.0f;
@@ -333,18 +354,6 @@ private:
                 x, y, width, height, 0.0f, *state_.logo, 0.48f));
             canvas_.fill();
         }
-
-        canvas_.fontFace(NANOVG_DEJAVU_SANS_TTF);
-        canvas_.fontSize(26.0f);
-        canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_LEFT |
-                          DGL_NAMESPACE::NanoVG::ALIGN_TOP);
-        canvas_.fillColor(colors.contentPrimary);
-        canvas_.text(32.0f, 26.0f, "SMS-ANVIL SAMPLER", nullptr);
-        canvas_.fontSize(12.0f);
-        canvas_.fillColor(colors.contentSecondary);
-        canvas_.text(34.0f, 58.0f, "SEQUENTIAL CHOP  /  LIVE SAMPLE WORKSTATION", nullptr);
-        canvas_.fontSize(10.0f);
-        canvas_.text(34.0f, 76.0f, "Version " ANVILSAMPLER_VERSION_STRING, nullptr);
 
         const auto& modeColor = state_.armed ? colors.activityCapture : colors.activityPlayback;
         sms::ui::dpf::drawLed(canvas_, 1146.0f, 43.0f, modeColor, true);
