@@ -194,7 +194,7 @@ public:
     }
 
 protected:
-    const char* getLabel() const override { return "SMSMidichopper"; }
+    const char* getLabel() const override { return "SMSAnvilSampler"; }
     const char* getDescription() const override
     {
         return "Capture incoming stereo audio into four banks of MIDI-controlled slices.";
@@ -202,14 +202,14 @@ protected:
     const char* getMaker() const override { return "SudoMetalStudio"; }
     const char* getHomePage() const override
     {
-        return "https://github.com/sirsipe/SMS-Plugins/tree/main/SMS-Midichopper";
+        return "https://github.com/sirsipe/SMS-Plugins/tree/main/SMS-AnvilSampler";
     }
     const char* getLicense() const override { return "MIT"; }
     uint32_t getVersion() const override
     {
-        return d_version(MIDICHOPPER_VERSION_MAJOR,
-                         MIDICHOPPER_VERSION_MINOR,
-                         MIDICHOPPER_VERSION_PATCH);
+        return d_version(ANVILSAMPLER_VERSION_MAJOR,
+                         ANVILSAMPLER_VERSION_MINOR,
+                         ANVILSAMPLER_VERSION_PATCH);
     }
 
     void initAudioPort(const bool input, const uint32_t index, AudioPort& port) override

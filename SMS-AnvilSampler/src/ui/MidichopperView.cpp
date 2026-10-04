@@ -327,7 +327,7 @@ private:
         canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_LEFT |
                           DGL_NAMESPACE::NanoVG::ALIGN_TOP);
         canvas_.fillColor(colors.contentPrimary);
-        canvas_.text(32.0f, 26.0f, "SMS-MIDICHOPPER", nullptr);
+        canvas_.text(32.0f, 26.0f, "SMS-ANVIL SAMPLER", nullptr);
         canvas_.fontSize(12.0f);
         canvas_.fillColor(colors.contentSecondary);
         canvas_.text(34.0f, 58.0f, "SEQUENTIAL CHOP  /  LIVE SAMPLE WORKSTATION", nullptr);

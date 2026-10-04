@@ -7,13 +7,13 @@ direction; it is not a promise of dynamic outputs.
 ## DSP-to-UI state transport
 
 DPF's VST3 wrapper constructs its plug-in exporter with a null
-`updateStateValue` callback. Midichopper can therefore receive UI-to-DSP state,
+`updateStateValue` callback. Anvil Sampler can therefore receive UI-to-DSP state,
 but a DSP call to `updateStateValue()` cannot return transient data to the UI.
 The wrapper logs `updateStateValueCallback (nil)`. DPF's maintainer says this
 API was first implemented for LV2; the same limitation is tracked in
 [DPF issue #410](https://github.com/DISTRHO/DPF/issues/410).
 
-Midichopper now builds a separate VST3 DPF target with direct instance access.
+Anvil Sampler now builds a separate VST3 DPF target with direct instance access.
 `publishUiState()` uses DPF's callback where available and sends failed VST3
 updates to a per-instance, bounded message bus. The UI reads that bus on idle
 and feeds messages through `stateChanged()`. Each view has its own sequence

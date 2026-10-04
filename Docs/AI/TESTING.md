@@ -31,10 +31,10 @@ the user's installed plugins:
 
 ```bash
 LV2_PATH="$PWD/build/bin" \
-  lv2info https://github.com/sirsipe/SMS-Plugins/SMS-Midichopper
+  lv2info https://github.com/sirsipe/SMS-Plugins/SMS-AnvilSampler
 ```
 
-The URI comes from `src/plugin/DistrhoPluginInfo.h` under `SMS-Midichopper`.
+The URI comes from `src/plugin/DistrhoPluginInfo.h` under `SMS-AnvilSampler`.
 This checks discovery/metadata; it does not prove audio processing works.
 
 ## LV2 host integration
@@ -44,13 +44,13 @@ state, and parameter transport. Test the built bundle rather than an older
 installed copy:
 
 ```bash
-LV2_URI='https://github.com/sirsipe/SMS-Plugins/SMS-Midichopper'
+LV2_URI='https://github.com/sirsipe/SMS-Plugins/SMS-AnvilSampler'
 LV2_PATH="$PWD/build/bin" pw-jack carla-single native lv2 "$LV2_URI"
 ```
 
 Omit `pw-jack` when Carla already uses the desired JACK server. Current
 [Carla main](https://github.com/falkTX/Carla/blob/main/source/backend/plugin/CarlaPluginLV2.cpp)
-includes the LV2 control-input change-request feature that SMS-Midichopper uses
+includes the LV2 control-input change-request feature that SMS-Anvil Sampler uses
 when MIDI activates a bank, but Carla 2.5.10 does not expose it. A future
 reproducible environment should pin a Carla revision or release containing that
 feature and verify it rather than assuming all Carla versions support it.
@@ -113,7 +113,7 @@ names, unrelated applications, notifications, accounts, and other private data.
 Repository screenshots should contain only intentional product UI.
 
 For the VST3 UI, launch
-`carla-single native vst3 "$PWD/build/bin/SMS-Midichopper.vst3"` on the same
+`carla-single native vst3 "$PWD/build/bin/SMS-AnvilSampler.vst3"` on the same
 desktop. Import a WAV, open Sample Editor, switch pads and back, and check the
 waveform and settings. Exercise Split Sample or Adjust Cut Points. Then save,
 close, delete the source WAV, reload, and compare audio and editor values.

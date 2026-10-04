@@ -1,5 +1,5 @@
 /*
- * SMS-Midichopper - DPF/NanoVG user interface
+ * SMS-Anvil Sampler - DPF/NanoVG user interface
  *
  * Parameter indices and ranges are shared with the DSP through Parameters.hpp.
  * Drawing is delegated to MidichopperView and reusable Common-UI components;
@@ -2480,8 +2480,8 @@ private:
         const bool saving = action == PendingFileDialog::exportRaw ||
                             action == PendingFileDialog::exportProcessed;
         options.saving = saving;
-        char defaultName[32];
-        std::snprintf(defaultName, sizeof(defaultName), "midichopper-pad-%02d.wav",
+        char defaultName[40];
+        std::snprintf(defaultName, sizeof(defaultName), "anvilsampler-pad-%02d.wav",
                       localPadForGlobalPad(fPadContextTarget) + 1);
         options.defaultName = saving ? defaultName : nullptr;
         options.title = saving ? "Export pad as WAV" : "Import WAV into pad";

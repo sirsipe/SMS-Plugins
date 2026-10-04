@@ -34,10 +34,10 @@ jobs:
 
       - name: Configure LV2 and VST3
         run: |
-          cmake -S SMS-Midichopper -B build -G Ninja \
+          cmake -S SMS-AnvilSampler -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_TESTING=ON \
-            -DMIDICHOPPER_BUILD_VST3=ON
+            -DANVILSAMPLER_BUILD_VST3=ON
 
       - name: Build
         run: cmake --build build --parallel
@@ -47,32 +47,33 @@ jobs:
 
       - name: Validate bundles
         run: |
-          test -f build/bin/SMS-Midichopper.lv2/SMS-Midichopper_dsp.so
-          test -f build/bin/SMS-Midichopper.lv2/SMS-Midichopper_ui.so
-          test -f build/bin/SMS-Midichopper.vst3/Contents/x86_64-linux/SMS-Midichopper.so
+          test -f build/bin/SMS-AnvilSampler.lv2/SMS-AnvilSampler_dsp.so
+          test -f build/bin/SMS-AnvilSampler.lv2/SMS-AnvilSampler_ui.so
+          test -f build/bin/SMS-AnvilSampler.vst3/Contents/x86_64-linux/SMS-AnvilSampler.so
           LV2_PATH="$PWD/build/bin" \
-            lv2info https://github.com/sirsipe/SMS-Plugins/SMS-Midichopper
+            lv2info https://github.com/sirsipe/SMS-Plugins/SMS-AnvilSampler \
+            | grep -E '^[[:space:]]*Name:[[:space:]]+SMS-Anvil Sampler$'
 
       - name: Package manual build artifacts
         if: github.event_name == 'workflow_dispatch'
         shell: bash
         run: |
           mkdir -p dist
-          archive_prefix="SMS-Midichopper-${GITHUB_SHA::12}-linux-x86_64"
+          archive_prefix="SMS-AnvilSampler-${GITHUB_SHA::12}-linux-x86_64"
           source_date_epoch="$(git show -s --format=%ct HEAD)"
           tar --sort=name --mtime="@$source_date_epoch" --owner=0 --group=0 \
             --numeric-owner -C build/bin -czf "dist/${archive_prefix}-lv2.tar.gz" \
-            SMS-Midichopper.lv2
+            SMS-AnvilSampler.lv2
           tar --sort=name --mtime="@$source_date_epoch" --owner=0 --group=0 \
             --numeric-owner -C build/bin -czf "dist/${archive_prefix}-vst3.tar.gz" \
-            SMS-Midichopper.vst3
+            SMS-AnvilSampler.vst3
           (cd dist && sha256sum ./*.tar.gz > SHA256SUMS.txt)
 
       - name: Upload manual build artifacts
         if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: SMS-Midichopper-${{ github.sha }}-linux-x86_64
+          name: SMS-AnvilSampler-${{ github.sha }}-linux-x86_64
           path: dist/
           if-no-files-found: error
           retention-days: 14

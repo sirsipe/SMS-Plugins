@@ -52,7 +52,7 @@ rather than creating mislabeled data.
 
 `Common-Src` owns the byte-level codec, offline renderer, and reusable real-time
 access gate, without DPF or dialog policy. `Common-UI` owns menu geometry and
-drawing. Midichopper UI code adapts DPF dialogs; its plug-in adapter owns action
+drawing. Anvil Sampler UI code adapts DPF dialogs; its plug-in adapter owns action
 transport, filesystem policy, status delivery, and safe engine access. The LV2
 wrapper executes UI state commands on its required worker. Keep these
 responsibilities narrow rather than creating a file-manager class.
@@ -100,7 +100,7 @@ Windows Save flags and validate `NSSavePanel` on macOS. Do not invoke `zenity`,
 `kdialog`, or similar external fallbacks.
 
 The Linux VST3 wrapper reports file completion through a hidden output event.
-Midichopper's [VST3 UI message bus](DPF-VST3-CONSTRAINTS.md) returns waveform
+Anvil Sampler's [VST3 UI message bus](DPF-VST3-CONSTRAINTS.md) returns waveform
 and editor state after import and pad reselection. LV2 uses DPF's callback.
 A short WAV restored from Carla VST3 state without its source; test longer
 files and DAW projects.
@@ -115,7 +115,7 @@ project restoration without the source file, and portal-present/absent Linux
 sessions in LV2 and VST3 hosts. Windows/macOS claims require
 [native platform checks](PLATFORM-BUILDS.md).
 
-The public [WAV guide](../../SMS-Midichopper/Docs/WAV-FILES.md) covers the
+[WAV guide](../../SMS-AnvilSampler/Docs/WAV-FILES.md) covers the
 right-click workflow, encodings, conversion/export semantics, reset behavior,
 duration and project storage, plus Linux requirements and troubleshooting.
 Keep it aligned with this contract and verified behavior.

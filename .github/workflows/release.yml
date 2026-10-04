@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - SMS-Midichopper-v*
+      - SMS-AnvilSampler-v*
 
 permissions:
   contents: write
@@ -24,10 +24,10 @@ jobs:
         id: version
         shell: bash
         run: |
-          tag_version="${GITHUB_REF_NAME#SMS-Midichopper-v}"
+          tag_version="${GITHUB_REF_NAME#SMS-AnvilSampler-v}"
           project_version="$(sed -nE \
-            's/^project\(SMSMidichopper VERSION ([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' \
-            SMS-Midichopper/CMakeLists.txt)"
+            's/^project\(SMSAnvilSampler VERSION ([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' \
+            SMS-AnvilSampler/CMakeLists.txt)"
           if [[ -z "$project_version" || "$tag_version" != "$project_version" ]]; then
             echo "Tag version '$tag_version' does not match CMake version '$project_version'." >&2
             exit 1
@@ -44,30 +44,31 @@ jobs:
 
       - name: Configure LV2 and VST3
         run: |
-          cmake -S SMS-Midichopper -B build -G Ninja \
+          cmake -S SMS-AnvilSampler -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_TESTING=ON \
-            -DMIDICHOPPER_BUILD_VST3=ON
+            -DANVILSAMPLER_BUILD_VST3=ON
 
       - name: Build and test
         run: |
           cmake --build build --parallel
           ctest --test-dir build --output-on-failure
           LV2_PATH="$PWD/build/bin" \
-            lv2info https://github.com/sirsipe/SMS-Plugins/SMS-Midichopper
+            lv2info https://github.com/sirsipe/SMS-Plugins/SMS-AnvilSampler \
+            | grep -E '^[[:space:]]*Name:[[:space:]]+SMS-Anvil Sampler$'
 
       - name: Package release archives
         shell: bash
         run: |
           mkdir -p dist
-          archive_prefix="SMS-Midichopper-v${{ steps.version.outputs.version }}-linux-x86_64"
+          archive_prefix="SMS-AnvilSampler-v${{ steps.version.outputs.version }}-linux-x86_64"
           source_date_epoch="$(git show -s --format=%ct HEAD)"
           tar --sort=name --mtime="@$source_date_epoch" --owner=0 --group=0 \
             --numeric-owner -C build/bin -czf "dist/${archive_prefix}-lv2.tar.gz" \
-            SMS-Midichopper.lv2
+            SMS-AnvilSampler.lv2
           tar --sort=name --mtime="@$source_date_epoch" --owner=0 --group=0 \
             --numeric-owner -C build/bin -czf "dist/${archive_prefix}-vst3.tar.gz" \
-            SMS-Midichopper.vst3
+            SMS-AnvilSampler.vst3
           (cd dist && sha256sum ./*.tar.gz > SHA256SUMS.txt)
 
       - name: Create GitHub release
@@ -78,4 +79,4 @@ jobs:
             --verify-tag \
             --generate-notes \
             --latest \
-            --title "SMS-Midichopper v${{ steps.version.outputs.version }}"
+            --title "SMS-Anvil Sampler v${{ steps.version.outputs.version }}"

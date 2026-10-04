@@ -4,9 +4,9 @@ SMS-Plugins is developed with AI and human testing. Report bugs and propose work
 in [GitHub Issues](https://github.com/sirsipe/SMS-Plugins/issues). For bugs,
 include the plugin version, Linux/host versions, reproduction steps, and expected
 versus observed behavior. Feature proposals must fit the plugin's
-[vision](SMS-Midichopper/Docs/VISION.md).
+[vision](SMS-AnvilSampler/Docs/VISION.md).
 
-Build using the [plugin guide](SMS-Midichopper/README.md). Validate code changes
+Build using the [plugin guide](SMS-AnvilSampler/README.md). Validate code changes
 with the existing tests and appropriate host/UI checks described in the
 [testing reference](Docs/AI/TESTING.md).
 

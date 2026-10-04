@@ -1,7 +1,7 @@
 # SMS-Plugins: agent instructions
 
 SMS means SudoMetalStudio, the creator's YouTube channel. This AI-developed
-project builds native Linux audio plugins. SMS-Midichopper, a live chopping
+project builds native Linux audio plugins. SMS-Anvil Sampler, a live chopping
 sampler, is the first plugin and is under development. Linux LV2 is primary;
 DPF also provides optional VST3 and CLAP builds.
 
@@ -24,7 +24,7 @@ DPF also provides optional VST3 and CLAP builds.
 
 ## Development rules
 
-- Read the plugin's [vision](SMS-Midichopper/Docs/VISION.md) before feature/design
+- Read the plugin's [vision](SMS-AnvilSampler/Docs/VISION.md) before feature/design
   work. Distinguish intended capabilities from implemented behavior.
 - Keep engine, format adapter, and UI separate. Keep `Common-Src` free of DPF
   and plugin-specific dependencies; DPF UI reuse belongs in `Common-UI`.

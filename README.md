@@ -4,10 +4,10 @@ Native Linux audio plugins developed with AI and human testing.
 
 ## Plugins
 
-- [SMS-Midichopper](SMS-Midichopper/README.md) — live stereo chopping sampler
+- [SMS-Anvil Sampler](SMS-AnvilSampler/README.md) — live stereo chopping sampler
   for LV2 and VST3.
 
-![SMS-Midichopper interface](SMS-Midichopper/Docs/SMS-Midichopper-v0.0.3.png)
+![SMS-Anvil Sampler interface](SMS-AnvilSampler/Docs/SMS-AnvilSampler-v0.0.5.png)
 
 ## Quick Start: AI autopilot in an isolated container
 
@@ -46,7 +46,7 @@ GPT-5.6 Sol.
 
 6. Try this prompt:
 
-   > Hello! Make the ARM button of SMS-Midichopper red, test it, and show me a
+   > Hello! Make the ARM button of SMS-Anvil Sampler red, test it, and show me a
    > picture of how it looks.
 
 7. (*Optional*) - To satisfy your curiosity, follow the agent's virtual screen at

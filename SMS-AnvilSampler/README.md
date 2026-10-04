@@ -1,4 +1,4 @@
-# SMS-Midichopper
+# SMS-Anvil Sampler
 
 A live stereo chopping sampler for Linux. The first armed MIDI tap records;
 later taps split and advance.
@@ -6,7 +6,10 @@ later taps split and advance.
 > **Disclaimer:** This is an AI-generated project, created under the supervision
 > and testing of [SirSipe](https://github.com/sirsipe/).
 
-![SMS-Midichopper interface](Docs/SMS-Midichopper-v0.0.3.png)
+![SMS-Anvil Sampler interface](Docs/SMS-AnvilSampler-v0.0.5.png)
+
+The renamed plug-in has a new host identity. Existing projects that used the
+previous plug-in must replace that instance with SMS-Anvil Sampler.
 
 ## Vision
 
@@ -26,22 +29,22 @@ From the repository root:
 
 ```bash
 git submodule update --init --recursive
-cmake -S SMS-Midichopper -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+cmake -S SMS-AnvilSampler -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
 cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-The plug-in is produced at `build/bin/SMS-Midichopper.lv2`. Install it for
+The plug-in is produced at `build/bin/SMS-AnvilSampler.lv2`. Install it for
 the current user with:
 
 ```bash
 mkdir -p ~/.lv2
-cp -a build/bin/SMS-Midichopper.lv2 ~/.lv2/
+cp -a build/bin/SMS-AnvilSampler.lv2 ~/.lv2/
 ```
 
 ## Use
 
-1. Insert **SMS-Midichopper** on a stereo Reaper track receiving audio and MIDI.
+1. Insert **SMS-Anvil Sampler** on a stereo Reaper track receiving audio and MIDI.
 2. Choose a bank, set monitoring if needed, then click **ARM**. The first
    empty visible pad is selected; click another pad while idle to override it.
 3. The first MIDI note-on starts the slice. Later note-ons close the current
