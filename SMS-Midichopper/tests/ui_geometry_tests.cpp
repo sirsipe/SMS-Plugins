@@ -583,6 +583,21 @@ void levelMeterGeometry()
 
 void waveformGeometry()
 {
+    namespace layout = midichopper::ui::layout;
+    check(layout::editorWaveform.x >= layout::editorZoom.x +
+              layout::editorZoom.width + 10.0f &&
+          layout::editorScroll.y >= layout::editorWaveform.y +
+              layout::editorWaveform.height + 10.0f &&
+          layout::editorScroll.x == layout::editorWaveform.x &&
+          layout::editorScroll.width == layout::editorWaveform.width,
+          "sample waveform reserves gutters for both scroll controls");
+    check(layout::chopWaveform.x >= layout::chopZoom.x +
+              layout::chopZoom.width + 10.0f &&
+          layout::chopScroll.y >= layout::chopWaveform.y +
+              layout::chopWaveform.height + 10.0f &&
+          layout::chopScroll.x == layout::chopWaveform.x &&
+          layout::chopScroll.width == layout::chopWaveform.width,
+          "cut waveform reserves matching scroll gutters");
     sms::ui::waveform::Viewport viewport;
     const sms::ui::Rect viewBounds{0.0f, 0.0f, 800.0f, 100.0f};
     viewport.reset(8000U);

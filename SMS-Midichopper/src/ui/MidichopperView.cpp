@@ -531,7 +531,7 @@ private:
         canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_LEFT |
                           DGL_NAMESPACE::NanoVG::ALIGN_TOP);
         canvas_.fillColor(colors.contentSecondary);
-        canvas_.text(46.0f, 392.0f, region, nullptr);
+        canvas_.text(46.0f, 402.0f, region, nullptr);
         canvas_.text(46.0f, 426.0f, "AMPLITUDE ENVELOPE", nullptr);
         canvas_.fontSize(9.0f);
         canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_RIGHT |
