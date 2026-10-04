@@ -200,7 +200,7 @@ public:
           fPadContextClearArmed(false),
           fPadContextPointerCaptured(false),
           fEditorMode(false),
-          fPlayOnSelect(false),
+          fPlayOnSelect(true),
           fDragTarget(WaveformEditTarget::none),
           fMixerDragIndex(-1),
           fGlobalMixerDragIndex(-1),
@@ -369,6 +369,14 @@ protected:
             }
             if (fEditorMode)
                 requestRepaint();
+            return;
+        }
+        if (index == kParameterAnyPlaybackActive) {
+            const bool active = value >= 0.5f;
+            if (fAnyPlaybackActive != active) {
+                fAnyPlaybackActive = active;
+                requestRepaint();
+            }
             return;
         }
         if (index >= kFirstPadStatusParameter && index < kFirstPadActivityParameter)
@@ -930,7 +938,8 @@ protected:
             std::span<const sms::ui::ContextMenuItemView>{colorMenuItems},
             fHover.target(),
             fMixerValueEntryTarget, fMixerValueEntryText.data(),
-            fEditorMode, fChopEditorMode, fChopSplitMode, fPlayOnSelect, fHasWaveform,
+            fEditorMode, fChopEditorMode, fChopSplitMode, fPlayOnSelect,
+            fAnyPlaybackActive, fHasWaveform,
             fInputLevels, fOutputLevels, fPadState, fPadStatus, fPadColors,
             fEditorSettings, fMixerSettings, fWaveform, fPlaybackPosition,
             std::span<const sms::audio::WaveformSummary>{
@@ -1065,6 +1074,8 @@ protected:
             }
             if (fChopEditorMode)
             {
+                if (beginViewportDrag(clicked, x, y))
+                    return true;
                 if (midichopper::ui::isTarget(
                         clicked, midichopper::ui::InteractiveType::chopBoundary)) {
                     fChopActiveBoundary = clicked.index;
@@ -1104,6 +1115,14 @@ protected:
             }
             if (fEditorMode)
             {
+                if (beginViewportDrag(clicked, x, y))
+                    return true;
+                if (midichopper::ui::isTarget(
+                        clicked, midichopper::ui::InteractiveType::playStop)) {
+                    fPlayButtonPressCaptured = true;
+                    togglePlayStop();
+                    return true;
+                }
                 if ((midichopper::ui::isTarget(clicked,
                          midichopper::ui::InteractiveType::mixerKnob) ||
                      midichopper::ui::isTarget(clicked,
@@ -1219,6 +1238,12 @@ protected:
 
             const auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::steady_clock::now().time_since_epoch()).count();
+            if (midichopper::ui::isTarget(
+                    clicked, midichopper::ui::InteractiveType::playStop)) {
+                fPlayButtonPressCaptured = true;
+                togglePlayStop();
+                return true;
+            }
             if ((midichopper::ui::isTarget(clicked,
                      midichopper::ui::InteractiveType::globalMixerKnob) ||
                  midichopper::ui::isTarget(clicked,
@@ -1327,11 +1352,9 @@ protected:
             }
             if (midichopper::ui::isTarget(clicked, midichopper::ui::InteractiveType::fixedLength))
             {
-                const float t = normalizedX(x, uiLayout::fixedLength);
-                setControlValue(kParameterFixedLengthSeconds,
-                    parameterRanges::fixedLengthSeconds.minimum + t *
-                    (parameterRanges::fixedLengthSeconds.maximum -
-                     parameterRanges::fixedLengthSeconds.minimum));
+                fMainSliderDrag = clicked.type;
+                editParameter(kParameterFixedLengthSeconds, true);
+                updateMainSliderDrag(x);
                 return true;
             }
             if (midichopper::ui::isTarget(clicked, midichopper::ui::InteractiveType::oneShotMode))
@@ -1346,18 +1369,16 @@ protected:
             }
             if (midichopper::ui::isTarget(clicked, midichopper::ui::InteractiveType::voiceLimit))
             {
-                const float t = normalizedX(x, uiLayout::voiceLimit);
-                setControlValue(kParameterMaxVoices,
-                    parameterRanges::maxVoices.minimum + static_cast<float>(std::lround(
-                        t * (parameterRanges::maxVoices.maximum -
-                             parameterRanges::maxVoices.minimum))));
+                fMainSliderDrag = clicked.type;
+                editParameter(kParameterMaxVoices, true);
+                updateMainSliderDrag(x);
                 return true;
             }
             if (midichopper::ui::isTarget(clicked, midichopper::ui::InteractiveType::preRoll))
             {
-                const float t = normalizedX(x, uiLayout::preRoll(fRecordMode >= 0.5f));
-                setControlValue(kParameterPreRollMs,
-                                t * parameterRanges::preRollMs.maximum);
+                fMainSliderDrag = clicked.type;
+                editParameter(kParameterPreRollMs, true);
+                updateMainSliderDrag(x);
                 return true;
             }
             if (midichopper::ui::isTarget(clicked, midichopper::ui::InteractiveType::monitor))
@@ -1425,6 +1446,16 @@ protected:
             requestRepaint();
             return true;
         }
+        else if (fViewportDrag >= 0)
+        {
+            fViewportDrag = -1;
+            return true;
+        }
+        else if (fPlayButtonPressCaptured)
+        {
+            fPlayButtonPressCaptured = false;
+            return true;
+        }
         else if (fEditorMode && fDragTarget != WaveformEditTarget::none)
         {
             commitEditorSettings();
@@ -1447,6 +1478,17 @@ protected:
             requestRepaint();
             return true;
         }
+        else if (fMainSliderDrag >= 0)
+        {
+            const auto type = static_cast<midichopper::ui::InteractiveType>(fMainSliderDrag);
+            const uint32_t parameter = type == midichopper::ui::InteractiveType::fixedLength
+                ? kParameterFixedLengthSeconds
+                : type == midichopper::ui::InteractiveType::voiceLimit
+                    ? kParameterMaxVoices : kParameterPreRollMs;
+            editParameter(parameter, false);
+            fMainSliderDrag = -1;
+            return true;
+        }
         else if (fPadPress.pad() >= 0)
         {
             releasePressedPad();
@@ -1467,6 +1509,10 @@ protected:
         const auto position = toLogicalPosition(ev.pos);
         const float x = position.getX() - uiLayout::contentOffsetX;
         const float y = position.getY();
+        if (fViewportDrag >= 0) {
+            updateViewportDrag(x, y);
+            return true;
+        }
         if (fChopEditorMode && fChopActiveBoundary >= 0) {
             const auto boundary = static_cast<std::size_t>(fChopActiveBoundary);
             const auto total = midichopper::ui::chop::totalFrames(fChopWaveforms);
@@ -1492,6 +1538,10 @@ protected:
         }
         if (fGlobalMixerDragIndex >= 0) {
             updateGlobalMixerDrag(x, y);
+            return true;
+        }
+        if (fMainSliderDrag >= 0) {
+            updateMainSliderDrag(x);
             return true;
         }
         const auto hovered = resolveInteractiveTarget(x, y);
@@ -1860,9 +1910,11 @@ private:
     float fGlobalTune;
     float fGlobalLowpass = 0.0f;
     float fGlobalHighpass = 0.0f;
-    float fGlobalFilterSlope = 1.0f;
+    float fGlobalFilterSlope = 0.0f;
     float fGlobalDirty = 0.0f;
     int fMaxVoices;
+    bool fAnyPlaybackActive = false;
+    bool fPlayButtonPressCaptured = false;
     int fBank;
     int fLayout;
     int fSelectedPad;
@@ -1911,6 +1963,9 @@ private:
     midichopper::ui::KnobAdjustment fMixerDragAdjustment =
         midichopper::ui::KnobAdjustment::normal;
     int fGlobalMixerDragIndex;
+    int fMainSliderDrag = -1;
+    int fViewportDrag = -1;
+    float fViewportScrollGrabX = 0.0f;
     float fGlobalMixerDragStartY = 0.0f;
     sms::dsp::SampleMixerSettings fGlobalMixerDragStart{};
     midichopper::ui::KnobAdjustment fGlobalMixerDragAdjustment =
@@ -2017,6 +2072,68 @@ private:
     static float normalizedX(const float x, const sms::ui::Rect bounds) noexcept
     {
         return std::clamp((x - bounds.x) / bounds.width, 0.0f, 1.0f);
+    }
+
+    bool beginViewportDrag(const sms::ui::InteractiveTarget clicked,
+                           const float x, const float y)
+    {
+        if (!midichopper::ui::isTarget(clicked,
+                midichopper::ui::InteractiveType::waveformZoom) &&
+            !midichopper::ui::isTarget(clicked,
+                midichopper::ui::InteractiveType::waveformScroll))
+            return false;
+        fViewportDrag = clicked.type;
+        if (midichopper::ui::isTarget(clicked,
+                midichopper::ui::InteractiveType::waveformScroll)) {
+            const auto track = fChopEditorMode ? uiLayout::chopScroll : uiLayout::editorScroll;
+            const auto thumb = fWaveformViewport.scrollThumb(track);
+            fViewportScrollGrabX = thumb.contains({x, y})
+                ? x - thumb.x : thumb.width * 0.5f;
+        }
+        updateViewportDrag(x, y);
+        return true;
+    }
+
+    void updateViewportDrag(const float x, const float y)
+    {
+        bool changed = false;
+        if (fViewportDrag == static_cast<int>(
+                midichopper::ui::InteractiveType::waveformZoom)) {
+            const auto track = fChopEditorMode ? uiLayout::chopZoom : uiLayout::editorZoom;
+            changed = fWaveformViewport.setZoomPosition(std::clamp(
+                (track.y + track.height - 6.0f - y) / (track.height - 12.0f),
+                0.0f, 1.0f));
+        } else if (fViewportDrag == static_cast<int>(
+                midichopper::ui::InteractiveType::waveformScroll)) {
+            const auto track = fChopEditorMode ? uiLayout::chopScroll : uiLayout::editorScroll;
+            const auto thumb = fWaveformViewport.scrollThumb(track);
+            if (track.width > thumb.width)
+                changed = fWaveformViewport.setScrollPosition(
+                    (x - fViewportScrollGrabX - track.x) / (track.width - thumb.width));
+        }
+        if (changed) {
+            scheduleWaveformDetail();
+            requestRepaint();
+        }
+    }
+
+    void updateMainSliderDrag(const float x)
+    {
+        const auto type = static_cast<midichopper::ui::InteractiveType>(fMainSliderDrag);
+        if (type == midichopper::ui::InteractiveType::fixedLength) {
+            setControlValue(kParameterFixedLengthSeconds,
+                midichopper::ui::mainSliderValueAtX(x, uiLayout::fixedLength,
+                    parameterRanges::fixedLengthSeconds));
+        } else if (type == midichopper::ui::InteractiveType::voiceLimit) {
+            setControlValue(kParameterMaxVoices,
+                midichopper::ui::mainSliderValueAtX(x, uiLayout::voiceLimit,
+                    parameterRanges::maxVoices, true));
+        } else if (type == midichopper::ui::InteractiveType::preRoll) {
+            setControlValue(kParameterPreRollMs,
+                midichopper::ui::mainSliderValueAtX(x,
+                    uiLayout::preRoll(fRecordMode >= 0.5f),
+                    parameterRanges::preRollMs, true));
+        }
     }
 
     [[nodiscard]] std::int64_t clampChopBoundaryOffset(
@@ -2611,6 +2728,31 @@ private:
 #else
         static_cast<void>(previousMidiNote);
 #endif
+    }
+
+    void togglePlayStop()
+    {
+        // The DSP decides whether to stop or play from its actual voice state.
+        // VST3 hosts do not always deliver UI writes to hidden trigger parameters.
+        const bool selected = hasSelectedPad() &&
+            bankForGlobalPad(fSelectedPad) == fBank &&
+            localPadForGlobalPad(fSelectedPad) < visiblePadCount() &&
+            fPadState[static_cast<std::size_t>(localPadForGlobalPad(fSelectedPad))] != '0' &&
+            fPadState[static_cast<std::size_t>(localPadForGlobalPad(fSelectedPad))] != '.';
+        char request[4];
+        std::snprintf(request, sizeof(request), "%d", selected ? fSelectedPad + 1 : 0);
+#if DISTRHO_PLUGIN_WANT_STATE
+        setState("play_stop_request", request);
+#endif
+        releasePressedPad();
+        if (fAnyPlaybackActive) {
+            fAnyPlaybackActive = false;
+            stopLocalPlayhead(false);
+        } else if (selected) {
+            fAnyPlaybackActive = true;
+            startLocalPlayhead(fSelectedPad);
+        }
+        requestRepaint();
     }
 
     void startLocalPlayhead(const int pad)

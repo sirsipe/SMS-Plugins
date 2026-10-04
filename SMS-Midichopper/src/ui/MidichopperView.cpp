@@ -78,6 +78,42 @@ private:
         return isTarget(state_.hoveredTarget, type, index);
     }
 
+    void drawViewportControls(const sms::ui::Rect zoom,
+                              const sms::ui::Rect scroll)
+    {
+        const auto& colors = sms::ui::dpf::theme();
+        const auto& viewport = state_.waveformViewport;
+        const float alpha = viewport.total != 0U ? 1.0f : colors.disabledAlpha;
+        canvas_.beginPath();
+        canvas_.roundedRect(zoom.x, zoom.y, zoom.width, zoom.height, 4.0f);
+        canvas_.roundedRect(scroll.x, scroll.y, scroll.width, scroll.height, 4.0f);
+        canvas_.fillColor(colors.recess.withAlpha(alpha));
+        canvas_.fill();
+        canvas_.strokeColor(colors.outline.withAlpha(alpha));
+        canvas_.strokeWidth(1.0f);
+        canvas_.stroke();
+
+        const float centerY = zoom.y + (1.0f - viewport.zoomPosition()) *
+            (zoom.height - 12.0f) + 6.0f;
+        canvas_.beginPath();
+        canvas_.roundedRect(zoom.x + 2.0f, centerY - 6.0f,
+                            zoom.width - 4.0f, 12.0f, 2.0f);
+        canvas_.fillColor(hovered(InteractiveType::waveformZoom)
+            ? colors.selection : colors.contentSecondary.withAlpha(alpha));
+        canvas_.fill();
+
+        const auto window = viewport.scrollThumb(scroll);
+        canvas_.beginPath();
+        canvas_.roundedRect(window.x, window.y + 1.0f,
+                            window.width, window.height - 2.0f, 3.0f);
+        canvas_.fillColor(colors.selection.withAlpha(
+            hovered(InteractiveType::waveformScroll) ? 0.36f : 0.20f));
+        canvas_.fill();
+        canvas_.strokeColor(colors.selection.withAlpha(alpha));
+        canvas_.strokeWidth(1.0f);
+        canvas_.stroke();
+    }
+
     void drawMixerKnob(const sms::ui::Rect bounds, const InteractiveType type,
                        const int index, const char* const label, const float value,
                        const float minimum, const float maximum, const char* const display)
@@ -445,6 +481,7 @@ private:
                 ? static_cast<sms::ui::waveform::EditTarget>(state_.hoveredTarget.index)
                 : sms::ui::waveform::EditTarget::none,
             state_.waveformDetail, state_.waveformViewport);
+        drawViewportControls(uiLayout::editorZoom, uiLayout::editorScroll);
 
         const int playbackPad = state_.playbackPosition > 0.0f
             ? static_cast<int>(std::floor(state_.playbackPosition)) - 1 : -1;
@@ -494,7 +531,7 @@ private:
         canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_LEFT |
                           DGL_NAMESPACE::NanoVG::ALIGN_TOP);
         canvas_.fillColor(colors.contentSecondary);
-        canvas_.text(46.0f, 392.0f, region, nullptr);
+        canvas_.text(46.0f, 402.0f, region, nullptr);
         canvas_.text(46.0f, 426.0f, "AMPLITUDE ENVELOPE", nullptr);
         canvas_.fontSize(9.0f);
         canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_RIGHT |
@@ -616,6 +653,7 @@ private:
         }
         sms::ui::dpf::drawWaveformViewportLabel(canvas_, uiLayout::chopWaveform,
             state_.waveformViewport, combined.sampleRate);
+        drawViewportControls(uiLayout::chopZoom, uiLayout::chopScroll);
         if (state_.chopReady) {
             const float selectedStart = state_.chopSplitMode ? uiLayout::chopWaveform.x :
                 chop::boundaryX(
@@ -854,6 +892,10 @@ private:
             canvas_.text(cell.x + cell.width - 9.0f, cell.y + cell.height * 0.5f,
                          note, nullptr);
         }
+        sms::ui::dpf::drawSegment(canvas_, uiLayout::editorPlayStop,
+                                  state_.anyPlaybackActive ? "STOP" : "PLAY",
+                                  state_.anyPlaybackActive, colors.activityPlayback,
+                                  hovered(InteractiveType::playStop));
         sms::ui::dpf::drawSegment(canvas_, uiLayout::playOnSelect, "PLAY ON SELECT",
                                   state_.playOnSelect, colors.activityPlayback,
                                   hovered(InteractiveType::playOnSelect));
@@ -942,6 +984,10 @@ private:
                 static_cast<float>(state_.maxVoices - 1) /
                 (plugin::parameterRanges::maxVoices.maximum - 1.0f),
                 colors.activityPlayback, hovered(InteractiveType::voiceLimit));
+            sms::ui::dpf::drawSegment(canvas_, uiLayout::mainPlayStop,
+                state_.anyPlaybackActive ? "STOP" : "PLAY",
+                state_.anyPlaybackActive, colors.activityPlayback,
+                hovered(InteractiveType::playStop));
         }
 
         drawGlobalMixer();

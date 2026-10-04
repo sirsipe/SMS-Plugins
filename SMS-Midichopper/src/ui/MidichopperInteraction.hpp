@@ -8,6 +8,7 @@
 #include "Interaction.hpp"
 #include "MidichopperLayout.hpp"
 #include "PadLayout.hpp"
+#include "../plugin/Parameters.hpp"
 #include "WaveformEditor.hpp"
 #include "WaveformViewport.hpp"
 
@@ -30,11 +31,14 @@ enum class InteractiveType : int {
     regionHandle,
     envelopeNode,
     envelopeSlider,
+    waveformZoom,
+    waveformScroll,
     mixerKnob,
     globalMixerKnob,
     mixerValueLabel,
     globalMixerValueLabel,
     playOnSelect,
+    playStop,
     openEditor,
     chopBoundary,
     chopPadPreview,
@@ -83,6 +87,15 @@ private:
     int pad_ = -1;
     int midiNote_ = -1;
 };
+
+[[nodiscard]] inline float mainSliderValueAtX(const float x,
+    const sms::ui::Rect bounds, const plugin::ParameterRange range,
+    const bool integral = false) noexcept
+{
+    const float t = std::clamp((x - bounds.x) / bounds.width, 0.0f, 1.0f);
+    const float value = range.minimum + t * (range.maximum - range.minimum);
+    return integral ? std::round(value) : value;
+}
 
 class DoubleClickTracker {
 public:
@@ -176,7 +189,7 @@ inline void resetMixerKnob(sms::dsp::SampleMixerSettings& settings,
     case 2: settings.tuneSemitones = 0.0f; break;
     case 3: settings.lowpass = 0.0f; break;
     case 4: settings.highpass = 0.0f; break;
-    case 5: settings.filterSlope = 1.0f; break;
+    case 5: settings.filterSlope = 0.0f; break;
     case 6: settings.dirty = 0.0f; break;
     default: return;
     }
@@ -440,6 +453,12 @@ interactiveTargetAt(const sms::ui::Point point, const InteractionContext& contex
             return target(InteractiveType::chopNext);
         if (context.chopApplying)
             return sms::ui::kNoInteractiveTarget;
+        if (context.chopReady && context.waveformViewport.total != 0U) {
+            if (uiLayout::chopZoom.contains(point))
+                return target(InteractiveType::waveformZoom);
+            if (uiLayout::chopScroll.contains(point))
+                return target(InteractiveType::waveformScroll);
+        }
         const int boundary = chop::boundaryAt(
             point, uiLayout::chopWaveform, context.chopWaveforms,
             context.chopOffsets, context.waveformViewport);
@@ -456,6 +475,12 @@ interactiveTargetAt(const sms::ui::Point point, const InteractionContext& contex
     if (context.editorMode) {
         if (uiLayout::closeEditor.contains(point))
             return target(InteractiveType::closeEditor);
+        if (context.waveformViewport.total != 0U) {
+            if (uiLayout::editorZoom.contains(point))
+                return target(InteractiveType::waveformZoom);
+            if (uiLayout::editorScroll.contains(point))
+                return target(InteractiveType::waveformScroll);
+        }
         if (!context.captureActive) {
             for (int bank = 0; bank < static_cast<int>(kBankCount); ++bank) {
                 if (uiLayout::editorBank(bank).contains(point))
@@ -489,6 +514,8 @@ interactiveTargetAt(const sms::ui::Point point, const InteractionContext& contex
         }
         if (uiLayout::playOnSelect.contains(point))
             return target(InteractiveType::playOnSelect);
+        if (uiLayout::editorPlayStop.contains(point))
+            return target(InteractiveType::playStop);
         return sms::ui::kNoInteractiveTarget;
     }
 
@@ -527,6 +554,8 @@ interactiveTargetAt(const sms::ui::Point point, const InteractionContext& contex
             return target(InteractiveType::gatedMode);
         if (uiLayout::voiceLimit.contains(point))
             return target(InteractiveType::voiceLimit);
+        if (uiLayout::mainPlayStop.contains(point))
+            return target(InteractiveType::playStop);
     }
     if (uiLayout::monitor.contains(point))
         return target(InteractiveType::monitor);

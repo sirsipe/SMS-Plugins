@@ -2,7 +2,8 @@
 
 Pad mixer settings are stored in `SampleMixerSettings`. The `MX2` codec saves
 gain, pan, tune, lowpass, highpass, slope, and Dirty. `MX1` pad states still load;
-their new effects default to off and slope to 12 dB/octave. Global effect
+their new effects default to off and slope to 12 dB/octave. New pads and global
+controls default to a 6 dB/octave slope. Global effect
 parameters are appended after the released host parameter IDs.
 
 At playback, either pad or global Dirty enables the same source conversion.

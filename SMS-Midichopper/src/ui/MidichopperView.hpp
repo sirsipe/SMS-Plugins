@@ -20,7 +20,7 @@ struct ViewState {
     float captureMode = 0.0f;
     float fixedLengthSeconds = 1.0f;
     float playbackMode = 0.0f;
-    float monitorInput = 1.0f;
+    float monitorInput = 2.0f;
     int startPad = 0;
     float preRollMs = 0.0f;
     int baseMidiNote = static_cast<int>(kDefaultBaseMidiNote);
@@ -30,9 +30,9 @@ struct ViewState {
     float globalTuneSemitones = 0.0f;
     float globalLowpass = 0.0f;
     float globalHighpass = 0.0f;
-    float globalFilterSlope = 1.0f;
+    float globalFilterSlope = 0.0f;
     float globalDirty = 0.0f;
-    int maxVoices = static_cast<int>(kPadsPerBank);
+    int maxVoices = 1;
     int bank = 0;
     int layout = 0;
     int selectedPad = -1;
@@ -52,7 +52,8 @@ struct ViewState {
     bool editorMode = false;
     bool chopEditorMode = false;
     bool chopSplitMode = false;
-    bool playOnSelect = false;
+    bool playOnSelect = true;
+    bool anyPlaybackActive = false;
     bool hasWaveform = false;
     std::array<float, 2> inputLevels{};
     std::array<float, 2> outputLevels{};

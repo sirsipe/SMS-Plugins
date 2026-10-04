@@ -290,12 +290,29 @@ void interactionTargets()
           "pre-roll occupies the fixed-length slot only when length is hidden");
     context.armed = false;
     context.fixedCapture = false;
+    check(interaction::isTarget(
+              interaction::interactiveTargetAt(center(layout::mainPlayStop), context),
+              interaction::InteractiveType::playStop),
+          "main view exposes Play/Stop between max voices and mixer");
     check(layout::sidePanel.contains(center(layout::playOnSelect)) &&
               !interaction::isTarget(
                   interaction::interactiveTargetAt(center(layout::playOnSelect), context),
                   interaction::InteractiveType::playOnSelect),
           "play-on-select stays inside the side panel and is hidden outside the editor");
     context.editorMode = true;
+    check(interaction::isTarget(
+              interaction::interactiveTargetAt(center(layout::editorPlayStop), context),
+              interaction::InteractiveType::playStop) &&
+          layout::editorPlayStop.x + layout::editorPlayStop.width < layout::playOnSelect.x,
+          "editor Play/Stop sits left of Play on Select");
+    context.waveformViewport.reset(8000U);
+    check(interaction::isTarget(
+              interaction::interactiveTargetAt(center(layout::editorZoom), context),
+              interaction::InteractiveType::waveformZoom) &&
+          interaction::isTarget(
+              interaction::interactiveTargetAt(center(layout::editorScroll), context),
+              interaction::InteractiveType::waveformScroll),
+          "sample editor exposes zoom and scroll controls");
     check(interaction::isTarget(
               interaction::interactiveTargetAt(center(layout::playOnSelect), context),
               interaction::InteractiveType::playOnSelect),
@@ -344,6 +361,14 @@ void interactionTargets()
     context.chopWaveforms = chopWaveforms;
     context.chopOffsets = chopOffsets;
     context.chopReady = true;
+    context.waveformViewport.reset(300U);
+    check(interaction::isTarget(
+              interaction::interactiveTargetAt(center(layout::chopZoom), context),
+              interaction::InteractiveType::waveformZoom) &&
+          interaction::isTarget(
+              interaction::interactiveTargetAt(center(layout::chopScroll), context),
+              interaction::InteractiveType::waveformScroll),
+          "cut editor exposes zoom and scroll controls");
     const auto cut = interaction::interactiveTargetAt(
         center(interaction::chop::boundaryHandle(
             layout::chopWaveform, chopWaveforms, chopOffsets, 0)), context);
@@ -490,6 +515,28 @@ void wheelAdjustment()
           "zero wheel delta does not change a control");
 }
 
+void mainSliderDragging()
+{
+    namespace interaction = midichopper::ui;
+    namespace layout = midichopper::ui::layout;
+    namespace ranges = midichopper::plugin::parameterRanges;
+    check(interaction::mainSliderValueAtX(layout::voiceLimit.x,
+              layout::voiceLimit, ranges::maxVoices, true) == 1.0f &&
+          interaction::mainSliderValueAtX(layout::voiceLimit.x +
+              layout::voiceLimit.width, layout::voiceLimit,
+              ranges::maxVoices, true) == 16.0f,
+          "max voices drag spans its full integer range");
+    check(interaction::mainSliderValueAtX(-100.0f, layout::fixedLength,
+              ranges::fixedLengthSeconds) == ranges::fixedLengthSeconds.minimum &&
+          interaction::mainSliderValueAtX(2000.0f, layout::fixedLength,
+              ranges::fixedLengthSeconds) == ranges::fixedLengthSeconds.maximum,
+          "fixed length drag clamps outside the slider");
+    check(interaction::mainSliderValueAtX(layout::preRoll(true).x +
+              layout::preRoll(true).width * 0.5f, layout::preRoll(true),
+              ranges::preRollMs, true) == 50.0f,
+          "pre-roll drag follows the fixed capture slider");
+}
+
 void levelMeterGeometry()
 {
     namespace meter = sms::ui::meter;
@@ -536,6 +583,21 @@ void levelMeterGeometry()
 
 void waveformGeometry()
 {
+    namespace layout = midichopper::ui::layout;
+    check(layout::editorWaveform.x >= layout::editorZoom.x +
+              layout::editorZoom.width + 10.0f &&
+          layout::editorScroll.y >= layout::editorWaveform.y +
+              layout::editorWaveform.height + 10.0f &&
+          layout::editorScroll.x == layout::editorWaveform.x &&
+          layout::editorScroll.width == layout::editorWaveform.width,
+          "sample waveform reserves gutters for both scroll controls");
+    check(layout::chopWaveform.x >= layout::chopZoom.x +
+              layout::chopZoom.width + 10.0f &&
+          layout::chopScroll.y >= layout::chopWaveform.y +
+              layout::chopWaveform.height + 10.0f &&
+          layout::chopScroll.x == layout::chopWaveform.x &&
+          layout::chopScroll.width == layout::chopWaveform.width,
+          "cut waveform reserves matching scroll gutters");
     sms::ui::waveform::Viewport viewport;
     const sms::ui::Rect viewBounds{0.0f, 0.0f, 800.0f, 100.0f};
     viewport.reset(8000U);
@@ -546,6 +608,20 @@ void waveformGeometry()
     check(viewport.pan(-1.0f) && viewport.start == 1800U &&
           viewport.xForFrame(1800.0, viewBounds) == viewBounds.x,
           "shift wheel pans by part of the visible duration");
+    check(viewport.setZoomPosition(1.0f) && viewport.end - viewport.start == 16U &&
+          std::abs(viewport.zoomPosition() - 1.0f) < 0.001f,
+          "zoom slider reaches the minimum window");
+    check(viewport.setScrollPosition(1.0f) && viewport.end == viewport.total &&
+          std::abs(viewport.scrollPosition() - 1.0f) < 0.001f,
+          "scroll slider reaches the final source frame");
+    const auto thumb = viewport.scrollThumb(viewBounds);
+    check(thumb.x + thumb.width == viewBounds.x + viewBounds.width &&
+          thumb.width < viewBounds.width,
+          "scroll thumb shows the visible source window");
+    viewport.reset(20000000U);
+    static_cast<void>(viewport.setZoomPosition(1.0f));
+    check(viewport.scrollThumb(viewBounds).width >= 12.0f,
+          "deep zoom keeps the scroll window visible");
     viewport.reset(8000U);
     check(!viewport.zoomed() && viewport.start == 0U && viewport.end == 8000U,
           "new pad or editor entry restores the full waveform");
@@ -804,6 +880,7 @@ int main()
     padPressTracking();
     editorSnapshotCollection();
     wheelAdjustment();
+    mainSliderDragging();
     levelMeterGeometry();
     waveformGeometry();
     chopEditorGeometry();

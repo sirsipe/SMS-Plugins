@@ -1,30 +1,29 @@
 # SMS-Midichopper architecture
 
-The layers are:
+Layers:
 
-- `src/core` is the framework-free C++20 capture/playback engine.
-- `src/plugin` adapts DPF parameters, audio, MIDI, and state; start with
-  `Parameters.hpp`, `MidichopperPlugin.cpp`, and `StateCodec.*`.
+- `src/core` is the C++20 capture/playback engine.
+- `src/plugin` adapts DPF parameters, audio, MIDI, and state.
 - `src/ui/MidichopperUI.cpp` owns host communication;
   `MidichopperInteraction.hpp` resolves input and `MidichopperView.cpp` draws.
-- `tests` covers engine behavior, state, WAV handling, and host-free UI geometry.
-- `../Common-Src` contains reusable sample, DSP, state, and UI geometry code.
-- `../Common-UI` contains the shared theme, DPF/NanoVG base, controls,
-  context-menu and hover primitives, pad layouts, and waveform editor pieces.
+- `tests` covers engine, state, WAV, and UI.
+- `../Common-Src` contains reusable DSP, state, and UI geometry.
+- `../Common-UI` contains shared theme, controls, pads, and waveform editing.
 
 ## MIDI mapping
 
-The saved `midi_bank_mode` selects two mappings. All Banks maps storage from the
-base note as four gapless layout-sized pages. Note-on updates the active bank;
-note-off does not. Supporting hosts save this change. Layout changes regroup
-slots without changing notes.
+Saved `midi_bank_mode` selects two mappings. All Banks maps four gapless pages
+from the base note. Note-on updates the active bank; note-off does not. Layout
+changes regroup slots without changing notes.
 Every successful playback note-on also advances a hidden output event that
 encodes the global pad index in alternating halves of its range. Both UI views
-follow that event, so bank, MIDI labels, and the single last-played selection
-stay current across retriggers even without host input-parameter changes.
+follow it to keep bank, MIDI labels, and last-played selection current.
+An appended hidden output reports whether any pad or raw preview is active.
+The UI sends `play_stop_request` through state transport; the DSP decides from
+its voice state whether to audition the selected pad or hard-cut every voice at
+the next audio block. An appended Stop All trigger also supports host control.
 All Banks limits the effective base note to 64 so every layout remains within
-MIDI notes 0–127. UI-generated note-on and note-off events and displayed note
-labels use the same mapping as the engine. Selected Bank reuses one note range,
+MIDI notes 0–127. UI notes and labels use the engine mapping. Selected Bank reuses one range,
 with `active_bank` choosing its target, and retains the released fixed 16-slot
 bank organization.
 

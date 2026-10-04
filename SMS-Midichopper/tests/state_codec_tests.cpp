@@ -139,6 +139,9 @@ void mixerStateRoundTrip()
           !midichopper::plugin::decodeMixerSettings("SP1;0;0;0", decoded),
           "malformed and wrong-version mixer state is rejected");
 
+    check(midichopper::plugin::decodeMixerSettings("MX2;0;0;0;0;0;0;0", decoded) &&
+          decoded.filterSlope == 0.0f,
+          "new-session mixer state defaults to 6 dB slope");
     check(midichopper::plugin::decodeMixerSettings("MX1;-90;2;48", decoded),
           "finite out-of-range mixer state decodes safely");
     check(decoded.gainDecibels == sms::dsp::kMinimumSampleGainDecibels &&

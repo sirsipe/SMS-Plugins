@@ -11,6 +11,8 @@ Over the waveform, **Ctrl + wheel** zooms around the pointer and **Shift +
 wheel** scrolls left or right. Each zoomed view requests detail from the
 visible raw audio. Ordinary wheel still moves a cut; Ctrl/Shift wheel over a
 cut controls the view. Navigating to another pad or leaving the editor resets zoom.
+Drag the vertical control left of the waveform to zoom, or drag the horizontal
+window box below it to scroll. The box shows the visible part of the source.
 
 With an empty left or right pad, its cut starts at that source edge. Move it
 inward to give the empty pad the source prefix or suffix; otherwise it stays empty.

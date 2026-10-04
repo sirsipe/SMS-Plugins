@@ -23,13 +23,18 @@ inline constexpr sms::ui::Rect menuPanel{1048.0f, 68.0f, 192.0f, 228.0f};
 inline constexpr sms::ui::Rect footer{24.0f, 706.0f, 1216.0f, 32.0f};
 inline constexpr sms::ui::Rect mainPadBounds{46.0f, 196.0f, 890.0f, 470.0f};
 inline constexpr sms::ui::Rect overviewWaveform{46.0f, 176.0f, 890.0f, 10.0f};
-inline constexpr sms::ui::Rect editorWaveform{46.0f, 158.0f, 890.0f, 222.0f};
+inline constexpr sms::ui::Rect editorWaveform{74.0f, 158.0f, 862.0f, 208.0f};
+inline constexpr sms::ui::Rect editorZoom{46.0f, 158.0f, 16.0f, 208.0f};
+inline constexpr sms::ui::Rect editorScroll{74.0f, 378.0f, 862.0f, 12.0f};
 inline constexpr sms::ui::Rect envelopeGraph{46.0f, 448.0f, 370.0f, 104.0f};
 inline constexpr sms::ui::Rect editorPadBounds{994.0f, 204.0f, 222.0f, 406.0f};
-inline constexpr sms::ui::Rect playOnSelect{994.0f, 628.0f, 222.0f, 34.0f};
+inline constexpr sms::ui::Rect editorPlayStop{994.0f, 628.0f, 106.0f, 34.0f};
+inline constexpr sms::ui::Rect playOnSelect{1106.0f, 628.0f, 110.0f, 34.0f};
 inline constexpr sms::ui::Rect openEditor{994.0f, 108.0f, 222.0f, 28.0f};
 inline constexpr sms::ui::Rect closeEditor{994.0f, 112.0f, 222.0f, 32.0f};
-inline constexpr sms::ui::Rect chopWaveform{46.0f, 170.0f, 890.0f, 250.0f};
+inline constexpr sms::ui::Rect chopWaveform{74.0f, 170.0f, 862.0f, 228.0f};
+inline constexpr sms::ui::Rect chopZoom{46.0f, 170.0f, 16.0f, 228.0f};
+inline constexpr sms::ui::Rect chopScroll{74.0f, 412.0f, 862.0f, 12.0f};
 inline constexpr sms::ui::Rect chopApply{994.0f, 480.0f, 222.0f, 38.0f};
 inline constexpr sms::ui::Rect chopPrevious{994.0f, 542.0f, 64.0f, 52.0f};
 inline constexpr sms::ui::Rect chopExit{1074.0f, 534.0f, 64.0f, 64.0f};
@@ -64,6 +69,7 @@ inline constexpr sms::ui::Rect fixedLength{994.0f, 298.0f, 222.0f, 36.0f};
 inline constexpr sms::ui::Rect oneShotMode{994.0f, 220.0f, 106.0f, 38.0f};
 inline constexpr sms::ui::Rect gatedMode{1108.0f, 220.0f, 108.0f, 38.0f};
 inline constexpr sms::ui::Rect voiceLimit{994.0f, 298.0f, 222.0f, 28.0f};
+inline constexpr sms::ui::Rect mainPlayStop{1049.0f, 342.0f, 112.0f, 32.0f};
 
 [[nodiscard]] constexpr sms::ui::Rect preRoll(const bool fixedCapture) noexcept
 {

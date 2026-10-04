@@ -58,9 +58,9 @@ struct EngineSettings {
     float tuneSemitones = 0.0f;
     float lowpass = 0.0f;
     float highpass = 0.0f;
-    float filterSlope = 1.0f;
+    float filterSlope = 0.0f;
     float dirty = 0.0f;
-    std::uint8_t maxVoices = static_cast<std::uint8_t>(kPadsPerBank);
+    std::uint8_t maxVoices = 1U;
 };
 
 /** A non-real-time copy of one pad, suitable for project state and UI work. */
@@ -205,6 +205,11 @@ public:
     [[nodiscard]] float chopPreviewPosition() const noexcept;
     /** Zero when stopped; otherwise latest triggered pad + 1 plus source position. */
     [[nodiscard]] float playbackPosition() const noexcept;
+    /** Hard-cut every pad voice and raw preview at the next audio block boundary. */
+    void stopAllPlayback() noexcept;
+    [[nodiscard]] bool anyPlaybackActive() const noexcept;
+    /** UI transport action: cut active voices, otherwise audition this pad. */
+    void togglePlayback(std::uint32_t selectedPad) noexcept;
     [[nodiscard]] sms::dsp::SamplePlaybackSettings padPlaybackSettings(std::uint32_t pad) const noexcept;
     void setPadPlaybackSettings(std::uint32_t pad,
                                 const sms::dsp::SamplePlaybackSettings& settings) noexcept;
@@ -258,7 +263,7 @@ private:
         std::atomic<float> mixerTuneSemitones{0.0f};
         std::atomic<float> mixerLowpass{0.0f};
         std::atomic<float> mixerHighpass{0.0f};
-        std::atomic<float> mixerFilterSlope{1.0f};
+        std::atomic<float> mixerFilterSlope{0.0f};
         std::atomic<float> mixerDirty{0.0f};
         Pad() = default;
         Pad(const Pad&) = delete;

@@ -71,7 +71,8 @@ constexpr std::uint32_t kPadStructureStatusState = kPadStructureRequestState + 1
 constexpr std::uint32_t kWaveformDetailRequestState = kPadStructureStatusState + 1U;
 constexpr std::uint32_t kWaveformDetailDataState = kWaveformDetailRequestState + 1U;
 constexpr std::uint32_t kPadColorStateOffset = kWaveformDetailDataState + 1U;
-constexpr std::uint32_t kStateCount = kPadColorStateOffset + midichopper::kPadCount;
+constexpr std::uint32_t kPlayStopRequestState = kPadColorStateOffset + midichopper::kPadCount;
+constexpr std::uint32_t kStateCount = kPlayStopRequestState + 1U;
 constexpr const char* kWaveformRequestKey = "waveform_request";
 constexpr const char* kWaveformDataKey = "waveform_data";
 constexpr const char* kWaveformDetailRequestKey = "waveform_detail_request";
@@ -87,6 +88,7 @@ constexpr const char* kChopPreviewRequestKey = "chop_preview_request";
 constexpr const char* kChopMidiPreviewKey = "chop_midi_preview";
 constexpr const char* kPadStructureRequestKey = "pad_structure_request";
 constexpr const char* kPadStructureStatusKey = "pad_structure_status";
+constexpr const char* kPlayStopRequestKey = "play_stop_request";
 static_assert(midichopper::kPadCount <= 64U,
               "pending clear requests use one bit per pad");
 
@@ -396,6 +398,18 @@ protected:
                            kParameterIsOutput | kParameterIsHidden,
                            "Internal UI playhead for the most recently triggered pad.");
             break;
+        case kParameterStopAllPlayback:
+            setupParameter(index, parameter, "Stop All Playback", "stop_all_playback", "",
+                           kParameterIsBoolean | kParameterIsInteger | kParameterIsTrigger |
+                               kParameterIsHidden,
+                           "Immediately cut all playing samples.");
+            break;
+        case kParameterAnyPlaybackActive:
+            setupParameter(index, parameter, "Any Playback Active", "any_playback_active", "",
+                           kParameterIsOutput | kParameterIsBoolean | kParameterIsInteger |
+                               kParameterIsHidden,
+                           "One while any sample or raw preview is playing.");
+            break;
         default:
             if (index >= kFirstPadStatusParameter && index < kFirstPadActivityParameter) {
                 const std::uint32_t pad = index - kFirstPadStatusParameter;
@@ -491,7 +505,7 @@ protected:
             const auto pad = index - kMixerStateOffset;
             state.key = kPadMixerStateKeys[pad].c_str();
             state.label = "Pad Sample Mixer Settings";
-            state.defaultValue = "MX1;0;0;0";
+            state.defaultValue = "MX2;0;0;0;0;0;0;0";
             state.hints = 0;
         } else if (index == kPadStructureRequestState) {
             state.key = kPadStructureRequestKey;
@@ -508,6 +522,11 @@ protected:
             state.label = "Visible Waveform Data";
             state.defaultValue = "";
             state.hints = kStateIsOnlyForUI;
+        } else if (index == kPlayStopRequestState) {
+            state.key = kPlayStopRequestKey;
+            state.label = "Play/Stop Request";
+            state.defaultValue = "";
+            state.hints = kStateIsOnlyForDSP;
         } else if (index >= kPadColorStateOffset) {
             state.key = kPadColorStateKeys[index - kPadColorStateOffset].c_str();
             state.label = "Pad Color";
@@ -539,6 +558,11 @@ protected:
             index <= midichopper::plugin::kParameterClearAll && value >= 0.5f) {
             const auto bit = 1U << (index - midichopper::plugin::kParameterFinalize);
             pendingCommands_.fetch_or(bit, std::memory_order_release);
+            parameters_[index].store(0.0f, std::memory_order_relaxed);
+            return;
+        }
+        if (index == midichopper::plugin::kParameterStopAllPlayback && value >= 0.5f) {
+            pendingCommands_.fetch_or(0x8U, std::memory_order_release);
             parameters_[index].store(0.0f, std::memory_order_relaxed);
             return;
         }
@@ -607,6 +631,8 @@ protected:
         if (std::strcmp(key, kPadStructureRequestKey) == 0 ||
             std::strcmp(key, kPadStructureStatusKey) == 0)
             return String();
+        if (std::strcmp(key, kPlayStopRequestKey) == 0)
+            return String();
         if (std::strcmp(key, kWaveformDetailRequestKey) == 0 ||
             std::strcmp(key, kWaveformDetailDataKey) == 0)
             return String();
@@ -615,6 +641,16 @@ protected:
 
     void setState(const char* const key, const char* const value) override
     {
+        if (std::strcmp(key, kPlayStopRequestKey) == 0) {
+            if (value != nullptr) {
+                char* end = nullptr;
+                const unsigned long selected = std::strtoul(value, &end, 10);
+                if (end != value && *end == '\0' && selected <= midichopper::kPadCount)
+                    pendingPlayStopPad_.store(static_cast<std::uint32_t>(selected + 1U),
+                                              std::memory_order_release);
+            }
+            return;
+        }
         for (std::uint32_t pad = 0; pad < midichopper::kPadCount; ++pad) {
             if (std::strcmp(key, kPadColorStateKeys[pad].c_str()) != 0)
                 continue;
@@ -810,6 +846,8 @@ protected:
             sampler_.chopPreviewPosition(), std::memory_order_relaxed);
         parameters_[midichopper::plugin::kParameterPlaybackPosition].store(
             sampler_.playbackPosition(), std::memory_order_relaxed);
+        parameters_[midichopper::plugin::kParameterAnyPlaybackActive].store(
+            sampler_.anyPlaybackActive() ? 1.0f : 0.0f, std::memory_order_relaxed);
     }
 
     void sampleRateChanged(const double newSampleRate) override
@@ -1328,6 +1366,12 @@ private:
         if ((commands & 0x1U) != 0U) sampler_.finalizeRecording();
         if ((commands & 0x2U) != 0U) sampler_.undoLastSlice();
         if ((commands & 0x4U) != 0U) sampler_.clearAllPads();
+        if ((commands & 0x8U) != 0U) sampler_.stopAllPlayback();
+        const std::uint32_t playStop =
+            pendingPlayStopPad_.exchange(0U, std::memory_order_acquire);
+        if (playStop != 0U)
+            sampler_.togglePlayback(playStop > 1U
+                ? playStop - 2U : midichopper::kPadCount);
         const std::uint64_t clearPads =
             pendingClearPads_.exchange(0U, std::memory_order_acquire);
         if (clearPads != 0U) {
@@ -1506,6 +1550,7 @@ private:
     std::array<std::atomic<float>, midichopper::plugin::kParameterCount> parameters_{};
     std::array<std::atomic<int>, midichopper::kPadCount> padColors_{};
     std::atomic<std::uint32_t> pendingCommands_{0};
+    std::atomic<std::uint32_t> pendingPlayStopPad_{0};
     std::atomic<std::uint64_t> pendingClearPads_{0};
     std::atomic<std::uint32_t> pendingCaptureTarget_{0};
     std::atomic<std::uint32_t> pendingChopPreviewCommand_{0};

@@ -25,6 +25,8 @@ Ctrl-wheel zooms around the pointer; Shift-wheel pans within the source. The
 visible range gets a fresh raw 128-bin summary. Modified wheel input over a
 handle controls the viewport; unmodified wheel still moves the cut. Navigation,
 Apply refresh, and Exit reset the viewport. Zoom never changes source offsets.
+The vertical zoom control and horizontal scroll window use the same viewport
+and trigger the same detail request when dragged.
 
 From entry through Apply/loading, the editor owns MIDI exclusively; all notes
 are silent until its waveform data is ready. Then the three displayed notes

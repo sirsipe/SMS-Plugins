@@ -47,6 +47,8 @@ enum Parameter : std::uint32_t {
     kParameterGlobalHighpass,
     kParameterGlobalFilterSlope,
     kParameterGlobalDirty,
+    kParameterStopAllPlayback,
+    kParameterAnyPlaybackActive,
     kParameterCount,
 };
 
@@ -66,13 +68,13 @@ inline constexpr ParameterRange startPad{1.0f, 1.0f, static_cast<float>(kPadsPer
 inline constexpr ParameterRange preRollMs{0.0f, 0.0f, 100.0f};
 inline constexpr ParameterRange fixedLengthSeconds{1.0f, 0.01f, 30.0f};
 // Preserve released values: 0 = Off, 1 = On, 2 = Auto (on while armed).
-inline constexpr ParameterRange inputMonitor{1.0f, 0.0f, 2.0f};
+inline constexpr ParameterRange inputMonitor{2.0f, 0.0f, 2.0f};
 inline constexpr ParameterRange baseMidiNote{
     static_cast<float>(kDefaultBaseMidiNote), 0.0f,
     static_cast<float>(128U - kPadsPerBank)};
 inline constexpr ParameterRange outputGainDb{0.0f, -24.0f, 12.0f};
 inline constexpr ParameterRange maxVoices{
-    static_cast<float>(kPadsPerBank), 1.0f, static_cast<float>(kPadsPerBank)};
+    1.0f, 1.0f, static_cast<float>(kPadsPerBank)};
 inline constexpr ParameterRange activeBank{1.0f, 1.0f, static_cast<float>(kBankCount)};
 inline constexpr ParameterRange padLayout{
     0.0f, 0.0f, static_cast<float>(kPadLayoutCount - 1U)};
@@ -95,7 +97,7 @@ inline constexpr ParameterRange playbackPosition = chopPreviewPosition;
 inline constexpr ParameterRange globalPan{0.0f, -1.0f, 1.0f};
 inline constexpr ParameterRange globalTuneSemitones{0.0f, -24.0f, 24.0f};
 inline constexpr ParameterRange filterAmount{0.0f, 0.0f, 1.0f};
-inline constexpr ParameterRange filterSlope{1.0f, 0.0f, 2.0f};
+inline constexpr ParameterRange filterSlope{0.0f, 0.0f, 2.0f};
 } // namespace parameterRanges
 
 [[nodiscard]] inline constexpr bool inputMonitorEnabled(const float mode,
@@ -182,6 +184,8 @@ private:
     case kParameterGlobalHighpass: return parameterRanges::filterAmount;
     case kParameterGlobalFilterSlope: return parameterRanges::filterSlope;
     case kParameterGlobalDirty: return parameterRanges::toggle;
+    case kParameterStopAllPlayback: return parameterRanges::toggle;
+    case kParameterAnyPlaybackActive: return parameterRanges::toggle;
     default: return parameterRanges::toggle;
     }
 }
