@@ -4,25 +4,26 @@ Audience: AI agents. All commands run from the repository root.
 
 ## Build
 
-Dependencies and default LV2 build/install commands live in the
-[plugin guide](../../SMS-Midichopper/README.md). The
-[CMake project](../../SMS-Midichopper/CMakeLists.txt) requires CMake 3.22+ and
+Dependencies and build/install commands live in the
+[plugin guide](../../SMS-AnvilSampler/README.md). The
+[CMake project](../../SMS-AnvilSampler/CMakeLists.txt) requires CMake 3.22+ and
 C++20. Initialize the pinned [DPF submodule](../../.gitmodules) before configuring.
 Do not update its revision as an incidental part of another task.
 
 To match Ubuntu CI:
 
 ```bash
-cmake -S SMS-Midichopper -B build -G Ninja \
+cmake -S SMS-AnvilSampler -B build -G Ninja \
   -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
-  -DMIDICHOPPER_BUILD_VST3=ON
+  -DANVILSAMPLER_BUILD_VST3=ON
 cmake --build build --parallel 2
 ctest --test-dir build --output-on-failure
 ```
 
-Outputs: `build/bin/SMS-Midichopper.lv2` and, when enabled,
-`build/bin/SMS-Midichopper.vst3`. `MIDICHOPPER_BUILD_CLAP=ON` adds CLAP;
+Outputs: `build/bin/SMS-AnvilSampler.lv2` and, when enabled,
+`build/bin/SMS-AnvilSampler.vst3`. `ANVILSAMPLER_BUILD_CLAP=ON` adds CLAP;
 CLAP is not currently covered by CI. Both optional format switches default OFF.
+Python 3 runs DPF's resource converter to embed `res/anvil.png` in each UI binary.
 Use a fresh ignored `build-*` directory if an existing CMake cache uses a
 different source path or generator. Avoid repeatedly rebuilding unchanged code.
 
@@ -71,8 +72,8 @@ global prune. Close the VS Code remote window before wiping.
 
 ## Change routing
 
-- Engine/timing: `SMS-Midichopper/src/core`; `sampler-core` tests.
-- Parameters/host transport: `SMS-Midichopper/src/plugin/Parameters.hpp`,
+- Engine/timing: `SMS-AnvilSampler/src/core`; `sampler-core` tests.
+- Parameters/host transport: `SMS-AnvilSampler/src/plugin/Parameters.hpp`,
   `MidichopperPlugin.cpp`, and `src/ui/MidichopperUI.cpp`. Keep DSP/UI in sync.
 - Project state: `src/plugin/StateCodec.*`, adapter state callbacks, and
   `Common-Src/State`; `state-codec` tests plus host save/restore.
@@ -82,7 +83,7 @@ global prune. Close the VS Code remote window before wiping.
 - Build/version/release: plugin CMake and `.github/workflows`. Read
   [releasing](../RELEASING.md) before preparing version changes.
 
-Unless prefixed otherwise, `src/` above is under `SMS-Midichopper/`.
+Unless prefixed otherwise, `src/` above is under `SMS-AnvilSampler/`.
 
 ## Instruction adapters and documentation checks
 

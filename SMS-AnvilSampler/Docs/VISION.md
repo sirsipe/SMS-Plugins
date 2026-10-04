@@ -1,6 +1,6 @@
-# SMS-Midichopper vision
+# SMS-Anvil Sampler vision
 
-SMS-Midichopper is a hands-on chopping sampler shaped around real sampling and
+SMS-Anvil Sampler is a hands-on chopping sampler shaped around real sampling and
 beatmaking workflows.
 
 It makes live capture and performance immediate:
@@ -12,7 +12,7 @@ workflow. A performer can capture an incoming stereo source and create playable
 slices by tapping their boundaries on a MIDI controller. Recorded audio and
 loaded files then follow the same focused chopping workflow.
 
-SMS-Midichopper can grow into a flexible production instrument through global
+SMS-Anvil Sampler can grow into a flexible production instrument through global
 and per-pad editing, configurable controller layouts, sound-shaping controls,
 and optional multi-output routing. Basic chopping must always remain
 approachable. Detailed production features belong in focused editor views or
@@ -20,7 +20,7 @@ optional plug-in configurations where they do not obstruct capturing and
 playing.
 
 Development is guided by practical user workflows and experimentation. A
-feature belongs in SMS-Midichopper when it meaningfully improves sampling,
+feature belongs in SMS-Anvil Sampler when it meaningfully improves sampling,
 chopping, shaping, beatmaking, or performance while preserving a coherent user
 experience. Features should not be added merely because another sampler has
 them.
@@ -51,7 +51,7 @@ Independent time-stretching, additional sound-shaping tools, and other advanced
 features may be added when they serve a concrete workflow and can be integrated
 without weakening the basic experience.
 
-SMS-Midichopper is not intended to become a DAW, a full mixer, an internal
+SMS-Anvil Sampler is not intended to become a DAW, a full mixer, an internal
 sequencer or groove workstation, a synthesizer, or a sample-library database.
 Those boundaries may be reconsidered only when real user workflows provide a
 compelling reason.

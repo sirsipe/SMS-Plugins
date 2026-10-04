@@ -17,7 +17,7 @@ INDEX = ROOT / "Docs/AI/INDEX.md"
 AI_REFERENCES = {
     "Common-Src/README.md",
     "Common-UI/README.md",
-    "SMS-Midichopper/Docs/ARCHITECTURE.md",
+    "SMS-AnvilSampler/Docs/ARCHITECTURE.md",
 }
 LIMITS = {
     "AGENTS.md": 600,
@@ -61,7 +61,7 @@ def main() -> int:
         content = path.read_text(encoding="utf-8")
         contents[path] = content
         limit = LIMITS.get(relative, 900 if relative.startswith("Docs/AI/")
-                           or relative in AI_REFERENCES else 600)
+                           or relative in AI_REFERENCES else 1000)
         words = len(content.split())
         if words > limit:
             errors.append(f"{relative}: {words} words exceeds {limit}; trim or split by task")

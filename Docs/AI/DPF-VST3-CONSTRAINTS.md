@@ -7,13 +7,13 @@ direction; it is not a promise of dynamic outputs.
 ## DSP-to-UI state transport
 
 DPF's VST3 wrapper constructs its plug-in exporter with a null
-`updateStateValue` callback. Midichopper can therefore receive UI-to-DSP state,
+`updateStateValue` callback. Anvil Sampler can therefore receive UI-to-DSP state,
 but a DSP call to `updateStateValue()` cannot return transient data to the UI.
 The wrapper logs `updateStateValueCallback (nil)`. DPF's maintainer says this
 API was first implemented for LV2; the same limitation is tracked in
 [DPF issue #410](https://github.com/DISTRHO/DPF/issues/410).
 
-Midichopper now builds a separate VST3 DPF target with direct instance access.
+Anvil Sampler now builds a separate VST3 DPF target with direct instance access.
 `publishUiState()` uses DPF's callback where available and sends failed VST3
 updates to a per-instance, bounded message bus. The UI reads that bus on idle
 and feeds messages through `stateChanged()`. Each view has its own sequence
@@ -35,8 +35,9 @@ A saved 0.5-second WAV restored after removing the plug-in instance and source
 file: its waveform and 6102-frame Start value returned, and a MIDI note produced
 nonzero output.
 VST3 restoration ignores empty transient command keys so defaults do not fire
-file, clipboard, chop, or pad-structure actions. Another VST3 host, long files,
-and simultaneous views still need integration testing.
+file, clipboard, chop, or pad-structure actions. A maintainer loaded a VST3
+preset saved in Ardour into REAPER. Long files, DAW project restoration, and
+simultaneous views still need integration testing.
 
 Durable state is separate. Pad PCM is marked DSP-only Base64 state, while cut
 points and ADSR are normal versioned per-pad state. UI edits reach the DSP and

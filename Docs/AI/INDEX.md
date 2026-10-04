@@ -5,23 +5,23 @@ the row needed for the task. Paths in commands are relative to the repo root.
 
 | Task | Read | Source of truth / starting point |
 | --- | --- | --- |
-| Build, dependencies, formats | [Development](DEVELOPMENT.md) | [CMake](../../SMS-Midichopper/CMakeLists.txt) |
+| Build, dependencies, formats | [Development](DEVELOPMENT.md) | [CMake](../../SMS-AnvilSampler/CMakeLists.txt) |
 | Deferred Windows/macOS builds | [Platform builds](PLATFORM-BUILDS.md) | Research and acceptance checks; not current support |
 | Dev Container setup | [Development](DEVELOPMENT.md), [Testing](TESTING.md) | [Configuration](../../.devcontainer/devcontainer.json) |
-| Tests, LV2 discovery, host/UI checks | [Testing](TESTING.md) | [Tests](../../SMS-Midichopper/tests/) |
-| Engine, parameters, state, UI | [Midichopper architecture](../../SMS-Midichopper/Docs/ARCHITECTURE.md) | [Plugin source](../../SMS-Midichopper/src/) |
+| Tests, LV2 discovery, host/UI checks | [Testing](TESTING.md) | [Tests](../../SMS-AnvilSampler/tests/) |
+| Engine, state, UI | [Anvil Sampler architecture](../../SMS-AnvilSampler/Docs/ARCHITECTURE.md) | [Plugin source](../../SMS-AnvilSampler/src/) |
 | Filter and Dirty implementation | [Mixing contract](MIXING.md) | [DSP](../../Common-Src/DSP/ColorEffects.hpp) |
 | Shared DSP, codecs, geometry | [Common-Src map](../../Common-Src/README.md) | [Common-Src](../../Common-Src/) |
 | Shared DPF UI, pads, waveform | [Common-UI map](../../Common-UI/README.md) | [Common-UI](../../Common-UI/) |
-| Feature scope and direction | [Vision](../../SMS-Midichopper/Docs/VISION.md) | Intended scope; not an implementation checklist |
+| Feature scope and direction | [Vision](../../SMS-AnvilSampler/Docs/VISION.md) | Intended scope; not an implementation checklist |
 | Pad context menu and actions | [Context-menu design](PAD-CONTEXT-MENU.md) | Implemented actions and future action contract |
 | Cut Point Editor design and tests | [Cut Point Editor](CHOP-EDITOR.md) | Three-pad cuts, raw preview, state and limitations |
 | Pad WAV import/export | [WAV I/O design](PAD-WAV-IO.md) | Formats, real-time boundary, dialogs, support notes |
 | VST3 state and outputs | [DPF VST3 constraints](DPF-VST3-CONSTRAINTS.md) | UI synchronization and fixed/dynamic bus boundaries |
-| User-visible behavior | [Plugin guide](../../SMS-Midichopper/README.md) | Verify against affected source/tests |
-| User mixing controls | [Mixing guide](../../SMS-Midichopper/Docs/MIXING.md) | Pad and global effects |
-| User WAV workflow | [WAV file guide](../../SMS-Midichopper/Docs/WAV-FILES.md) | Current formats and Linux requirements |
-| User cut-point workflow | [Adjust cut points](../../SMS-Midichopper/Docs/CHOP-EDITOR.md) | Context action, raw preview, Apply/Exit behavior |
+| User-visible behavior | [Plugin guide](../../SMS-AnvilSampler/README.md) | Verify against affected source/tests |
+| User mixing controls | [Mixing guide](../../SMS-AnvilSampler/Docs/MIXING.md) | Pad and global effects |
+| User WAV workflow | [WAV file guide](../../SMS-AnvilSampler/Docs/WAV-FILES.md) | Current formats and Linux requirements |
+| User cut-point workflow | [Adjust cut points](../../SMS-AnvilSampler/Docs/CHOP-EDITOR.md) | Context action, raw preview, Apply/Exit behavior |
 | Project overview | [Project README](../../README.md) | Human entry point |
 | Contributions, doc maintenance | [Contributing](../../CONTRIBUTING.md) | [Doc checker](../../scripts/check_docs.py) |
 | CI, release preparation | [Releasing](../RELEASING.md) | [Workflows](../../.github/workflows/) |

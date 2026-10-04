@@ -19,7 +19,7 @@ inline constexpr sms::ui::Rect outputMeter{1312.0f, 96.0f, 24.0f, 590.0f};
 inline constexpr sms::ui::Rect mainPanel{24.0f, 96.0f, 934.0f, 596.0f};
 inline constexpr sms::ui::Rect sidePanel{974.0f, 96.0f, 266.0f, 596.0f};
 inline constexpr sms::ui::Rect menuButton{1208.0f, 25.0f, 32.0f, 32.0f};
-inline constexpr sms::ui::Rect menuPanel{1048.0f, 68.0f, 192.0f, 228.0f};
+inline constexpr sms::ui::Rect menuPanel{1048.0f, 68.0f, 192.0f, 330.0f};
 inline constexpr sms::ui::Rect footer{24.0f, 706.0f, 1216.0f, 32.0f};
 inline constexpr sms::ui::Rect mainPadBounds{46.0f, 196.0f, 890.0f, 470.0f};
 inline constexpr sms::ui::Rect overviewWaveform{46.0f, 176.0f, 890.0f, 10.0f};
@@ -91,6 +91,11 @@ inline constexpr sms::ui::Rect clearAction{1146.0f, 610.0f, 70.0f, 34.0f};
 [[nodiscard]] constexpr sms::ui::Rect midiBankModeOption(const int index) noexcept
 {
     return {1060.0f, 226.0f + static_cast<float>(index) * 31.0f, 168.0f, 27.0f};
+}
+
+[[nodiscard]] constexpr sms::ui::Rect menuLinkOption(const int index) noexcept
+{
+    return {1060.0f, 328.0f + static_cast<float>(index) * 31.0f, 168.0f, 27.0f};
 }
 
 [[nodiscard]] constexpr sms::ui::Rect mainBank(const int index) noexcept

@@ -3,6 +3,7 @@
 #include "ChopEditor.hpp"
 #include "DSP/SamplePlaybackSettings.hpp"
 #include "Interaction.hpp"
+#include "HelpLinks.hpp"
 #include "MidichopperLayout.hpp"
 #include "MidichopperInteraction.hpp"
 #include "LevelMeter.hpp"
@@ -89,6 +90,8 @@ void hamburgerMenuGeometry()
     const auto lastLayout = menu::menuOption(2);
     const auto firstMidiMode = menu::midiBankModeOption(0);
     const auto lastMidiMode = menu::midiBankModeOption(1);
+    const auto firstLink = menu::menuLinkOption(0);
+    const auto lastLink = menu::menuLinkOption(1);
     check(firstMidiMode.y > lastLayout.y + lastLayout.height,
           "MIDI bank choices follow pad-layout choices without overlap");
     check(menu::menuPanel.contains({firstMidiMode.x + firstMidiMode.width * 0.5f,
@@ -96,6 +99,19 @@ void hamburgerMenuGeometry()
           menu::menuPanel.contains({lastMidiMode.x + lastMidiMode.width * 0.5f,
                                     lastMidiMode.y + lastMidiMode.height * 0.5f}),
           "MIDI bank choices remain inside the hamburger panel");
+    check(firstLink.y > lastMidiMode.y + lastMidiMode.height &&
+          menu::menuPanel.contains({firstLink.x + firstLink.width * 0.5f,
+                                    firstLink.y + firstLink.height * 0.5f}) &&
+          menu::menuPanel.contains({lastLink.x + lastLink.width * 0.5f,
+                                    lastLink.y + lastLink.height * 0.5f}),
+          "browser links follow bank choices inside the hamburger panel");
+    check(midichopper::ui::onlineHelpUrl("main") ==
+              "https://github.com/sirsipe/SMS-Plugins/tree/main/SMS-AnvilSampler" &&
+          midichopper::ui::onlineHelpUrl("SMS-AnvilSampler-v1.2.3") ==
+              "https://github.com/sirsipe/SMS-Plugins/tree/SMS-AnvilSampler-v1.2.3/SMS-AnvilSampler" &&
+          midichopper::ui::kIssueUrl ==
+              "https://github.com/sirsipe/SMS-Plugins/issues",
+          "hamburger links target the project README and issue tracker");
 }
 
 void contextMenuGeometry()
@@ -248,6 +264,13 @@ void interactionTargets()
               interaction::interactiveTargetAt(center(layout::menuOption(1)), context),
               interaction::InteractiveType::menuLayout, 1),
           "open hamburger menu exposes its option");
+    check(interaction::isTarget(
+              interaction::interactiveTargetAt(center(layout::menuLinkOption(0)), context),
+              interaction::InteractiveType::menuLink, 0) &&
+          interaction::isTarget(
+              interaction::interactiveTargetAt(center(layout::menuLinkOption(1)), context),
+              interaction::InteractiveType::menuLink, 1),
+          "open hamburger menu exposes both browser actions");
     check(!interaction::interactiveTargetAt(center(layout::fixedLength), context).valid(),
           "open hamburger menu blocks underlying controls");
     context.menuOpen = false;

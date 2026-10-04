@@ -79,6 +79,7 @@ struct ViewState {
     const char* status = "";
     sms::ui::waveform::Viewport waveformViewport;
     const sms::audio::WaveformSummary* waveformDetail = nullptr;
+    const DGL_NAMESPACE::NanoImage* logo = nullptr;
 };
 
 void draw(DGL_NAMESPACE::NanoVG& canvas, const ViewState& state);

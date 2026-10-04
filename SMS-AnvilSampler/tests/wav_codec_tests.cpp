@@ -259,7 +259,7 @@ void fileActionsAndProtocol()
     source.frames = 2U;
     source.stereo = {-1.0f, -0.5f, 0.5f, 1.0f};
     const auto temporary = std::filesystem::temp_directory_path() /
-                           "sms-midichopper-wav-action-test.wav";
+                           "sms-anvilsampler-wav-action-test.wav";
     std::error_code ignored;
     std::filesystem::remove(temporary, ignored);
     check(midichopper::plugin::writePadWav(temporary, source).empty(),

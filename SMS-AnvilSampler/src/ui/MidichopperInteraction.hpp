@@ -23,6 +23,7 @@ enum class InteractiveType : int {
     menuButton = 0,
     menuLayout,
     menuMidiBankMode,
+    menuLink,
     padContextItem,
     padColorItem,
     closeEditor,
@@ -437,6 +438,10 @@ interactiveTargetAt(const sms::ui::Point point, const InteractionContext& contex
         for (int index = 0; index < static_cast<int>(kMidiBankModeCount); ++index) {
             if (uiLayout::midiBankModeOption(index).contains(point))
                 return target(InteractiveType::menuMidiBankMode, index);
+        }
+        for (int index = 0; index < 2; ++index) {
+            if (uiLayout::menuLinkOption(index).contains(point))
+                return target(InteractiveType::menuLink, index);
         }
         return sms::ui::kNoInteractiveTarget;
     }

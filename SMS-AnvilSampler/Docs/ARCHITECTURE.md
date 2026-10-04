@@ -1,4 +1,4 @@
-# SMS-Midichopper architecture
+# SMS-Anvil Sampler architecture
 
 Layers:
 
