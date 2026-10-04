@@ -78,7 +78,9 @@ Choose checks matching the change:
 - UI/editor: verify drawing/resizing and input mapping; select pads, adjust
   region/mixer/ADSR by dragging and wheel during playback, reset controls, and
   check sound/playhead. Sweep the pointer and confirm only the
-  enabled target under it receives hover emphasis.
+  enabled target under it receives hover emphasis. In an embedded VST3 view,
+  double-click a global mixer value, type a number, and press Enter; verify the
+  displayed value changes. Open it again and press Escape; verify it stays put.
 - Cut Point Editor: follow its focused [validation contract](CHOP-EDITOR.md).
 - Pad clipboard: Copy an edited occupied pad, then alter or clear its source and
   Paste to empty and occupied targets. Confirm stereo audio and all editor settings
@@ -90,15 +92,12 @@ Choose checks matching the change:
 
 ## UI interaction tooling
 
-The [Dev Container](../../.devcontainer/devcontainer.json) provides fixed X11
-display `:1` through TigerVNC, Openbox, noVNC, dummy JACK, software Mesa,
-`xdotool`, `wmctrl`, `xwininfo`, and ImageMagick. Desktop services start with the
-container. Run `desktop-health` to check tini supervision, zombies, X11 pointer
-movement, native VNC, noVNC, JACK, software OpenGL, the isolated session bus,
-and the portal FileChooser interface. Run `desktop-health --dialogs` after an
-image rebuild or portal change; it opens and dismisses real Open and Save dialogs
-on `:1`. View the same pointer that automation controls through forwarded noVNC
-port 6080; do not use the VNC mouse during an automated sequence.
+The [Dev Container](../../.devcontainer/devcontainer.json) provides X11 display
+`:1`, TigerVNC, Openbox, noVNC, dummy JACK, software Mesa, `xdotool`, `wmctrl`,
+`xwininfo`, and ImageMagick. Run `desktop-health` to check desktop services,
+JACK, OpenGL, D-Bus, and portal FileChooser. Run `desktop-health --dialogs` after
+an image rebuild or portal change to exercise Open and Save dialogs. Watch
+automation through noVNC port 6080; avoid VNC mouse input during a sequence.
 
 From `/workspaces/SMS-Plugins`, `test-plugin` runs the release VST3/LV2 build,
 CTest, `lv2info`, launches the built LV2 directly in Carla, resolves its visible
@@ -112,9 +111,6 @@ Capture only the plug-in window, never the full desktop. Inspect every artifact
 before sharing or committing it, and exclude usernames, home paths, machine
 names, unrelated applications, notifications, accounts, and other private data.
 Repository screenshots should contain only intentional product UI.
-
-The harness uses Carla 2.5.10, which cannot validate MIDI-triggered
-`active_bank` UI synchronization through LV2 control-input change requests.
 
 For the VST3 UI, launch
 `carla-single native vst3 "$PWD/build/bin/SMS-Midichopper.vst3"` on the same

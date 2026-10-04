@@ -3342,6 +3342,9 @@ private:
         fMixerValueEntryTarget = target;
         fMixerValueEntryReplaceOnType = true;
         fStatus[0] = '\0';
+        // Embedded hosts can leave keyboard focus on their own proxy window
+        // after the double-click, so explicitly focus the DGL child view.
+        getWindow().focus();
         requestRepaint();
     }
 
