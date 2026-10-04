@@ -33,6 +33,8 @@
 
 #include "Audio/WaveformSummary.hpp"
 #include "ChopEditor.hpp"
+#include "ChopEditorSession.hpp"
+#include "EditorSnapshotSession.hpp"
 #include "ChopEditorProtocol.hpp"
 #include "Configuration.hpp"
 #include "ContextMenu.hpp"
@@ -247,7 +249,7 @@ public:
         fPadState.fill('0');
         fPadStatus.fill('0');
         fPadColors.fill(0);
-        fChopOffsets.fill(0);
+        fChopSession.offsets.fill(0);
         fStatus[0] = '\0';
 
 #if DISTRHO_PLUGIN_WANT_DIRECT_ACCESS
@@ -364,13 +366,13 @@ protected:
                     const int encodedPad = static_cast<int>(std::floor(value)) - 1;
                     const int originalPad = encodedPad - fChopFirstPad;
                     const double sourceFrame = midichopper::ui::chop::sourceFrameForPlayhead(
-                        fChopWaveforms, originalPad, value - std::floor(value));
+                        fChopSession.waveforms, originalPad, value - std::floor(value));
                     const int displayedPads = fChopSplitMode ? 2 : 3;
                     for (int pad = 0; sourceFrame >= 0.0 && pad < displayedPads; ++pad) {
                         const auto start = midichopper::ui::chop::adjustedStartFrame(
-                            fChopWaveforms, fChopOffsets, pad);
+                            fChopSession.waveforms, fChopSession.offsets, pad);
                         const auto frames = midichopper::ui::chop::adjustedFrames(
-                            fChopWaveforms, fChopOffsets, pad);
+                            fChopSession.waveforms, fChopSession.offsets, pad);
                         if (frames != 0U && sourceFrame >= static_cast<double>(start) &&
                             sourceFrame < static_cast<double>(start + frames)) {
                             fChopPreviewPad = pad;
@@ -716,45 +718,17 @@ protected:
             copyString(fStatus, value);
         else if (std::strcmp(key, "waveform_data") == 0)
         {
-            sms::audio::WaveformSummary summary;
-            if (sms::audio::decodeWaveformSummary(value, summary)) {
-                if (fChopEditorMode && !fChopSplitMode && fChopFirstPad >= 0 &&
-                    summary.pad >= static_cast<std::uint32_t>(fChopFirstPad) &&
-                    summary.pad < static_cast<std::uint32_t>(fChopFirstPad + 3)) {
-                    const auto localPad = static_cast<std::size_t>(
-                        static_cast<int>(summary.pad) - fChopFirstPad);
-                    fChopWaveforms[localPad] = summary;
-                    if (static_cast<int>(localPad) == fChopNextWaveform) {
-                        ++fChopNextWaveform;
-                        fChopWaveformRequestPending = false;
-                    }
-                    if (fChopNextWaveform >= 3) {
-                        if (chopReady()) {
-                            if (fWaveformViewport.total == 0U)
-                                fWaveformViewport.reset(midichopper::ui::chop::totalFrames(fChopWaveforms));
-                            fStatus[0] = '\0';
-                            updateChopMidiPreview();
-                        } else {
-                            muteChopMidiPreview();
-                            copyString(fStatus,
-                                "Non-empty samples must use one sample rate");
-                        }
-                    }
-                }
-                if (fEditorSnapshot.accept(summary)) {
-                    commitEditorSnapshotIfReady();
-                } else if (!fEditorSnapshot.pending() &&
-                           summary.pad == static_cast<std::uint32_t>(fSelectedPad)) {
-                    fWaveform = summary;
-                    fHasWaveform = summary.frames != 0U;
-                }
-            }
+            midichopper::plugin::EditorSnapshotReply reply;
+            if (midichopper::plugin::decodeEditorSnapshotReply(value, reply) &&
+                fEditorSnapshot.accept(reply))
+                commitEditorSnapshotIfReady();
         }
         else if (std::strcmp(key, "waveform_detail_data") == 0)
         {
             midichopper::plugin::WaveformDetailReply reply;
             if (midichopper::plugin::decodeWaveformDetailReply(value, reply) &&
                 reply.request.sequence == fDetailRequest.sequence &&
+                reply.request.sequence == fDetailSequence &&
                 reply.request.firstPad == fDetailRequest.firstPad &&
                 reply.request.padCount == fDetailRequest.padCount &&
                 reply.request.start == fWaveformViewport.start &&
@@ -765,16 +739,38 @@ protected:
                 fDetailDirty = false;
             }
         }
+        else if (std::strcmp(key, "chop_snapshot_data") == 0)
+        {
+            midichopper::plugin::ChopSnapshotReply reply;
+            midichopper::plugin::ChopApplyStatus error;
+            if (fChopEditorMode && !fChopSplitMode &&
+                midichopper::plugin::decodeChopSnapshotReply(value, reply) &&
+                fChopSession.accept(reply)) {
+                if (chopReady()) {
+                    fWaveformViewport.reset(midichopper::ui::chop::totalFrames(fChopSession.waveforms));
+                    fStatus[0] = '\0';
+                    updateChopMidiPreview();
+                } else {
+                    muteChopMidiPreview();
+                    copyString(fStatus, "Non-empty samples must use one sample rate");
+                }
+            } else if (fChopEditorMode && !fChopSplitMode &&
+                       midichopper::plugin::decodeChopSnapshotError(value, error) &&
+                       fChopSession.acceptsError(error.sequence)) {
+                copyString(fStatus, error.message.data());
+            }
+        }
         else if (std::strcmp(key, "chop_status") == 0)
         {
-            fChopApplying = false;
-            if (std::strcmp(value, "CH1;OK") == 0) {
+            midichopper::plugin::ChopApplyStatus status;
+            if (fChopEditorMode && !fChopSplitMode &&
+                midichopper::plugin::decodeChopApplyStatus(value, status) &&
+                fChopSession.acceptStatus(status)) {
+                fChopApplying = false;
                 stopChopPreview();
                 resetChopWaveforms();
-                copyString(fStatus, "Cut points applied");
-            } else if (std::strncmp(value, "CH1;ERROR;", 10U) == 0) {
-                copyString(fStatus, value + 10U);
-                updateChopMidiPreview();
+                muteChopMidiPreview();
+                copyString(fStatus, status.success ? "Cut points applied" : status.message.data());
             }
         }
         else if (std::strcmp(key, "pad_structure_status") == 0)
@@ -902,11 +898,8 @@ protected:
             fNextMeterRepaint = now + kMeterFrameInterval;
             requestRepaint();
         }
-        if (fChopEditorMode && fChopNextWaveform >= 0 &&
-            fChopNextWaveform < 3 && !fChopWaveformRequestPending) {
-            fChopWaveformRequestPending = true;
-            requestChopWaveform(fChopNextWaveform);
-        }
+        if (fChopEditorMode && !fChopSplitMode && fChopSession.requestDue(now))
+            requestChopSnapshot(now);
         if (fEditorSnapshot.pending() && now >= fEditorSnapshotRetryDeadline)
             sendEditorSnapshotRequest(now);
         if (fDetailDirty && now >= fDetailRequestDeadline)
@@ -982,9 +975,9 @@ protected:
             fInputLevels, fOutputLevels, fPadState, fPadStatus, fPadColors,
             fEditorSettings, fMixerSettings, fWaveform, fPlaybackPosition,
             std::span<const sms::audio::WaveformSummary>{
-                fChopWaveforms.data(), fChopWaveforms.size()},
+                fChopSession.waveforms.data(), fChopSession.waveforms.size()},
             std::span<const std::int64_t>{
-                fChopOffsets.data(), fChopOffsets.size()},
+                fChopSession.offsets.data(), fChopSession.offsets.size()},
             fChopFirstPad, fSelectedPad, fChopPreviewPosition, fChopPreviewPad,
             fChopActiveBoundary, chopReady(),
             chopDirty(), fChopApplying, canNavigateChop(-1), canNavigateChop(1), fStatus,
@@ -1133,7 +1126,7 @@ protected:
                     fChopActiveBoundary = clicked.index;
                     fChopDragStartX = x;
                     fChopDragStartOffset =
-                        fChopOffsets[static_cast<std::size_t>(clicked.index)];
+                        fChopSession.offsets[static_cast<std::size_t>(clicked.index)];
                     return true;
                 }
                 if (midichopper::ui::isTarget(
@@ -1567,13 +1560,13 @@ protected:
         }
         if (fChopEditorMode && fChopActiveBoundary >= 0) {
             const auto boundary = static_cast<std::size_t>(fChopActiveBoundary);
-            const auto total = midichopper::ui::chop::totalFrames(fChopWaveforms);
+            const auto total = midichopper::ui::chop::totalFrames(fChopSession.waveforms);
             const auto delta = static_cast<std::int64_t>(std::llround(
                 (x - fChopDragStartX) * static_cast<double>(fWaveformViewport.zoomed()
                     ? fWaveformViewport.end - fWaveformViewport.start : total) /
                 uiLayout::chopWaveform.width));
             const auto requested = fChopDragStartOffset + delta;
-            fChopOffsets[boundary] = clampChopBoundaryOffset(
+            fChopSession.offsets[boundary] = clampChopBoundaryOffset(
                 fChopActiveBoundary, requested);
             updateChopMidiPreview();
             fStatus[0] = '\0';
@@ -1660,9 +1653,9 @@ protected:
                 hovered, midichopper::ui::InteractiveType::chopBoundary)) {
             const auto boundary = static_cast<std::size_t>(hovered.index);
             const auto requested = midichopper::ui::chop::wheelAdjustedBoundaryOffset(
-                fChopWaveforms, fChopOffsets, hovered.index, delta,
+                fChopSession.waveforms, fChopSession.offsets, hovered.index, delta,
                 uiLayout::chopWaveform, fWaveformViewport);
-            fChopOffsets[boundary] = clampChopBoundaryOffset(hovered.index, requested);
+            fChopSession.offsets[boundary] = clampChopBoundaryOffset(hovered.index, requested);
             updateChopMidiPreview();
             fStatus[0] = '\0';
             requestRepaint();
@@ -2032,7 +2025,7 @@ private:
     float fDragStartX;
     float fDragStartY;
     bool fHasWaveform;
-    midichopper::ui::EditorSnapshotCollector fEditorSnapshot;
+    midichopper::ui::EditorSnapshotSession fEditorSnapshot;
 #if DISTRHO_PLUGIN_WANT_DIRECT_ACCESS
     PluginUiBridge* fUiBridge = nullptr;
     std::uint64_t fUiMessageCursor = 0U;
@@ -2062,11 +2055,8 @@ private:
     bool fDetailReady = false;
     bool fDetailDirty = false;
     std::chrono::steady_clock::time_point fDetailRequestDeadline{};
-    std::array<sms::audio::WaveformSummary, midichopper::ui::chop::kPadCount> fChopWaveforms{};
-    std::array<std::int64_t, midichopper::ui::chop::kBoundaryCount> fChopOffsets{};
+    midichopper::ui::ChopEditorSession fChopSession;
     int fChopFirstPad = -1;
-    int fChopNextWaveform = -1;
-    bool fChopWaveformRequestPending = false;
     int fChopActiveBoundary = -1;
     float fChopDragStartX = 0.0f;
     std::int64_t fChopDragStartOffset = 0;
@@ -2116,8 +2106,8 @@ private:
         context.padColorMenuItemCount = static_cast<int>(kPadColorMenuItemCount);
         context.editorSettings = &fEditorSettings;
         context.envelope = &envelope;
-        context.chopWaveforms = fChopWaveforms;
-        context.chopOffsets = fChopOffsets;
+        context.chopWaveforms = fChopSession.waveforms;
+        context.chopOffsets = fChopSession.offsets;
         context.waveformViewport = fWaveformViewport;
         return midichopper::ui::interactiveTargetAt({x, y}, context);
     }
@@ -2193,10 +2183,10 @@ private:
         const int boundary, const std::int64_t requested) const noexcept
     {
         const auto clamped = midichopper::ui::chop::clampBoundaryOffset(
-            fChopWaveforms, fChopOffsets, boundary, requested);
-        if (!fChopSplitMode || boundary != 0 || fChopWaveforms[0].frames < 2U)
+            fChopSession.waveforms, fChopSession.offsets, boundary, requested);
+        if (!fChopSplitMode || boundary != 0 || fChopSession.waveforms[0].frames < 2U)
             return clamped;
-        const auto original = static_cast<std::int64_t>(fChopWaveforms[0].frames);
+        const auto original = static_cast<std::int64_t>(fChopSession.waveforms[0].frames);
         return std::clamp(clamped, 1 - original, std::int64_t{-1});
     }
 
@@ -2928,9 +2918,10 @@ private:
         const int firstPad = fChopEditorMode ? fChopFirstPad : fSelectedPad;
         if (firstPad < 0)
             return;
-        fDetailRequest = {++fDetailSequence, static_cast<std::uint32_t>(firstPad),
+        fDetailRequest = midichopper::ui::waveformDetailRequest(
+            fDetailRequest, fDetailSequence, static_cast<std::uint32_t>(firstPad),
             static_cast<std::uint32_t>(fChopEditorMode && !fChopSplitMode ? 3 : 1),
-            fWaveformViewport.start, fWaveformViewport.end};
+            fWaveformViewport.start, fWaveformViewport.end);
         const auto encoded = midichopper::plugin::encodeWaveformDetailRequest(fDetailRequest);
         fDetailRequestDeadline = std::chrono::steady_clock::now() +
             kEditorSnapshotRetryInterval;
@@ -2943,9 +2934,8 @@ private:
 #if DISTRHO_PLUGIN_WANT_STATE
         if (!fEditorSnapshot.pending())
             return;
-        char pad[12];
-        std::snprintf(pad, sizeof(pad), "%d", fEditorSnapshot.pad());
-        setState("waveform_request", pad);
+        const auto encoded = midichopper::plugin::encodeEditorSnapshotRequest(fEditorSnapshot.request());
+        setState("waveform_request", encoded.c_str());
         fEditorSnapshotRetryDeadline = now + kEditorSnapshotRetryInterval;
 #else
         static_cast<void>(now);
@@ -2977,13 +2967,13 @@ private:
     {
         if (fChopSplitMode)
             return chopReady();
-        return std::any_of(fChopOffsets.begin(), fChopOffsets.end(),
+        return std::any_of(fChopSession.offsets.begin(), fChopSession.offsets.end(),
             [](const std::int64_t offset) { return offset != 0; });
     }
 
     [[nodiscard]] bool chopReady() const noexcept
     {
-        return midichopper::ui::chop::ready(fChopWaveforms);
+        return fChopSplitMode ? midichopper::ui::chop::ready(fChopSession.waveforms) : fChopSession.ready();
     }
 
     [[nodiscard]] bool canNavigateChop(const int direction) const noexcept
@@ -3010,10 +3000,12 @@ private:
     void resetChopWaveforms()
     {
         resetWaveformViewport();
-        fChopWaveforms.fill({});
-        fChopOffsets.fill(0);
-        fChopNextWaveform = 0;
-        fChopWaveformRequestPending = false;
+        fChopSession.waveforms.fill({});
+        fChopSession.offsets.fill(0);
+        if (!fChopSplitMode && fChopFirstPad >= 0)
+            fChopSession.begin(static_cast<std::uint32_t>(fChopFirstPad));
+        else
+            fChopSession.cancel();
         fChopActiveBoundary = -1;
         fChopPreviewPosition = 0.0f;
         fChopPreviewPad = -1;
@@ -3054,16 +3046,14 @@ private:
         fChopFirstPad = static_cast<int>(plan.targetPad);
         fSplitPlanId = plan.planId;
         resetChopWaveforms();
-        fChopWaveforms[0] = plan.waveform;
-        fChopWaveforms[1] = {plan.targetPad + 1U, 0U,
+        fChopSession.waveforms[0] = plan.waveform;
+        fChopSession.waveforms[1] = {plan.targetPad + 1U, 0U,
                              plan.waveform.sampleRate, {}, {}};
-        fChopWaveforms[2] = {plan.targetPad + 1U, 0U,
+        fChopSession.waveforms[2] = {plan.targetPad + 1U, 0U,
                              plan.waveform.sampleRate, {}, {}};
         fWaveformViewport.reset(plan.waveform.frames);
         const auto midpoint = static_cast<std::int64_t>(plan.waveform.frames / 2U);
-        fChopOffsets[0] = midpoint - static_cast<std::int64_t>(plan.waveform.frames);
-        fChopNextWaveform = 3;
-        fChopWaveformRequestPending = false;
+        fChopSession.offsets[0] = midpoint - static_cast<std::int64_t>(plan.waveform.frames);
         fChopApplying = false;
         fStatus[0] = '\0';
         updateChopMidiPreview();
@@ -3106,8 +3096,7 @@ private:
         fChopSplitMode = false;
         fSplitPlanId = 0U;
         fChopFirstPad = -1;
-        fChopNextWaveform = -1;
-        fChopWaveformRequestPending = false;
+        fChopSession.cancel();
         fChopActiveBoundary = -1;
         fChopApplying = false;
         fStatus[0] = '\0';
@@ -3115,16 +3104,13 @@ private:
         requestRepaint();
     }
 
-    void requestChopWaveform(const int padInEditor)
+    void requestChopSnapshot(const std::chrono::steady_clock::time_point now)
     {
 #if DISTRHO_PLUGIN_WANT_STATE
-        if (fChopFirstPad < 0 || padInEditor < 0 || padInEditor >= 3)
-            return;
-        char pad[12];
-        std::snprintf(pad, sizeof(pad), "%d", fChopFirstPad + padInEditor);
-        setState("waveform_request", pad);
+        const auto encoded = midichopper::plugin::encodeChopSnapshotRequest(fChopSession.request(now));
+        setState("chop_snapshot_request", encoded.c_str());
 #else
-        static_cast<void>(padInEditor);
+        static_cast<void>(now);
 #endif
     }
 
@@ -3136,9 +3122,9 @@ private:
             return;
         }
         const auto start = midichopper::ui::chop::adjustedStartFrame(
-            fChopWaveforms, fChopOffsets, padInEditor);
+            fChopSession.waveforms, fChopSession.offsets, padInEditor);
         const auto frames = midichopper::ui::chop::adjustedFrames(
-            fChopWaveforms, fChopOffsets, padInEditor);
+            fChopSession.waveforms, fChopSession.offsets, padInEditor);
         if (frames == 0U)
             return;
         const auto end = start + frames;
@@ -3185,10 +3171,10 @@ private:
         for (std::uint32_t pad = 0; pad < request.previewPadCount; ++pad) {
             const auto localPad = static_cast<int>(pad);
             request.sourceFrames[pad] = midichopper::ui::chop::adjustedStartFrame(
-                fChopWaveforms, fChopOffsets, localPad);
+                fChopSession.waveforms, fChopSession.offsets, localPad);
             request.sourceEndFrames[pad] = request.sourceFrames[pad] +
                 midichopper::ui::chop::adjustedFrames(
-                    fChopWaveforms, fChopOffsets, localPad);
+                    fChopSession.waveforms, fChopSession.offsets, localPad);
         }
         const auto encoded = midichopper::plugin::encodeChopMidiPreviewRequest(request);
         setState("chop_midi_preview", encoded.c_str());
@@ -3226,9 +3212,9 @@ private:
         }
         if (fChopSplitMode) {
             const auto splitFrame = midichopper::ui::chop::adjustedBoundary(
-                fChopWaveforms, fChopOffsets, 0);
+                fChopSession.waveforms, fChopSession.offsets, 0);
             if (fSplitPlanId == 0U || splitFrame <= 0 ||
-                splitFrame >= static_cast<std::int64_t>(fChopWaveforms[0].frames)) {
+                splitFrame >= static_cast<std::int64_t>(fChopSession.waveforms[0].frames)) {
                 setLocalStatus("Both split halves must contain audio");
                 return;
             }
@@ -3245,12 +3231,7 @@ private:
             setState("pad_structure_request", encoded.c_str());
             return;
         }
-        midichopper::plugin::ChopApplyRequest request;
-        request.firstPad = static_cast<std::uint32_t>(fChopFirstPad);
-        request.padCount = 3U;
-        for (int boundary = 0; boundary < 2; ++boundary)
-            request.boundaryOffsets[static_cast<std::size_t>(boundary)] =
-                fChopOffsets[static_cast<std::size_t>(boundary)];
+        const auto request = fChopSession.applyRequest();
         stopChopPreview();
         muteChopMidiPreview();
         fChopApplying = true;
@@ -3346,6 +3327,7 @@ private:
         const std::string encoded = sms::state::encodeSamplePlaybackSettings(fEditorSettings);
         setState(kPadEditStateKeys[static_cast<std::size_t>(fSelectedPad)].c_str(), encoded.c_str());
 #endif
+        refreshPendingEditorSnapshot();
     }
 
     void commitMixerSettings()
@@ -3357,6 +3339,16 @@ private:
         setState(kPadMixerStateKeys[static_cast<std::size_t>(fSelectedPad)].c_str(),
                  encoded.c_str());
 #endif
+        refreshPendingEditorSnapshot();
+    }
+
+    void refreshPendingEditorSnapshot() noexcept
+    {
+        // A queued snapshot predating this local edit must not overwrite it.
+        if (fEditorSnapshot.pending()) {
+            fEditorSnapshot.begin(fSelectedPad);
+            fEditorSnapshotRetryDeadline = std::chrono::steady_clock::now();
+        }
     }
 
     void beginMixerValueEntry(const sms::ui::InteractiveTarget target)
@@ -3603,9 +3595,7 @@ private:
             sms::dsp::SamplePlaybackSettings decoded;
             if (sms::state::decodeSamplePlaybackSettings(value, decoded)) {
                 const int decodedPad = static_cast<int>(pad);
-                if (fEditorSnapshot.accept(decodedPad, decoded)) {
-                    commitEditorSnapshotIfReady();
-                } else if (!fEditorSnapshot.pending() && decodedPad == fSelectedPad) {
+                if (!fEditorSnapshot.pending() && decodedPad == fSelectedPad) {
                     fEditorSettings = decoded;
                     fEditorSettingsPad = decodedPad;
                 }
@@ -3631,9 +3621,7 @@ private:
             sms::dsp::SampleMixerSettings decoded;
             if (sms::state::decodeSampleMixerSettings(value, decoded)) {
                 const int decodedPad = static_cast<int>(pad);
-                if (fEditorSnapshot.accept(decodedPad, decoded)) {
-                    commitEditorSnapshotIfReady();
-                } else if (!fEditorSnapshot.pending() && decodedPad == fSelectedPad) {
+                if (!fEditorSnapshot.pending() && decodedPad == fSelectedPad) {
                     fMixerSettings = decoded;
                     fMixerSettingsPad = decodedPad;
                 }

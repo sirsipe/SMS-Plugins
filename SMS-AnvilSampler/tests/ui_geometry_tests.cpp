@@ -1,6 +1,8 @@
 #include "Audio/WaveformSummary.hpp"
 #include "ContextMenu.hpp"
 #include "ChopEditor.hpp"
+#include "ChopEditorSession.hpp"
+#include "EditorSnapshotSession.hpp"
 #include "DSP/SamplePlaybackSettings.hpp"
 #include "Interaction.hpp"
 #include "HelpLinks.hpp"
@@ -497,7 +499,6 @@ void padPressTracking()
 
 void editorSnapshotCollection()
 {
-    midichopper::ui::EditorSnapshotCollector snapshot;
     sms::audio::WaveformSummary waveform;
     waveform.pad = 7U;
     waveform.frames = 48000U;
@@ -506,19 +507,51 @@ void editorSnapshotCollection()
     sms::dsp::SampleMixerSettings mixer;
     mixer.pan = 0.5f;
 
-    snapshot.begin(7);
-    auto stale = waveform;
-    stale.pad = 6U;
-    check(!snapshot.accept(stale) && snapshot.accept(waveform) &&
-              snapshot.accept(7, playback) && !snapshot.readyFor(7),
-          "sample editor ignores stale responses and waits for every snapshot part");
-    check(snapshot.accept(7, mixer) && snapshot.readyFor(7) &&
-              snapshot.waveform().frames == 48000U &&
-              snapshot.playback().start == 0.25f && snapshot.mixer().pan == 0.5f,
-          "sample editor presents matching waveform and controls as one snapshot");
-    snapshot.begin(8);
-    check(snapshot.pending() && snapshot.pad() == 8 && !snapshot.readyFor(8),
-          "a replacement pad request discards incomplete prior response parts");
+    midichopper::ui::EditorSnapshotSession session;
+    session.begin(7);
+    const auto firstRequest = session.request();
+    check(session.request().sequence == firstRequest.sequence,
+          "sample snapshot retries retain their request identity");
+    midichopper::plugin::EditorSnapshotReply reply;
+    reply.request = firstRequest;
+    reply.waveform = waveform;
+    reply.playback = playback;
+    reply.mixer = mixer;
+    session.begin(7);
+    const auto refreshed = session.request();
+    check(refreshed.sequence != firstRequest.sequence && !session.accept(reply) && !session.readyFor(7),
+          "same-pad refresh rejects coherent replies from its earlier baseline");
+    reply.request = refreshed;
+    reply.waveform.frames = 96000U;
+    reply.playback.start = 0.5f;
+    reply.mixer.pan = -0.25f;
+    check(session.accept(reply) && session.readyFor(7) &&
+          session.waveform().frames == 96000U && session.playback().start == 0.5f &&
+          session.mixer().pan == -0.25f && !session.accept(reply),
+          "matching integrated reply commits all controls once");
+    session.complete();
+    check(!session.pending() && !session.accept(reply), "completed sample requests ignore late retry replies");
+    session.begin(8);
+    check(!session.accept(reply) && !session.readyFor(8), "pad navigation rejects an earlier integrated reply");
+    midichopper::ui::EditorSnapshotSession reopened;
+    reopened.begin(8);
+    check(reopened.request().sequence != session.request().sequence,
+          "sample snapshot identities differ across UI instances");
+
+    std::uint64_t sequence = 0U;
+    auto detail = midichopper::ui::waveformDetailRequest({}, sequence, 7U, 1U, 100U, 200U);
+    const auto retry = midichopper::ui::waveformDetailRequest(detail, sequence, 7U, 1U, 100U, 200U);
+    check(retry.sequence == detail.sequence, "delayed detail retries preserve sequence");
+    detail = midichopper::ui::waveformDetailRequest(retry, sequence, 7U, 1U, 200U, 300U);
+    check(detail.sequence != retry.sequence, "changed detail frame range advances sequence");
+    const auto newPad = midichopper::ui::waveformDetailRequest(detail, sequence, 8U, 1U, 200U, 300U);
+    check(newPad.sequence != detail.sequence, "changed detail source advances sequence");
+    ++sequence; // editor reset invalidates an otherwise identical range
+    check(midichopper::ui::waveformDetailRequest(newPad, sequence, 8U, 1U, 200U, 300U).sequence != newPad.sequence,
+          "editor refresh invalidates an identical detail range");
+    std::uint64_t reopenedSequence = 0U;
+    check(midichopper::ui::waveformDetailRequest({}, reopenedSequence, 8U, 1U, 200U, 300U).sequence != sequence,
+          "reopened detail session cannot reuse a previous UI request identity");
 }
 
 void wheelAdjustment()
@@ -806,6 +839,59 @@ void waveformGeometry()
           "typed mixer values reject incomplete and non-numeric text");
 }
 
+void chopEditorSession()
+{
+    namespace plugin = midichopper::plugin;
+    midichopper::ui::ChopEditorSession session;
+    const auto now = midichopper::ui::ChopEditorSession::Clock::now();
+    session.begin(8U);
+    check(!session.ready() && session.requestDue(now), "cut session starts muted and requests a baseline");
+    const auto request = session.request(now);
+    check(!session.requestDue(now) &&
+          session.requestDue(now + std::chrono::milliseconds(250)) &&
+          session.request(now + std::chrono::milliseconds(250)).sequence == request.sequence,
+          "baseline retry retains identity and waits for its deadline");
+    plugin::ChopSnapshotReply reply;
+    reply.request = request;
+    reply.generations = {11U, 12U, 13U};
+    for (std::size_t index = 0; index < reply.waveforms.size(); ++index) {
+        reply.waveforms[index].pad = 8U + static_cast<std::uint32_t>(index);
+        reply.waveforms[index].frames = 100U;
+    }
+    auto stale = reply;
+    --stale.request.sequence;
+    check(!session.accept(stale) && !session.ready(), "superseded baseline reply cannot enable Apply");
+    auto wrongPad = reply;
+    wrongPad.waveforms[1].pad = 12U;
+    check(!session.accept(wrongPad) && !session.ready(), "baseline rejects incorrectly associated waveform");
+    check(session.accept(reply) && session.ready() && !session.accept(reply),
+          "coherent baseline becomes ready once and ignores late retry replies");
+    session.offsets = {20, -10};
+    const auto apply = session.applyRequest();
+    check(apply.revisionChecked && apply.sequence == request.sequence &&
+          apply.firstPad == 8U && apply.padCount == 3U &&
+          apply.expectedGenerations == reply.generations &&
+          apply.boundaryOffsets[0] == 20 && apply.boundaryOffsets[1] == -10,
+          "Apply carries exactly the displayed baseline generations and pending offsets");
+    check(!session.acceptStatus({request.sequence + 1U, true, {}}) &&
+          session.acceptStatus({request.sequence, false, "Samples changed"}) &&
+          !session.acceptStatus({request.sequence, true, {}}),
+          "only the matching outstanding Apply result is consumed");
+    session.begin(8U);
+    const auto fresh = session.request(now);
+    check(fresh.sequence != request.sequence && !session.ready() &&
+          session.offsets[0] == 0 && !session.accept(reply) &&
+          !session.acceptsError(request.sequence) && session.acceptsError(fresh.sequence),
+          "same-pad refresh invalidates old baseline, offsets and errors");
+    session.cancel();
+    check(!session.requestDue(now) && !session.acceptsError(fresh.sequence) && !session.ready(),
+          "leaving the cut editor cancels outstanding baseline work");
+    midichopper::ui::ChopEditorSession reopened;
+    reopened.begin(8U);
+    check(reopened.request(now).sequence != fresh.sequence,
+          "reopened editor cannot reuse an earlier request identity");
+}
+
 void chopEditorGeometry()
 {
     check(midichopper::ui::chop::navigationTarget(1, -1, 8) == -1 &&
@@ -907,5 +993,6 @@ int main()
     levelMeterGeometry();
     waveformGeometry();
     chopEditorGeometry();
+    chopEditorSession();
     std::cout << "UI geometry tests passed\n";
 }

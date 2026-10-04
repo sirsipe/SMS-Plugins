@@ -1,17 +1,18 @@
 # Cut Point Editor contract
 
-Audience: agents changing cut editing, raw preview, storage, or waveform input.
+Contract for cut editing, preview, storage, and waveform input.
 
 ## Model
 
-The action requires one context-menu pad and both immediate neighbors, so the
-first and last bank pads cannot open it. Three raw 128-bin summaries form one
-waveform. Two signed frame offsets stay UI-local until Apply; they are neither
+The action needs a pad and both immediate neighbors; bank edge pads cannot
+open it. Three raw 128-bin summaries form one waveform. Two signed frame offsets stay UI-local until Apply; they are neither
 host parameters nor saved state.
 
 The initial center pad is occupied, but arrow navigation may center an empty
-slot; either neighbor may also be empty. All responses must arrive and occupied
-pads must share a rate. Per-pad PCM has no capture-session identity, so source
+slot; either neighbor may also be empty. One `chop_snapshot_request/data` reply
+carries all three waveforms and generations from a retained baseline.
+`ChopEditorSession` matches the request sequence and retries pending requests.
+Occupied pads must share a rate. Per-pad PCM has no capture-session identity, so source
 ancestry cannot be verified.
 
 ## Interaction and preview
@@ -46,17 +47,22 @@ map while the editor is loading or applying.
 
 ## Apply
 
-`chop_apply_request` carries the first pad, count three, and two offsets. Before
-mutation, the DSP validates occupancy/frame counts, sample rates, ordered source
-bounds, per-pad addressable frames, and pool capacity. Any zero-length result
-clears its pad.
+`chop_apply_request` uses CH2: first pad, count three, two offsets, baseline
+sequence, and expected generations. The parser understands old CH1 commands,
+but the adapter rejects unguarded Apply requests. Durable state stays compatible.
 
-Apply uses `RealtimeAccessGate` on the control thread, rebuilds one PCM sequence,
-releases its storage, and repartitions the frames. Empty results reset all pad
-settings. Non-empty pads touching a moved cut reset Start/End/ADSR but preserve
-Gain/Pan/Tune; untouched pads retain settings. `chop_status` reports completion.
-Success stays in the editor, reloads its baseline, and disables Apply until the
-next change.
+The control worker retains a coherent source snapshot, validates bounds/rates,
+and stages the repartitioned PCM. The callback rechecks generations, Arm, and
+capacity before publishing the complete transaction. Any zero-length result
+clears its pad. Empty results reset settings. Non-empty pads touching a moved
+cut reset Start/End/ADSR but preserve mixer settings; untouched pads retain
+settings. Unrelated audio and monitoring continue. Ownership is specified in
+[Storage handoff](PAD-STORAGE.md).
+
+`chop_status` matches the request sequence. Completion refreshes the baseline
+and disables Apply; a stale failure discards offsets and loads current samples.
+The editor mutes its MIDI until the refreshed baseline is ready. Replies and
+statuses belonging to an earlier navigation or UI instance are ignored.
 
 ## Split Sample mode
 
@@ -71,28 +77,25 @@ Navigation cancels the plan and opens the neighboring ordinary editor.
 Apply revalidates pad generations, atomically shifts whole pads right, and
 stores both halves. Both reset Start/End/ADSR and inherit source mixer settings;
 shifted pads stay intact. Apply opens the ordinary editor around the halves.
-Exit, Escape, stale plans, and failures do not mutate.
+Cancellation, stale plans, and failures do not mutate.
 
 ## Validation
 
-- `sampler-core`: positive and negative cut moves preserve PCM order and total
-  frames; empty edge slots can receive prefixes or suffixes; zero-length edge
-  and middle results clear their pad and settings; bounded raw preview skips
-  empties, crosses original storage boundaries, and stops at the proposed cut;
-  MIDI selects proposed ordinary and split slices while outside notes are silent.
-- `state-codec`: apply and bounded-preview commands round-trip and reject bad
-  versions, counts, ranges, missing fields, and invalid numbers.
-- `ui-geometry`: both cut handles, edge placement for empty neighbors,
-  drag/wheel clamping, duration transfer, combined-waveform ordering,
-  playhead mapping, preview-button enablement, navigation bounds and action hit
-  testing; split mode exposes one handle and two previews.
+- `sampler-core`: cut moves preserve PCM order/frame totals, including empty
+  edge destinations and zero-length results. Raw preview crosses storage
+  boundaries, ignores outside notes, and stops at the proposed cut.
+- `sampler-transfer`: coherent baselines, stale generation rejection, retained
+  readers, and continuous unrelated monitoring/playback during edits.
+- `state-codec`: commands/replies round-trip; malformed versions, counts,
+  ranges, sequences, and generations fail; snapshot replies fit the UI bus.
+- `ui-geometry`: handles, viewport/drag/wheel clamping, empty-edge geometry,
+  navigation, previews, coherent session readiness, retry, and stale replies.
 - Pad structure: single/multiple empty-gap collapse, nearest-empty split shifts,
   mixed source rates, settings movement, midpoint and adjusted splits, stale
   generation rejection, and 8/12/16-pad visible boundaries.
 - In an LV2 host, right-click a middle pad from the main or Sample Editor view.
-  Check empty-neighbor behavior, zeroing each pad position, both drags,
-  preview-button enablement, arrows, Exit, and Apply. Confirm Apply stays open
-  and becomes disabled after its refresh. Listen across both edited cuts and
+  Test empty/zeroed neighbors, drags, previews, arrows, Exit, and Apply.
+  Apply stays open and disables after refresh. Listen across both edited cuts and
   confirm shaping resets only on non-empty pads touching a changed cut. Trigger
   all three displayed pads from MIDI before and after moving both cuts; confirm
   other notes are silent and do not change the active bank.

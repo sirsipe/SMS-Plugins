@@ -1,7 +1,6 @@
 # Task index
 
-AI-facing navigation. Start with [AGENTS.md](../../AGENTS.md), then read only
-the row needed for the task. Paths in commands are relative to the repo root.
+Read [AGENTS.md](../../AGENTS.md), then the relevant row. Commands use the repo root.
 
 | Task | Read | Source of truth / starting point |
 | --- | --- | --- |
@@ -16,6 +15,7 @@ the row needed for the task. Paths in commands are relative to the repo root.
 | Feature scope and direction | [Vision](../../SMS-AnvilSampler/Docs/VISION.md) | Intended scope; not an implementation checklist |
 | Pad context menu and actions | [Context-menu design](PAD-CONTEXT-MENU.md) | Implemented actions and future action contract |
 | Cut Point Editor design and tests | [Cut Point Editor](CHOP-EDITOR.md) | Three-pad cuts, raw preview, state and limitations |
+| Pad storage and transfer concurrency | [Storage handoff](PAD-STORAGE.md) | [Engine](../../SMS-AnvilSampler/src/core/SamplerEngine.hpp) |
 | Pad WAV import/export | [WAV I/O design](PAD-WAV-IO.md) | Formats, real-time boundary, dialogs, support notes |
 | VST3 state and outputs | [DPF VST3 constraints](DPF-VST3-CONSTRAINTS.md) | UI synchronization and fixed/dynamic bus boundaries |
 | User-visible behavior | [Plugin guide](../../SMS-AnvilSampler/README.md) | Verify against affected source/tests |

@@ -28,6 +28,8 @@ waveform playhead just like clicking a pad button.
 
 **Apply** rewrites the three samples and stays open, disabled until another
 change. Affected non-empty pads reset Start/End/ADSR and preserve Gain/Pan/Tune.
+If those pads changed after loading the editor, Apply is rejected and reloads
+the current samples; adjust the cuts again.
 
 Arrows load the previous or next eligible bank pad and discard pending cuts.
 The round **Exit** button also discards them and leaves the view.

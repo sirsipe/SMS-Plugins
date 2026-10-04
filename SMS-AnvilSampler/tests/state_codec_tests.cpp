@@ -2,6 +2,7 @@
 #include "Audio/WaveformSummary.hpp"
 #include "WaveformDetailProtocol.hpp"
 #include "ChopEditorProtocol.hpp"
+#include "EditorSnapshotProtocol.hpp"
 #include "PadStructureProtocol.hpp"
 #include "PadColorState.hpp"
 
@@ -153,6 +154,50 @@ void mixerStateRoundTrip()
           "legacy mixer state restores with effects bypassed");
 }
 
+void editorSnapshotProtocolRoundTrip()
+{
+    namespace plugin = midichopper::plugin;
+    plugin::EditorSnapshotRequest request{UINT64_MAX, 63U}, decodedRequest;
+    check(plugin::decodeEditorSnapshotRequest(plugin::encodeEditorSnapshotRequest(request), decodedRequest) &&
+          decodedRequest.sequence == request.sequence && decodedRequest.pad == request.pad,
+          "editor request retains sequence and final pad identity");
+    for (const auto invalid : {"ES1;0;0", "ES1;1;64", "ES1;1;-1", "ES1;1;0;", "ES1;1",
+             "ES1;18446744073709551616;0", "ES2;1;0", "0"})
+        check(!plugin::decodeEditorSnapshotRequest(invalid, decodedRequest),
+              "malformed editor snapshot requests rejected");
+    plugin::EditorSnapshotReply reply;
+    reply.request = request;
+    reply.waveform.pad = 63U;
+    reply.waveform.frames = UINT32_MAX;
+    reply.waveform.sampleRate = 768000.0;
+    reply.waveform.minimum.fill(-1.0f);
+    reply.waveform.maximum.fill(1.0f);
+    reply.playback.start = 0.25f;
+    reply.playback.attackSeconds = 0.125f;
+    reply.mixer.pan = -0.5f;
+    reply.mixer.dirty = 1.0f;
+    const auto encoded = plugin::encodeEditorSnapshotReply(reply);
+    plugin::EditorSnapshotReply decoded;
+    check(encoded.size() < 8192U && plugin::decodeEditorSnapshotReply(encoded, decoded) &&
+          decoded.request.sequence == reply.request.sequence &&
+          decoded.waveform.frames == reply.waveform.frames &&
+          decoded.waveform.minimum[0] == -1.0f && decoded.playback.start == 0.25f &&
+          decoded.playback.attackSeconds == 0.125f && decoded.mixer.pan == -0.5f && decoded.mixer.dirty == 1.0f,
+          "one bounded reply carries coherent waveform, playback and mixer values");
+    check(!plugin::decodeEditorSnapshotReply(encoded + "|", decoded) &&
+          !plugin::decodeEditorSnapshotReply(encoded.substr(0, encoded.rfind('|')), decoded) &&
+          !plugin::decodeEditorSnapshotReply(encoded.substr(0, encoded.rfind('|')) + "|MX2;nan", decoded) &&
+          !plugin::decodeEditorSnapshotReply(encoded + std::string("\0extra", 6), decoded),
+          "missing, extra, non-finite and embedded-null editor reply fields rejected");
+    reply.waveform.pad = 62U;
+    check(!plugin::decodeEditorSnapshotReply(plugin::encodeEditorSnapshotReply(reply), decoded),
+          "editor waveform must belong to envelope pad");
+    reply.waveform.pad = 63U;
+    reply.request.sequence = 0U;
+    check(!plugin::decodeEditorSnapshotReply(plugin::encodeEditorSnapshotReply(reply), decoded),
+          "editor reply requires a live request identity");
+}
+
 void chopProtocolRoundTrip()
 {
     midichopper::plugin::ChopApplyRequest apply;
@@ -171,6 +216,79 @@ void chopProtocolRoundTrip()
     check(!midichopper::plugin::decodeChopApplyRequest("CH1;0;2", decodedApply) &&
           !midichopper::plugin::decodeChopApplyRequest("CH1;63;2;0", decodedApply),
           "invalid chop apply requests are rejected");
+
+    check(!decodedApply.revisionChecked, "legacy cut command retains explicit unguarded identity");
+    apply.revisionChecked = true;
+    apply.sequence = 123U;
+    apply.expectedGenerations = {0U, 2U, UINT64_MAX, 4U};
+    check(midichopper::plugin::decodeChopApplyRequest(
+              midichopper::plugin::encodeChopApplyRequest(apply), decodedApply) &&
+          decodedApply.revisionChecked && decodedApply.sequence == 123U &&
+          decodedApply.expectedGenerations == apply.expectedGenerations &&
+          decodedApply.boundaryOffsets == apply.boundaryOffsets,
+          "revision-checked cut command round-trips with empty-pad and maximum generations");
+    for (const auto invalid : {"CH2;0;0;3;1;2;3;0;0", "CH2;1;0;3;1;2;0;0",
+             "CH2;1;0;3;1;2;3;0;0;", "CH2;1;0;3;-1;2;3;0;0",
+             "CH2;1;0;3;18446744073709551616;2;3;0;0", "CH3;1;0;3;1;2;3;0;0"})
+        check(!midichopper::plugin::decodeChopApplyRequest(invalid, decodedApply),
+              "malformed revision-checked cut command rejected");
+
+    midichopper::plugin::ChopSnapshotRequest snapshotRequest{UINT64_MAX, 61U, 3U};
+    midichopper::plugin::ChopSnapshotRequest decodedRequest;
+    check(midichopper::plugin::decodeChopSnapshotRequest(
+              midichopper::plugin::encodeChopSnapshotRequest(snapshotRequest), decodedRequest) &&
+          decodedRequest.sequence == snapshotRequest.sequence && decodedRequest.firstPad == 61U,
+          "coherent cut baseline request round-trips at final legal pad range");
+    for (const auto invalid : {"CQ1;0;0;3", "CQ1;1;62;3", "CQ1;1;0;2", "CQ1;1;0;3;",
+             "CQ1;1;0", "CQ2;1;0;3", "CQ1;1;-1;3"})
+        check(!midichopper::plugin::decodeChopSnapshotRequest(invalid, decodedRequest),
+              "malformed coherent cut baseline request rejected");
+
+    midichopper::plugin::ChopSnapshotReply snapshot;
+    snapshot.request = snapshotRequest;
+    snapshot.generations = {UINT64_MAX, UINT64_MAX, UINT64_MAX};
+    for (std::size_t index = 0; index < snapshot.waveforms.size(); ++index) {
+        snapshot.waveforms[index].pad = 61U + static_cast<std::uint32_t>(index);
+        snapshot.waveforms[index].frames = UINT32_MAX;
+        snapshot.waveforms[index].sampleRate = 768000.0;
+        snapshot.waveforms[index].minimum.fill(-1.0f);
+        snapshot.waveforms[index].maximum.fill(1.0f);
+    }
+    const auto encodedSnapshot = midichopper::plugin::encodeChopSnapshotReply(snapshot);
+    midichopper::plugin::ChopSnapshotReply decodedSnapshot;
+    check(encodedSnapshot.size() < 8192U &&
+          midichopper::plugin::decodeChopSnapshotReply(encodedSnapshot, decodedSnapshot) &&
+          decodedSnapshot.request.sequence == snapshot.request.sequence &&
+          decodedSnapshot.generations == snapshot.generations &&
+          decodedSnapshot.waveforms[2].pad == 63U &&
+          decodedSnapshot.waveforms[2].frames == UINT32_MAX &&
+          decodedSnapshot.waveforms[2].minimum[0] == -1.0f,
+          "coherent baseline reply round-trips within transport bound at maximum field widths");
+    check(!midichopper::plugin::decodeChopSnapshotReply(encodedSnapshot + "|", decodedSnapshot) &&
+          !midichopper::plugin::decodeChopSnapshotReply(
+              encodedSnapshot.substr(0, encodedSnapshot.rfind('|')), decodedSnapshot) &&
+          !midichopper::plugin::decodeChopSnapshotReply("CS1;1;0;3;1;2;3|broken", decodedSnapshot),
+          "missing, extra and malformed baseline waveforms rejected");
+    snapshot.waveforms[1].pad = 63U;
+    check(!midichopper::plugin::decodeChopSnapshotReply(
+              midichopper::plugin::encodeChopSnapshotReply(snapshot), decodedSnapshot),
+          "baseline waveforms must match their contiguous pad range");
+
+    midichopper::plugin::ChopApplyStatus status;
+    check(midichopper::plugin::decodeChopApplyStatus(
+              midichopper::plugin::encodeChopStatus(123U, true), status) &&
+          status.sequence == 123U && status.success &&
+          midichopper::plugin::decodeChopApplyStatus(
+              "CH2;123;ERROR;Samples changed", status) &&
+          !status.success && status.message == "Samples changed" &&
+          midichopper::plugin::decodeChopSnapshotError(
+              "CS1;123;ERROR;Recording active", status) && status.sequence == 123U,
+          "cut completion and snapshot errors retain their request sequence");
+    check(!midichopper::plugin::decodeChopApplyStatus("CH1;OK", status) &&
+          !midichopper::plugin::decodeChopApplyStatus("CH2;0;OK", status) &&
+          !midichopper::plugin::decodeChopApplyStatus("CH2;1;OK;extra", status) &&
+          !midichopper::plugin::decodeChopSnapshotError("CS1;1;ERROR;", status),
+          "unmatched and malformed completion identities rejected");
 
     const midichopper::plugin::ChopPreviewRequest preview{true, 8U, 8U, 12345U, 23456U};
     const auto encodedPreview = midichopper::plugin::encodeChopPreviewRequest(preview);
@@ -332,6 +450,7 @@ int main()
     rejectsDamage();
     editorStateRoundTrip();
     mixerStateRoundTrip();
+    editorSnapshotProtocolRoundTrip();
     chopProtocolRoundTrip();
     padStructureProtocolRoundTrip();
     std::cout << "state codec tests passed\n";

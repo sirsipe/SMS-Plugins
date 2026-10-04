@@ -1,7 +1,6 @@
 # Testing reference
 
-Run commands from the repository root after the [build](DEVELOPMENT.md).
-Record which checks ran.
+Run from the repository root after the [build](DEVELOPMENT.md); report checks.
 
 ## Automated checks
 
@@ -11,19 +10,26 @@ python3 scripts/check_docs.py
 git diff --check
 ```
 
-For focused iteration, use `ctest --test-dir build --output-on-failure -R NAME`:
+Filter with `ctest --test-dir build --output-on-failure -R NAME`:
 
 | CTest name | Coverage |
 | --- | --- |
 | `sampler-core` | Capture, banks/layouts, storage, voices, region/ADSR, pad/global mixer sums, filter response and dirty conversion, raw chop preview/repartition, resampling, clipboard, lifecycle, and more than 1,024 MIDI events per block |
+| `sampler-transfer` | Concurrent transfers, exact monitoring/MIDI/recording continuity, retained storage, stale commits, capacity, published host snapshots, dispatcher lifecycle, and audio-thread allocation/destruction |
 | `state-codec` | Audio, editor-state, MX1/MX2 mixer compatibility, cut commands, and visible waveform request/reply round trips; malformed/corrupt state |
 | `ui-geometry` | Pad mapping, editor snapshot assembly, waveform/chop geometry, viewport mapping, hit testing, wheel editing |
 | `ui-message-bus` | Bounded VST3 message ordering, independent view cursors, explicit gap reporting on wrap, and large replies |
 | `wav-codec` | WAV formats, validation, file actions, offline render, real-time access gate |
 
-Rebuild affected targets before testing. Run all five before handing off code
+Rebuild affected targets before testing. Run all six before handing off code
 changes. For docs-only changes, run the doc checks and verify
 changed commands against CMake/tool help; no audio rebuild is required.
+Test long audio with an optional WAV argument; keep supplied audio out of Git:
+
+```bash
+./build/anvilsampler_transfer_tests "/path/to/long-sample.wav"
+```
+
 ## LV2 bundle discovery
 
 Install `lilv-utils` if needed. Test the built bundle without copying it into
@@ -35,7 +41,7 @@ LV2_PATH="$PWD/build/bin" \
 ```
 
 The URI comes from `src/plugin/DistrhoPluginInfo.h` under `SMS-AnvilSampler`.
-This checks discovery/metadata; it does not prove audio processing works.
+Discovery/metadata does not validate audio.
 
 ## LV2 host integration
 
@@ -62,13 +68,13 @@ LV2_PATH="$PWD/build/bin" pw-jack jalv -s "$LV2_URI"
 ```
 
 Jalv and Carla 2.5.10 load the UI and route MIDI, but cannot validate
-DSP-requested `active_bank` UI updates. Inspect local host help before testing.
+DSP-requested `active_bank` UI updates. Inspect host help.
 
 Connect stereo source → plugin inputs, MIDI source → plugin event input, and
 plugin outputs → a recorder or monitoring destination using your JACK graph
 tool. Confirm the graph actually carries audio and MIDI before judging results.
 
-Choose checks matching the change:
+Applicable checks:
 
 - Capture: ARM; first note starts capture, later notes split consecutive visible
   pads; FINALIZE keeps the last slice. Check bank transitions and fixed mode
@@ -105,7 +111,7 @@ window, clicks ARM at its layout coordinate, and saves an exact-window PNG under
 the ignored `build/gui-test/` directory. It sets VNC to 1920x1080 so the window
 fits. Use `test-plugin --keep-open` for more
 interactions. `screenshot-window WINDOW_ID OUTPUT.png` refuses desktop-wide
-capture. Resolve and activate the window again after every relaunch or resize.
+capture. Resolve the window after relaunch or resize.
 
 Capture only the plug-in window, never the full desktop. Inspect every artifact
 before sharing or committing it, and exclude usernames, home paths, machine

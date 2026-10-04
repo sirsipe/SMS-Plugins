@@ -5,7 +5,9 @@ Layers:
 - `src/core` is the C++20 capture/playback engine.
 - `src/plugin` adapts DPF parameters, audio, MIDI, and state.
 - `src/ui/MidichopperUI.cpp` owns host communication;
-  `MidichopperInteraction.hpp` resolves input and `MidichopperView.cpp` draws.
+  `MidichopperInteraction.hpp` resolves input, `ChopEditorSession.hpp` collects
+  coherent cut baselines, `EditorSnapshotSession.hpp` matches sample snapshots,
+  and `MidichopperView.cpp` draws.
 - `tests` covers engine, state, WAV, and UI.
 - `../Common-Src` contains reusable DSP, state, and UI geometry.
 - `../Common-UI` contains shared theme, controls, pads, and waveform editing.
@@ -57,40 +59,37 @@ volume, pan, and tune combine during playback. Active voices refresh mixer,
 ADSR, and End atomics per block; Start remains fixed until retrigger.
 The filter and Dirty processing contract is in [Mixing](../../Docs/AI/MIXING.md).
 
-See [Cut Point Editor](../../Docs/AI/CHOP-EDITOR.md) for boundary editing.
+Pad transfers retain immutable completed audio, prepare replacements off-thread,
+and commit bounded descriptor changes at audio block boundaries. Monitoring and
+unrelated voices continue during transfers. Host state reads use coherent
+published revisions without waiting for processing. See the
+[storage handoff contract](../../Docs/AI/PAD-STORAGE.md) for ownership, reserve
+memory, conflicts, lifecycle, and regression coverage.
 
-Pad storage mutations are control-thread work. A shared gate makes `run()`
-output silence while control code copies or replaces storage at a block
-boundary; its audio side only checks lock-free atomics. File access, codecs, and
-offline rendering never run in the callback. See `SamplerEngine.hpp`.
-Export and same-rate import use block copies, allocating before
-gating. Large transfers can silence the callback; avoiding that needs another
-handoff.
+Collapse Gap moves descriptors and complete pad settings without copying PCM.
+Split and ordinary cut edits stage only affected PCM, then validate generations
+before an atomic transaction. Recording start, completion, resets, audio, and
+settings changes invalidate stale plans. Both structure actions stay within the
+active visible bank/page.
 
-Collapse Gap moves shared-pool block mappings and complete pad settings without
-copying PCM. Split Sample stages only the selected PCM, snapshots generations
-for the affected suffix, and atomically shifts whole pads before writing the two
-halves. Pad generations cover audio and settings changes so a pending split is
-rejected if its plan becomes stale. Both operations are confined to the active
-visible bank/page.
-
-Four hidden outputs carry input and output peaks. Meter redraws are 30-FPS
-capped and change only at LED boundaries. Host hard bypass cannot be metered.
+Four outputs report input/output peaks. Redraws cap at 30 FPS and follow LED
+boundaries. Host hard bypass cannot be metered.
 
 ## Project state
 
 Each pad stores versioned, CRC-checked interleaved PCM16 audio, Base64 encoded
 for DPF state. Decoding checks size and structure. Empty pads use empty values.
+Durable restoration stages per-pad desired updates without waiting for
+processing; published reads include them, and the next block commits them.
 
 Cut/ADSR and mixer values use versioned per-pad states. Import resets both;
 rechopping preserves mixer settings on non-empty results and clears settings
-when a pad becomes empty. The UI retains its snapshot until matching waveform
-and control replies arrive, ignoring stale replies and retrying failures. DSP
+when a pad becomes empty. The UI retains its snapshot until a matching sequenced reply carries waveform
+and settings together, ignoring stale same-pad replies and retrying failures. DSP
 returns a 128-bin min/max summary through DPF state in LV2 or the bounded
 direct-access bus in VST3. Ctrl-wheel zoom requests a new 128-bin summary of
 the visible frame range, across up to three adjacent pads; Shift-wheel pans.
-Request sequence and range reject stale detail replies. The control thread reads
-sample blocks behind the real-time access gate without copying whole pads.
+Request sequence and range reject stale detail replies. The control worker scans retained immutable sample storage outside the callback.
 Zoom is UI-local and resets on pad or editor change. Waveform work stays outside
 the audio callback.
 
@@ -99,8 +98,8 @@ the tint. The UI treats an unavailable index as no color; colors stay with pad
 slots through sample edits and moves.
 
 `pad_clear_request` publishes an atomic command consumed at the next block.
-`pad_file_request` carries an action, pad, and UTF-8 path; LV2 handles it on its
-required worker. Busy/status states contain small messages, while a hidden
+`pad_file_request` carries an action, pad, and UTF-8 path. VST3 queues transient transfers on an instance-owned worker; LV2 executes
+them through its required host worker. Busy/status states contain small messages, while a hidden
 output signals completion where wrapper state callbacks cannot return status
 to the UI. The VST3 bus carries no PCM. DPF's VST3 initial state transfer does
 not filter DSP-only state keys and may send Base64 pad PCM to a newly opened UI.

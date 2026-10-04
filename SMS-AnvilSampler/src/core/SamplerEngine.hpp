@@ -10,7 +10,11 @@
 #include <array>
 #include <atomic>
 #include <cstdint>
+#include <memory>
+#include <mutex>
+#include <optional>
 #include <span>
+#include <type_traits>
 #include <vector>
 
 namespace midichopper {
@@ -70,6 +74,7 @@ struct PadData {
     float peak = 0.0f;
     float rms = 0.0f;
     std::vector<float> stereo;
+    std::uint64_t generation = 0; // transient snapshot revision; not serialized
 };
 
 struct PadMetadata {
@@ -99,8 +104,9 @@ struct ChopMidiPreview {
 
 /**
  * Allocation-free/lock-free audio engine. Configuration and pad state import
- * are control-thread operations and must not be called concurrently with
- * process(). Events passed to process() must be sorted by frameOffset.
+ * are control-thread operations. With an installed dispatcher, transfers may
+ * overlap process(); configuration requires host quiescence. Events passed
+ * to process() must be sorted by frameOffset.
  *
  * Audio is stereo, non-interleaved. MIDI notes either address the visible pads
  * in the active bank or a gapless sequence across all four visible bank pages,
@@ -120,6 +126,10 @@ public:
     explicit SamplerEngine(double sampleRate = 48000.0,
                            double maxRecordSeconds = 30.0);
     ~SamplerEngine() = default;
+    /** Install before processing; the adapter dispatches only bounded capture/commit work. */
+    void setControlDispatcher(void* context,
+        void (*dispatch)(void*, void (*)(void*) noexcept, void*)) noexcept
+    { controlContext_ = context; controlDispatch_ = dispatch; }
     SamplerEngine(const SamplerEngine&) = delete;
     SamplerEngine& operator=(const SamplerEngine&) = delete;
 
@@ -157,21 +167,47 @@ public:
     /** Explicitly choose an idle armed capture destination in the active bank. */
     void selectCaptureTarget(std::uint32_t pad) noexcept;
     /** Copy a stable, already-published pad snapshot on the control/UI thread. */
-    [[nodiscard]] bool exportPad(std::uint32_t pad, PadData& destination) const;
-    /** Summarize a visible range across adjacent pads; call behind the control-thread gate. */
+    [[nodiscard]] bool exportPad(std::uint32_t pad, PadData& destination,
+        sms::dsp::SamplePlaybackSettings* playback = nullptr,
+        sms::dsp::SampleMixerSettings* mixer = nullptr) const;
+    /** Host state reads use published revisions and do not require host processing. */
+    [[nodiscard]] bool exportPublishedPad(std::uint32_t pad, PadData& destination,
+        sms::dsp::SamplePlaybackSettings* playback = nullptr,
+        sms::dsp::SampleMixerSettings* mixer = nullptr) const;
+    void snapshotPadSettings(std::uint32_t pad, sms::dsp::SamplePlaybackSettings& playback,
+        sms::dsp::SampleMixerSettings& mixer) const;
+    /** Summarize retained adjacent-pad storage on the control thread while audio continues. */
     [[nodiscard]] bool summarizePadRange(std::uint32_t firstPad, std::uint32_t padCount,
                                          std::uint64_t start, std::uint64_t end,
-                                         sms::audio::WaveformSummary& result) const noexcept;
+                                         sms::audio::WaveformSummary& result) const;
+    /** Capture a coherent ordinary-editor baseline and summarize retained PCM off-thread. */
+    [[nodiscard]] bool getChopSnapshot(std::uint32_t firstPad, std::uint32_t padCount,
+        std::span<sms::audio::WaveformSummary> summaries,
+        std::span<std::uint64_t> generations) const;
     /** Import/replaces a pad; state restoration may opt out of the normal editor reset. */
     [[nodiscard]] bool importPad(std::uint32_t pad, const PadData& source,
-                                 bool resetEditorSettings = true);
+                                 bool resetEditorSettings = true,
+        const sms::dsp::SamplePlaybackSettings* playback = nullptr,
+        const sms::dsp::SampleMixerSettings* mixer = nullptr,
+        std::optional<std::uint64_t> expectedGeneration = {});
+    /** Durable state may arrive while an active host has suspended callbacks. */
+    [[nodiscard]] bool restorePad(std::uint32_t pad, const PadData* audio);
+    void restorePadPlaybackSettings(std::uint32_t pad,
+        const sms::dsp::SamplePlaybackSettings& settings);
+    void restorePadMixerSettings(std::uint32_t pad,
+        const sms::dsp::SampleMixerSettings& settings);
+    /** Audio-owner: publish staged durable state at the next block; no allocation/free. */
+    void applyPendingState() noexcept;
+    [[nodiscard]] bool stateRestoreFailed() const noexcept
+    { return stateRestoreFailed_.load(std::memory_order_acquire); }
     /**
      * Repartition raw audio across consecutive pad slots. Empty slots may
      * receive audio, and a zero-length result clears that pad. Boundary offsets
      * are frame deltas from the original boundaries. Control thread only.
      */
     [[nodiscard]] bool rechopPads(std::uint32_t firstPad, std::uint32_t padCount,
-                                  std::span<const std::int64_t> boundaryOffsets);
+                                  std::span<const std::int64_t> boundaryOffsets,
+                                  std::span<const std::uint64_t> expectedGenerations = {});
     /**
      * Close the empty run containing targetPad by moving the immediately
      * following occupied run left. Complete pad contents and settings move
@@ -180,7 +216,7 @@ public:
      */
     [[nodiscard]] bool collapsePadGap(std::uint32_t firstPad,
                                       std::uint32_t padCount,
-                                      std::uint32_t targetPad) noexcept;
+                                      std::uint32_t targetPad);
     /**
      * Split firstPad at splitFrame and insert the suffix into firstPad + 1.
      * Occupied pads through emptyPad shift right by one, preserving their
@@ -212,17 +248,86 @@ public:
     void togglePlayback(std::uint32_t selectedPad) noexcept;
     [[nodiscard]] sms::dsp::SamplePlaybackSettings padPlaybackSettings(std::uint32_t pad) const noexcept;
     void setPadPlaybackSettings(std::uint32_t pad,
-                                const sms::dsp::SamplePlaybackSettings& settings) noexcept;
+                                const sms::dsp::SamplePlaybackSettings& settings);
     [[nodiscard]] sms::dsp::SampleMixerSettings padMixerSettings(std::uint32_t pad) const noexcept;
     void setPadMixerSettings(std::uint32_t pad,
-                             const sms::dsp::SampleMixerSettings& settings) noexcept;
+                             const sms::dsp::SampleMixerSettings& settings);
+    /** Audio-owner operations; control callers must dispatch or quiesce processing. */
     void clearPad(std::uint32_t pad) noexcept;
     void clearAllPads() noexcept;
     void finalizeRecording() noexcept;
     void undoLastSlice() noexcept;
 
 private:
+    // Control owns imported allocations. Audio owns capture blocks and runtime state.
+    // Retaining a completed descriptor pins both its mapping and PCM without copying.
+    struct Storage {
+        std::atomic<std::uint32_t> references{0};
+        std::vector<float> stereo; // immutable imported/staged PCM
+        std::vector<std::uint32_t> blocks; // preallocated capture mapping
+        std::uint32_t allocatedBlocks = 0;
+        std::uint32_t frames = 0;
+        double sampleRate = 48000.0;
+        float peak = 0.0f;
+        float rms = 0.0f;
+    };
+    static_assert(std::atomic<bool>::is_always_lock_free);
+    static_assert(std::atomic<std::uint32_t>::is_always_lock_free);
+    static_assert(std::atomic<std::uint64_t>::is_always_lock_free);
+    static_assert(std::atomic<Storage*>::is_always_lock_free);
+    struct Snapshot {
+        Storage* storage = nullptr;
+        PadMetadata metadata;
+        sms::dsp::SamplePlaybackSettings playback;
+        sms::dsp::SampleMixerSettings mixer;
+        Snapshot() = default;
+        Snapshot(const Snapshot&) = delete;
+        Snapshot& operator=(const Snapshot&) = delete;
+        ~Snapshot() { if (storage) storage->references.fetch_sub(1, std::memory_order_release); }
+    };
+    template<class Callback> void dispatchControl(Callback&& callback) const
+    {
+        static_assert(std::is_nothrow_invocable_v<Callback&>);
+        auto bounded = [&]() noexcept {
+            const_cast<SamplerEngine*>(this)->applyPendingState();
+            callback();
+        };
+        if (controlDispatch_)
+            controlDispatch_(controlContext_, [](void* opaque) noexcept {
+                (*static_cast<decltype(bounded)*>(opaque))();
+            }, &bounded);
+        else
+            bounded();
+    }
+    struct PendingState {
+        std::atomic<bool> consumed{false};
+        Storage* storage = nullptr;
+        bool replaceAudio = false;
+        bool replacePlayback = false;
+        bool replaceMixer = false;
+        sms::dsp::SamplePlaybackSettings playback{};
+        sms::dsp::SampleMixerSettings mixer{};
+    };
+    std::unique_ptr<PendingState> preparePendingState();
+    void enqueuePendingState(std::uint32_t pad, std::unique_ptr<PendingState> state);
+    void collectPendingState();
+    void overlayPendingState(std::uint32_t pad, Snapshot& snapshot) const noexcept;
+    void captureSnapshot(std::uint32_t pad, Snapshot& snapshot) const noexcept;
+    [[nodiscard]] float snapshotSample(const Snapshot& snapshot, std::uint32_t frame,
+                                       std::uint32_t channel) const noexcept;
+    void collectImportedStorage();
+    void reclaimCaptureStorage(std::uint32_t budget) noexcept;
+    [[nodiscard]] Storage* prepareStorage(const PadData& source);
+    void publishStorage(std::uint32_t pad, Storage* storage, bool resetSettings) noexcept;
+    void setPadPlaybackSettingsDirect(std::uint32_t pad,
+        const sms::dsp::SamplePlaybackSettings& settings) noexcept;
+    void setPadMixerSettingsDirect(std::uint32_t pad,
+        const sms::dsp::SampleMixerSettings& settings) noexcept;
     struct Pad {
+        Storage* storage = nullptr;
+        std::atomic<Storage*> publishedStorage{nullptr};
+        std::atomic<std::uint64_t> publicationSequence{0};
+        std::uint32_t publicationDepth = 0; // only the state owner writes this
         std::uint32_t recordedFrames = 0;
         std::uint32_t recordPosition = 0;
         std::uint32_t allocatedBlocks = 0;
@@ -269,6 +374,28 @@ private:
         Pad(const Pad&) = delete;
         Pad& operator=(const Pad&) = delete;
     };
+    struct PadMutation {
+        Pad& pad;
+        explicit PadMutation(Pad& value) noexcept : pad(value) {
+            if (pad.publicationDepth++ == 0U)
+                pad.publicationSequence.fetch_add(1U, std::memory_order_acq_rel);
+        }
+        ~PadMutation() { finish(pad); }
+        static void finish(Pad& pad) noexcept {
+            if (--pad.publicationDepth == 0U) {
+                pad.publishedStorage.store(pad.storage, std::memory_order_release);
+                pad.publicationSequence.fetch_add(1U, std::memory_order_release);
+            }
+        }
+        static void begin(Pad& pad) noexcept {
+            if (pad.publicationDepth++ == 0U)
+                pad.publicationSequence.fetch_add(1U, std::memory_order_acq_rel);
+        }
+    };
+    void capturePublishedSnapshot(std::uint32_t pad, Snapshot& snapshot) const;
+    void copySnapshot(const Snapshot& snapshot, PadData& destination,
+        sms::dsp::SamplePlaybackSettings* playback,
+        sms::dsp::SampleMixerSettings* mixer) const;
     std::uint32_t noteToPad(std::uint8_t note) const noexcept;
     [[nodiscard]] std::uint32_t firstCapturePad() const noexcept;
     [[nodiscard]] std::uint32_t firstAvailableCapturePad() const noexcept;
@@ -282,9 +409,6 @@ private:
     [[nodiscard]] bool storeSample(std::uint32_t pad, std::uint32_t frame,
                                    float left, float right) noexcept;
     void movePadContents(std::uint32_t source, std::uint32_t destination) noexcept;
-    void storeSplitHalf(std::uint32_t pad, const std::vector<float>& source,
-                        std::uint32_t sourceStart, std::uint32_t frames,
-                        double sourceRate) noexcept;
     void beginRecord(std::uint32_t pad) noexcept;
     void finishRecord(std::uint32_t pad, std::uint32_t trimFrames = 0) noexcept;
     void handleEvent(const MidiEvent& event) noexcept;
@@ -301,10 +425,18 @@ private:
     double max_record_seconds_;
     std::uint32_t total_blocks_;
     std::uint32_t max_frames_;
-    std::uint32_t blocks_per_pad_;
     EngineSettings settings_{};
     std::vector<float> samples_;
-    std::vector<std::uint32_t> pad_blocks_;
+    static constexpr std::size_t kCaptureStorageCount = kPadCount * 2U + 1U;
+    std::array<Storage, kCaptureStorageCount> captureStorage_;
+    std::vector<std::unique_ptr<Storage>> importedStorage_;
+    std::array<std::atomic<PendingState*>, kPadCount> pendingState_{};
+    std::vector<std::unique_ptr<PendingState>> pendingStateOwners_;
+    std::atomic<bool> stateRestoreFailed_{false};
+    mutable std::recursive_mutex storageControlMutex_;
+    void* controlContext_ = nullptr;
+    void (*controlDispatch_)(void*, void (*)(void*) noexcept, void*) = nullptr;
+    std::uint32_t used_blocks_ = 0; // active pad capacity; retained readers use reserve blocks
     std::vector<std::uint32_t> free_blocks_;
     std::uint32_t free_block_count_ = 0;
     std::array<Pad, kPadCount> pads_{};

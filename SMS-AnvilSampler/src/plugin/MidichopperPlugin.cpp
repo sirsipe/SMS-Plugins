@@ -2,9 +2,12 @@
 
 #include "Audio/WaveformSummary.hpp"
 #include "Audio/RealtimeAccessGate.hpp"
+#include "Audio/RealtimeCommandDispatcher.hpp"
+#include "ControlWorker.hpp"
 #include "Audio/WavCodec.hpp"
 #include "ChopEditorProtocol.hpp"
 #include "DSP/PeakMeter.hpp"
+#include "EditorSnapshotProtocol.hpp"
 #include "PadClipboard.hpp"
 #include "PadClipboardProtocol.hpp"
 #include "PadColorState.hpp"
@@ -34,6 +37,10 @@
 START_NAMESPACE_DISTRHO
 
 namespace {
+
+// DPF's LV2 updateStateValue synchronously echoes the published value through
+// setState. That notification must not mutate the engine a second time.
+thread_local const void* publishingUiInstance = nullptr;
 
 std::array<std::string, midichopper::kPadCount> makePadStateKeys(const char* const prefix)
 {
@@ -72,7 +79,9 @@ constexpr std::uint32_t kWaveformDetailRequestState = kPadStructureStatusState +
 constexpr std::uint32_t kWaveformDetailDataState = kWaveformDetailRequestState + 1U;
 constexpr std::uint32_t kPadColorStateOffset = kWaveformDetailDataState + 1U;
 constexpr std::uint32_t kPlayStopRequestState = kPadColorStateOffset + midichopper::kPadCount;
-constexpr std::uint32_t kStateCount = kPlayStopRequestState + 1U;
+constexpr std::uint32_t kChopSnapshotRequestState = kPlayStopRequestState + 1U;
+constexpr std::uint32_t kChopSnapshotDataState = kChopSnapshotRequestState + 1U;
+constexpr std::uint32_t kStateCount = kChopSnapshotDataState + 1U;
 constexpr const char* kWaveformRequestKey = "waveform_request";
 constexpr const char* kWaveformDataKey = "waveform_data";
 constexpr const char* kWaveformDetailRequestKey = "waveform_detail_request";
@@ -84,6 +93,8 @@ constexpr const char* kPadFileStatusKey = "pad_file_status";
 constexpr const char* kPadClipboardRequestKey = "pad_clipboard_request";
 constexpr const char* kChopApplyRequestKey = "chop_apply_request";
 constexpr const char* kChopStatusKey = "chop_status";
+constexpr const char* kChopSnapshotRequestKey = "chop_snapshot_request";
+constexpr const char* kChopSnapshotDataKey = "chop_snapshot_data";
 constexpr const char* kChopPreviewRequestKey = "chop_preview_request";
 constexpr const char* kChopMidiPreviewKey = "chop_midi_preview";
 constexpr const char* kPadStructureRequestKey = "pad_structure_request";
@@ -158,8 +169,19 @@ public:
         : PluginUiBridge(midichopper::plugin::kParameterCount, kStateCount),
           sampler_(getSampleRate())
     {
+        sampler_.setControlDispatcher(&controlDispatcher_,
+            &sms::audio::RealtimeCommandDispatcher::dispatchFromEngine);
         for (std::uint32_t index = 0; index < midichopper::plugin::kParameterCount; ++index)
             parameters_[index].store(defaultParameterValue(index), std::memory_order_relaxed);
+    }
+
+    ~MidichopperPlugin() override
+    {
+        controlDispatcher_.shutdown();
+#if DISTRHO_PLUGIN_WANT_DIRECT_ACCESS
+        controlWorker_.stop();
+#endif
+        sampler_.setControlDispatcher(nullptr, nullptr);
     }
 
     [[nodiscard]] std::uint64_t uiMessageCursor() const override
@@ -527,6 +549,16 @@ protected:
             state.label = "Play/Stop Request";
             state.defaultValue = "";
             state.hints = kStateIsOnlyForDSP;
+        } else if (index == kChopSnapshotRequestState) {
+            state.key = kChopSnapshotRequestKey;
+            state.label = "Chop Snapshot Request";
+            state.defaultValue = "";
+            state.hints = kStateIsOnlyForDSP;
+        } else if (index == kChopSnapshotDataState) {
+            state.key = kChopSnapshotDataKey;
+            state.label = "Chop Snapshot Data";
+            state.defaultValue = "";
+            state.hints = kStateIsOnlyForUI;
         } else if (index >= kPadColorStateOffset) {
             state.key = kPadColorStateKeys[index - kPadColorStateOffset].c_str();
             state.label = "Pad Color";
@@ -581,29 +613,33 @@ protected:
 
     String getState(const char* const key) const override
     {
+        const std::lock_guard lock(padMutationMutex_);
         for (std::uint32_t pad = 0; pad < midichopper::kPadCount; ++pad) {
             if (std::strcmp(key, kPadStateKeys[pad].c_str()) != 0)
                 continue;
             midichopper::PadData snapshot;
-            snapshot.stereo.reserve(
-                static_cast<std::size_t>(sampler_.padMetadata(pad).frames) * 2U);
-            bool exported = false;
-            if (!withSamplerPaused([&] {
-                    exported = sampler_.exportPad(pad, snapshot);
-                }) || !exported || snapshot.frames == 0U)
+            if (!sampler_.exportPublishedPad(pad, snapshot) || snapshot.frames == 0U)
                 return String();
             const auto sourceRate = static_cast<std::uint32_t>(std::clamp(snapshot.sampleRate, 1.0, 384000.0));
             return String(midichopper::plugin::encodePadState(snapshot, sourceRate).c_str());
         }
         for (std::uint32_t pad = 0; pad < midichopper::kPadCount; ++pad) {
-            if (std::strcmp(key, kPadEditStateKeys[pad].c_str()) == 0)
+            if (std::strcmp(key, kPadEditStateKeys[pad].c_str()) == 0) {
+                sms::dsp::SamplePlaybackSettings settings;
+                sms::dsp::SampleMixerSettings mixer;
+                sampler_.snapshotPadSettings(pad, settings, mixer);
                 return String(midichopper::plugin::encodePlaybackSettings(
-                    sampler_.padPlaybackSettings(pad)).c_str());
+                    settings).c_str());
+            }
         }
         for (std::uint32_t pad = 0; pad < midichopper::kPadCount; ++pad) {
-            if (std::strcmp(key, kPadMixerStateKeys[pad].c_str()) == 0)
+            if (std::strcmp(key, kPadMixerStateKeys[pad].c_str()) == 0) {
+                sms::dsp::SamplePlaybackSettings playback;
+                sms::dsp::SampleMixerSettings settings;
+                sampler_.snapshotPadSettings(pad, playback, settings);
                 return String(midichopper::plugin::encodeMixerSettings(
-                    sampler_.padMixerSettings(pad)).c_str());
+                    settings).c_str());
+            }
         }
         for (std::uint32_t pad = 0; pad < midichopper::kPadCount; ++pad) {
             if (std::strcmp(key, kPadColorStateKeys[pad].c_str()) == 0)
@@ -611,7 +647,7 @@ protected:
                     padColors_[pad].load(std::memory_order_relaxed)).c_str());
         }
         if (std::strcmp(key, kWaveformRequestKey) == 0)
-            return String("0");
+            return String();
         if (std::strcmp(key, kWaveformDataKey) == 0)
             return String();
         if (std::strcmp(key, kPadClearRequestKey) == 0)
@@ -636,11 +672,60 @@ protected:
         if (std::strcmp(key, kWaveformDetailRequestKey) == 0 ||
             std::strcmp(key, kWaveformDetailDataKey) == 0)
             return String();
+        if (std::strcmp(key, kChopSnapshotRequestKey) == 0 ||
+            std::strcmp(key, kChopSnapshotDataKey) == 0)
+            return String();
         return String();
     }
 
     void setState(const char* const key, const char* const value) override
     {
+        if (publishingUiInstance == this)
+            return;
+#if DISTRHO_PLUGIN_WANT_DIRECT_ACCESS
+        const bool transient = std::strcmp(key, kWaveformRequestKey) == 0 ||
+            std::strcmp(key, kWaveformDetailRequestKey) == 0 ||
+            std::strcmp(key, kPadFileRequestKey) == 0 ||
+            std::strcmp(key, kPadClipboardRequestKey) == 0 ||
+            std::strcmp(key, kChopApplyRequestKey) == 0 ||
+            std::strcmp(key, kChopSnapshotRequestKey) == 0 ||
+            std::strcmp(key, kPadStructureRequestKey) == 0;
+        if (transient) {
+            if (value == nullptr || value[0] == '\0')
+                return;
+            if (!controlWorker_.submit([this, command = std::string(key),
+                                        payload = std::string(value)] {
+                    try { applyState(command.c_str(), payload.c_str()); }
+                    catch (...) { reportControlFailure(command.c_str(), payload.c_str()); }
+                }))
+                reportControlFailure(key, value);
+            return;
+        }
+#endif
+        applyState(key, value);
+    }
+
+    void applyState(const char* const key, const char* const value)
+    {
+        if (std::strcmp(key, kChopSnapshotRequestKey) == 0) {
+            midichopper::plugin::ChopSnapshotRequest request;
+            if (midichopper::plugin::decodeChopSnapshotRequest(value, request)) {
+                const std::lock_guard lock(padMutationMutex_);
+                midichopper::plugin::ChopSnapshotReply reply;
+                reply.request = request;
+                const bool captured = sampler_.getChopSnapshot(
+                    request.firstPad, request.padCount, reply.waveforms,
+                    std::span<std::uint64_t>{reply.generations.data(), request.padCount});
+                const auto encoded = captured
+                    ? midichopper::plugin::encodeChopSnapshotReply(reply)
+                    : midichopper::plugin::encodeChopSnapshotError(
+                        request.sequence, "Pads changed; reopen Adjust Cut Points");
+                publishUiState(kChopSnapshotDataKey, encoded.c_str());
+            }
+            return;
+        }
+        if (std::strcmp(key, kChopSnapshotDataKey) == 0)
+            return;
         if (std::strcmp(key, kPlayStopRequestKey) == 0) {
             if (value != nullptr) {
                 char* end = nullptr;
@@ -662,14 +747,15 @@ protected:
             if (std::strcmp(key, kPadStateKeys[pad].c_str()) != 0)
                 continue;
             if (value == nullptr || value[0] == '\0') {
-                static_cast<void>(withSamplerPaused([&] { sampler_.clearPad(pad); }));
+                const std::lock_guard lock(padMutationMutex_);
+                static_cast<void>(sampler_.restorePad(pad, nullptr));
                 return;
             }
             midichopper::plugin::DecodedPadState decoded;
-            if (midichopper::plugin::decodePadState(value, decoded))
-                static_cast<void>(withSamplerPaused([&] {
-                    static_cast<void>(sampler_.importPad(pad, decoded.pad, false));
-                }));
+            if (midichopper::plugin::decodePadState(value, decoded)) {
+                const std::lock_guard lock(padMutationMutex_);
+                static_cast<void>(sampler_.restorePad(pad, &decoded.pad));
+            }
             return;
         }
         for (std::uint32_t pad = 0; pad < midichopper::kPadCount; ++pad) {
@@ -678,7 +764,7 @@ protected:
             sms::dsp::SampleMixerSettings settings;
             if (midichopper::plugin::decodeMixerSettings(value, settings)) {
                 const std::lock_guard lock(padMutationMutex_);
-                sampler_.setPadMixerSettings(pad, settings);
+                static_cast<void>(sampler_.restorePadMixerSettings(pad, settings));
             }
             return;
         }
@@ -688,25 +774,41 @@ protected:
             sms::dsp::SamplePlaybackSettings settings;
             if (midichopper::plugin::decodePlaybackSettings(value, settings)) {
                 const std::lock_guard lock(padMutationMutex_);
-                sampler_.setPadPlaybackSettings(pad, settings);
+                static_cast<void>(sampler_.restorePadPlaybackSettings(pad, settings));
             }
             return;
         }
         if (std::strcmp(key, kWaveformRequestKey) == 0) {
             const char* const input = value != nullptr ? value : "";
+            midichopper::plugin::EditorSnapshotRequest request;
+            if (midichopper::plugin::decodeEditorSnapshotRequest(input, request)) {
+                const std::lock_guard lock(padMutationMutex_);
+                midichopper::plugin::EditorSnapshotReply reply;
+                reply.request = request;
+                std::string waveform;
+                if (makeWaveformState(request.pad, waveform, &reply.playback,
+                                      &reply.mixer, &reply.waveform)) {
+                    const auto encoded = midichopper::plugin::encodeEditorSnapshotReply(reply);
+                    publishUiState(kWaveformDataKey, encoded.c_str());
+                }
+                return;
+            }
             char* end = nullptr;
             const auto requested = std::strtoul(input, &end, 10);
             if (end != input && *end == '\0' && requested < midichopper::kPadCount) {
+                const std::lock_guard lock(padMutationMutex_);
                 const auto pad = static_cast<std::uint32_t>(requested);
                 std::string waveform;
-                if (makeWaveformState(pad, waveform)) {
+                sms::dsp::SamplePlaybackSettings playbackSettings;
+                sms::dsp::SampleMixerSettings mixerSettings;
+                if (makeWaveformState(pad, waveform, &playbackSettings, &mixerSettings)) {
                     publishUiState(kWaveformDataKey, waveform.c_str());
                     const std::string editor = midichopper::plugin::encodePlaybackSettings(
-                        sampler_.padPlaybackSettings(pad));
+                        playbackSettings);
                     publishUiState(
                         kPadEditStateKeys[pad].c_str(), editor.c_str());
                     const std::string mixer = midichopper::plugin::encodeMixerSettings(
-                        sampler_.padMixerSettings(pad));
+                        mixerSettings);
                     publishUiState(
                         kPadMixerStateKeys[pad].c_str(), mixer.c_str());
                 }
@@ -719,13 +821,10 @@ protected:
             midichopper::plugin::WaveformDetailRequest request;
             if (value != nullptr &&
                 midichopper::plugin::decodeWaveformDetailRequest(value, request)) {
+                const std::lock_guard lock(padMutationMutex_);
                 sms::audio::WaveformSummary summary;
-                bool summarized = false;
-                if (withSamplerPaused([&] {
-                        summarized = sampler_.summarizePadRange(
-                            request.firstPad, request.padCount,
-                            request.start, request.end, summary);
-                    }) && summarized) {
+                if (sampler_.summarizePadRange(request.firstPad, request.padCount,
+                                               request.start, request.end, summary)) {
                     const auto encoded = midichopper::plugin::encodeWaveformDetailReply(
                         {request, summary});
                     publishUiState(kWaveformDetailDataKey, encoded.c_str());
@@ -825,6 +924,8 @@ protected:
             updateMeterOutputParameters();
             return;
         }
+        sampler_.applyPendingState();
+        controlDispatcher_.service();
         applySettings();
         applyChopMidiPreviewConfig();
         applyCommandTriggers();
@@ -850,20 +951,56 @@ protected:
             sampler_.anyPlaybackActive() ? 1.0f : 0.0f, std::memory_order_relaxed);
     }
 
+    void activate() override { controlDispatcher_.activate(); }
+    void deactivate() override { controlDispatcher_.deactivate(); }
+
     void sampleRateChanged(const double newSampleRate) override
     {
+        const std::lock_guard lock(padMutationMutex_);
         static_cast<void>(withSamplerPaused([&] {
             sampler_.setSampleRate(newSampleRate);
         }));
     }
 
 private:
+    void reportControlFailure(const char* key, const char* value)
+    {
+        if (std::strcmp(key, kPadFileRequestKey) == 0) {
+            publishUiState(kPadFileStatusKey, "WAV action failed; retry when audio is running");
+            publishUiState(kPadFileBusyKey, "0");
+            publishFileResult(midichopper::plugin::PadFileResultCode::failed);
+        } else if (std::strcmp(key, kPadClipboardRequestKey) == 0) {
+            publishClipboardResult(midichopper::plugin::PadClipboardResultCode::failed);
+        } else if (std::strcmp(key, kChopApplyRequestKey) == 0) {
+            midichopper::plugin::ChopApplyRequest request;
+            static_cast<void>(midichopper::plugin::decodeChopApplyRequest(value, request));
+            const auto status = midichopper::plugin::encodeChopStatus(
+                request.sequence, false, "Chop action failed; retry");
+            publishUiState(kChopStatusKey, status.c_str());
+        } else if (std::strcmp(key, kChopSnapshotRequestKey) == 0) {
+            midichopper::plugin::ChopSnapshotRequest request;
+            static_cast<void>(midichopper::plugin::decodeChopSnapshotRequest(value, request));
+            const auto status = midichopper::plugin::encodeChopSnapshotError(
+                request.sequence, "Could not read pads; retry");
+            publishUiState(kChopSnapshotDataKey, status.c_str());
+        } else if (std::strcmp(key, kPadStructureRequestKey) == 0) {
+            midichopper::plugin::PadStructureRequest request;
+            const bool decoded = midichopper::plugin::decodePadStructureRequest(value, request);
+            publishPadStructureError(decoded ? request.planId : 0U, "Pad action failed; retry");
+        }
+    }
+
     void publishUiState(const char* const key, const char* const value)
     {
 #if DISTRHO_PLUGIN_WANT_DIRECT_ACCESS
         if (!updateStateValue(key, value))
             static_cast<void>(uiMessageBus_.publish(key, value));
 #else
+        struct RestorePublisher {
+            const void* previous = publishingUiInstance;
+            ~RestorePublisher() { publishingUiInstance = previous; }
+        } restore;
+        publishingUiInstance = this;
         static_cast<void>(updateStateValue(key, value));
 #endif
     }
@@ -924,12 +1061,8 @@ private:
             if (request.action == PadStructureAction::collapse) {
                 committedStatus = "PS1;O;0;C";
                 pendingSplitPlan_ = {};
-                bool collapsed = false;
-                const bool accessed = withSamplerPaused([&] {
-                    collapsed = sampler_.collapsePadGap(
-                        request.firstPad, request.padCount, request.targetPad);
-                });
-                if (!accessed || !collapsed) {
+                if (!sampler_.collapsePadGap(
+                        request.firstPad, request.padCount, request.targetPad)) {
                     publishPadStructureError(0U, "Could not collapse this gap");
                     return;
                 }
@@ -945,10 +1078,8 @@ private:
                 PendingSplitPlan prepared;
                 sms::audio::WaveformSummary preparedWaveform;
                 midichopper::PadData waveformSource;
-                waveformSource.stereo.reserve(static_cast<std::size_t>(
-                    sampler_.padMetadata(request.targetPad).frames) * 2U);
                 bool valid = false;
-                const bool accessed = withSamplerPaused([&] {
+                controlDispatcher_.invoke([&]() noexcept {
                     const auto settings = sampler_.settings();
                     if (settings.armed)
                         return;
@@ -961,14 +1092,8 @@ private:
                         request.targetPad >= visibleFirst + request.padCount)
                         return;
                     const auto source = sampler_.padMetadata(request.targetPad);
-                    if (!source.occupied || source.frames < 2U)
+                    if (!source.occupied || source.recording || source.frames < 2U)
                         return;
-                    if (!sampler_.exportPad(request.targetPad, waveformSource) ||
-                        waveformSource.frames != source.frames)
-                        return;
-                    preparedWaveform = sms::audio::summarizeStereo(
-                        request.targetPad, waveformSource.stereo.data(),
-                        waveformSource.frames, waveformSource.sampleRate);
                     std::uint32_t empty = request.targetPad + 1U;
                     const std::uint32_t end = visibleFirst + request.padCount;
                     while (empty < end && sampler_.padMetadata(empty).occupied)
@@ -976,9 +1101,6 @@ private:
                     if (empty == end)
                         return;
                     prepared.active = true;
-                    prepared.id = nextSplitPlanId_++;
-                    if (prepared.id == 0U)
-                        prepared.id = nextSplitPlanId_++;
                     prepared.visibleFirst = visibleFirst;
                     prepared.visibleCount = request.padCount;
                     prepared.firstPad = request.targetPad;
@@ -989,10 +1111,35 @@ private:
                             sampler_.padMetadata(request.targetPad + index).generation;
                     valid = true;
                 });
-                if (!accessed || !valid) {
+                if (valid) {
+                    valid = sampler_.exportPad(request.targetPad, waveformSource) &&
+                        waveformSource.generation == prepared.generations[0] &&
+                        waveformSource.frames >= 2U;
+                }
+                if (valid) {
+                    preparedWaveform = sms::audio::summarizeStereo(
+                        request.targetPad, waveformSource.stereo.data(),
+                        waveformSource.frames, waveformSource.sampleRate);
+                    controlDispatcher_.invoke([&]() noexcept {
+                        const auto settings = sampler_.settings();
+                        valid = !settings.armed && settings.padsPerBank == prepared.visibleCount &&
+                            static_cast<std::uint32_t>(settings.activeBank) *
+                                midichopper::bankStride(settings.padsPerBank, settings.midiBankMode) ==
+                                prepared.visibleFirst;
+                        for (std::uint32_t index = 0; valid && index < prepared.generationCount; ++index) {
+                            const auto metadata = sampler_.padMetadata(prepared.firstPad + index);
+                            valid = !metadata.recording &&
+                                metadata.generation == prepared.generations[index];
+                        }
+                    });
+                }
+                if (!valid) {
                     publishPadStructureError(0U, "Sample cannot be split in this pad range");
                     return;
                 }
+                prepared.id = nextSplitPlanId_++;
+                if (prepared.id == 0U)
+                    prepared.id = nextSplitPlanId_++;
                 pendingSplitPlan_ = prepared;
                 mutationLock.unlock();
                 const auto ready = midichopper::plugin::encodeSplitPlanReady(
@@ -1009,21 +1156,19 @@ private:
             const PendingSplitPlan plan = pendingSplitPlan_;
             committedStatus = "PS1;O;" + std::to_string(request.planId) + ";S";
             pendingSplitPlan_ = {};
-            bool applied = false;
-            const bool accessed = withSamplerPaused([&] {
+            bool visible = false;
+            controlDispatcher_.invoke([&]() noexcept {
                 const auto settings = sampler_.settings();
                 const std::uint32_t visibleFirst =
                     static_cast<std::uint32_t>(settings.activeBank) *
                     midichopper::bankStride(settings.padsPerBank, settings.midiBankMode);
-                if (visibleFirst != plan.visibleFirst ||
-                    settings.padsPerBank != plan.visibleCount)
-                    return;
-                applied = sampler_.splitPadAndShiftRight(
+                visible = visibleFirst == plan.visibleFirst &&
+                          settings.padsPerBank == plan.visibleCount;
+            });
+            if (!visible || !sampler_.splitPadAndShiftRight(
                     plan.firstPad, plan.emptyPad, request.splitFrame,
                     std::span<const std::uint64_t>{
-                        plan.generations.data(), plan.generationCount});
-            });
-            if (!accessed || !applied) {
+                        plan.generations.data(), plan.generationCount})) {
                 publishPadStructureError(
                     request.planId, "Pads changed; reopen Split Sample");
                 return;
@@ -1051,30 +1196,21 @@ private:
     }
 
     [[nodiscard]] bool makeWaveformState(const std::uint32_t pad,
-                                         std::string& waveform) const
+        std::string& waveform,
+        sms::dsp::SamplePlaybackSettings* playback = nullptr,
+        sms::dsp::SampleMixerSettings* mixer = nullptr,
+        sms::audio::WaveformSummary* capturedSummary = nullptr) const
     {
         midichopper::PadData snapshot;
-        snapshot.stereo.reserve(
-            static_cast<std::size_t>(sampler_.padMetadata(pad).frames) * 2U);
-        bool exported = false;
-        if (!withSamplerPaused([&] {
-                exported = sampler_.exportPad(pad, snapshot);
-            }))
+        if (!sampler_.exportPublishedPad(pad, snapshot, playback, mixer))
             return false;
-        if (!exported || snapshot.frames == 0U) {
-            waveform = sms::audio::encodeWaveformSummary(
-                {pad, 0U, sampler_.sampleRate(), {}, {}});
-        } else {
-            waveform = sms::audio::encodeWaveformSummary(sms::audio::summarizeStereo(
-                pad, snapshot.stereo.data(), snapshot.frames, snapshot.sampleRate));
-        }
+        const auto summary = snapshot.frames == 0U
+            ? sms::audio::WaveformSummary{pad, 0U, snapshot.sampleRate, {}, {}}
+            : sms::audio::summarizeStereo(
+                pad, snapshot.stereo.data(), snapshot.frames, snapshot.sampleRate);
+        waveform = sms::audio::encodeWaveformSummary(summary);
+        if (capturedSummary) *capturedSummary = summary;
         return true;
-    }
-
-    template <class Callback>
-    [[nodiscard]] bool withSamplerPaused(Callback&& callback)
-    {
-        return samplerAccess_.withPaused(std::forward<Callback>(callback));
     }
 
     template <class Callback>
@@ -1090,19 +1226,21 @@ private:
 
     void publishFileResult(const midichopper::plugin::PadFileResultCode result) noexcept
     {
-        padFileResultAlternateHalf_ = !padFileResultAlternateHalf_;
+        const bool alternateHalf =
+            (padFileResultSequence_.fetch_add(1U, std::memory_order_relaxed) & 1U) == 0U;
         parameters_[midichopper::plugin::kParameterPadFileResultEvent].store(
             midichopper::plugin::padFileResultEventValue(
-                result, padFileResultAlternateHalf_), std::memory_order_relaxed);
+                result, alternateHalf), std::memory_order_relaxed);
     }
 
     void publishClipboardResult(
         const midichopper::plugin::PadClipboardResultCode result) noexcept
     {
-        padClipboardResultAlternateHalf_ = !padClipboardResultAlternateHalf_;
+        const bool alternateHalf =
+            (padClipboardResultSequence_.fetch_add(1U, std::memory_order_relaxed) & 1U) == 0U;
         parameters_[midichopper::plugin::kParameterPadClipboardResultEvent].store(
             midichopper::plugin::padClipboardResultEventValue(
-                result, padClipboardResultAlternateHalf_), std::memory_order_relaxed);
+                result, alternateHalf), std::memory_order_relaxed);
     }
 
     void handleChopApplyRequest(const std::string_view encoded)
@@ -1110,7 +1248,11 @@ private:
         try {
             handleChopApplyRequestImpl(encoded);
         } catch (...) {
-            publishUiState(kChopStatusKey, "CH1;ERROR;Chop apply failed");
+            midichopper::plugin::ChopApplyRequest request;
+            static_cast<void>(midichopper::plugin::decodeChopApplyRequest(encoded, request));
+            const auto status = midichopper::plugin::encodeChopStatus(
+                request.sequence, false, "Chop apply failed");
+            publishUiState(kChopStatusKey, status.c_str());
         }
     }
 
@@ -1118,19 +1260,22 @@ private:
     {
         midichopper::plugin::ChopApplyRequest request;
         if (!midichopper::plugin::decodeChopApplyRequest(encoded, request)) {
-            publishUiState(kChopStatusKey, "CH1;ERROR;Invalid request");
+            publishUiState(kChopStatusKey, "CH2;0;ERROR;Invalid request");
             return;
         }
-        bool applied = false;
-        const bool accessed = withSamplerPaused([&] {
-            applied = sampler_.rechopPads(request.firstPad, request.padCount,
+        if (!request.revisionChecked) {
+            publishUiState(kChopStatusKey, "CH2;0;ERROR;Reopen Adjust Cut Points");
+            return;
+        }
+        const std::lock_guard lock(padMutationMutex_);
+        if (!sampler_.rechopPads(request.firstPad, request.padCount,
                 std::span<const std::int64_t>{request.boundaryOffsets.data(),
-                                              request.padCount - 1U});
-        });
-        if (!accessed || !applied) {
-            publishUiState(
-                kChopStatusKey,
-                "CH1;ERROR;Could not apply cuts; verify samples and available storage");
+                                              request.padCount - 1U},
+                std::span<const std::uint64_t>{request.expectedGenerations.data(),
+                                               request.padCount})) {
+            const auto status = midichopper::plugin::encodeChopStatus(request.sequence,
+                false, "Pads changed or storage is unavailable; reopen Adjust Cut Points");
+            publishUiState(kChopStatusKey, status.c_str());
             return;
         }
         for (std::uint32_t index = 0; index < request.padCount; ++index) {
@@ -1142,7 +1287,8 @@ private:
                 sampler_.padMixerSettings(pad));
             publishUiState(kPadMixerStateKeys[pad].c_str(), mixer.c_str());
         }
-        publishUiState(kChopStatusKey, "CH1;OK");
+        const auto status = midichopper::plugin::encodeChopStatus(request.sequence, true);
+        publishUiState(kChopStatusKey, status.c_str());
     }
 
     void handlePadClipboardRequest(const std::string_view encoded)
@@ -1163,15 +1309,11 @@ private:
             return;
         }
 
-        bool succeeded = false;
-        if (request.action == PadClipboardAction::copy)
-            padClipboard_.reserveFrames(sampler_.padMetadata(request.pad).frames);
-        const bool accessed = withSamplerPaused([&] {
-            succeeded = request.action == PadClipboardAction::copy
-                ? padClipboard_.copyFrom(sampler_, request.pad)
-                : padClipboard_.pasteTo(sampler_, request.pad);
-        });
-        const auto result = !accessed || !succeeded
+        const std::lock_guard lock(padMutationMutex_);
+        const bool succeeded = request.action == PadClipboardAction::copy
+            ? padClipboard_.copyFrom(sampler_, request.pad)
+            : padClipboard_.pasteTo(sampler_, request.pad);
+        const auto result = !succeeded
             ? midichopper::plugin::PadClipboardResultCode::failed
             : request.action == PadClipboardAction::copy
                 ? midichopper::plugin::PadClipboardResultCode::copied
@@ -1217,10 +1359,15 @@ private:
             return;
         }
 
+        const std::lock_guard lock(padMutationMutex_);
         publishUiState(kPadFileBusyKey, "1");
         std::string status;
         auto result = midichopper::plugin::PadFileResultCode::failed;
         if (request.action == PadFileAction::import) {
+            std::uint64_t baseline = 0;
+            controlDispatcher_.invoke([&]() noexcept {
+                baseline = sampler_.padMetadata(request.pad).generation;
+            });
             auto loaded = midichopper::plugin::readPadWav(pathFromUtf8(request.path));
             if (!loaded) {
                 status = std::move(loaded.error);
@@ -1237,13 +1384,9 @@ private:
                 replacement.rms = static_cast<float>(std::sqrt(
                     sumSquares / static_cast<double>(replacement.stereo.size())));
 
-                bool imported = false;
-                if (!withSamplerPaused([&] {
-                        imported = sampler_.importPad(request.pad, replacement);
-                    })) {
-                    status = "Audio did not pause for WAV import";
-                } else if (!imported) {
-                    status = "Not enough sampler storage for WAV import";
+                if (!sampler_.importPad(request.pad, replacement, true,
+                                       nullptr, nullptr, baseline)) {
+                    status = "Pad changed or sampler storage is unavailable; retry WAV import";
                 } else {
                     status = "WAV imported";
                     result = midichopper::plugin::PadFileResultCode::importSucceeded;
@@ -1260,18 +1403,10 @@ private:
             }
         } else {
             midichopper::PadData snapshot;
-            snapshot.stereo.reserve(static_cast<std::size_t>(
-                sampler_.padMetadata(request.pad).frames) * 2U);
             sms::dsp::SamplePlaybackSettings settings;
             sms::dsp::SampleMixerSettings mixerSettings;
-            bool exported = false;
-            if (!withSamplerPaused([&] {
-                    exported = sampler_.exportPad(request.pad, snapshot);
-                    settings = sampler_.padPlaybackSettings(request.pad);
-                    mixerSettings = sampler_.padMixerSettings(request.pad);
-                })) {
-                status = "Audio did not pause for WAV export";
-            } else if (!exported || snapshot.frames == 0U) {
+            if (!sampler_.exportPad(request.pad, snapshot, &settings, &mixerSettings) ||
+                snapshot.frames == 0U) {
                 status = "Pad is empty";
             } else {
                 sms::audio::WavAudio audio;
@@ -1568,9 +1703,13 @@ private:
     mutable sms::audio::RealtimeAccessGate samplerAccess_;
     std::uint64_t publishedPlaybackTriggerGeneration_ = 0;
     bool playbackPadEventAlternateHalf_ = false;
-    bool padFileResultAlternateHalf_ = false;
-    bool padClipboardResultAlternateHalf_ = false;
-    std::mutex padMutationMutex_;
+    std::atomic<std::uint32_t> padFileResultSequence_{0};
+    std::atomic<std::uint32_t> padClipboardResultSequence_{0};
+    mutable std::mutex padMutationMutex_;
+    mutable sms::audio::RealtimeCommandDispatcher controlDispatcher_;
+#if DISTRHO_PLUGIN_WANT_DIRECT_ACCESS
+    midichopper::plugin::ControlWorker controlWorker_;
+#endif
     std::mutex chopMidiPreviewMutex_;
 #if DISTRHO_PLUGIN_WANT_DIRECT_ACCESS
     midichopper::plugin::UiMessageBus uiMessageBus_;

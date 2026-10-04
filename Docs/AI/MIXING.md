@@ -25,4 +25,4 @@ operates per voice before the voices sum, so it does not color monitored input.
 Filter coefficients are updated at block boundaries as live settings change.
 They and all per-voice state are preallocated; the audio callback performs no
 allocation, I/O, lock, or state serialization. Source/sample state copying
-still follows the existing control-thread gate.
+uses the retained-snapshot and bounded-commit [storage contract](PAD-STORAGE.md).

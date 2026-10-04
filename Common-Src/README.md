@@ -20,6 +20,9 @@ host, or a specific plug-in's state model.
   DSP-to-UI transport.
 - `Audio/WavCodec.*`: bounded RIFF/WAVE decoding, stereo PCM16 encoding, and
   offline editor-processing renders without third-party audio-file dependencies.
+- `Audio/RealtimeCommandDispatcher.hpp`: serialized control callers hand bounded,
+  non-throwing operations to the callback without pausing audio; inactive host
+  lifecycle executes commands inline.
 - `Audio/RealtimeAccessGate.hpp`: lock-free audio-side ownership and handoff
   that lets a control thread access callback-owned state immediately while the
   callback is idle, or at a block boundary while it is running.

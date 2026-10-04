@@ -1,10 +1,11 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(SMSAnvilSampler VERSION 0.0.6 LANGUAGES C CXX)
+project(SMSAnvilSampler VERSION 0.0.7 LANGUAGES C CXX)
 
 include(CTest)
 include(GNUInstallDirs)
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
+find_package(Threads REQUIRED)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -151,7 +152,7 @@ foreach(anvilsampler_target IN LISTS anvilsampler_targets)
     "${CMAKE_CURRENT_SOURCE_DIR}/src/plugin"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/ui")
   target_link_libraries(${anvilsampler_target} PUBLIC sms_common_ui)
-  target_link_libraries(${anvilsampler_target}-dsp PRIVATE anvilsampler_core)
+  target_link_libraries(${anvilsampler_target}-dsp PRIVATE anvilsampler_core Threads::Threads)
   target_include_directories(${anvilsampler_target}-ui PRIVATE
     "${ANVILSAMPLER_ARTWORK_DIR}")
   target_compile_definitions(${anvilsampler_target}-dsp PRIVATE
@@ -164,11 +165,16 @@ foreach(anvilsampler_target IN LISTS anvilsampler_targets)
 endforeach()
 
 if(BUILD_TESTING)
-  find_package(Threads REQUIRED)
-
   add_executable(anvilsampler_core_tests tests/core_tests.cpp)
   target_link_libraries(anvilsampler_core_tests PRIVATE anvilsampler_core)
   add_test(NAME sampler-core COMMAND anvilsampler_core_tests)
+
+  add_executable(anvilsampler_transfer_tests
+    tests/transfer_tests.cpp
+    ../Common-Src/Audio/WavCodec.cpp)
+  target_link_libraries(anvilsampler_transfer_tests PRIVATE
+    anvilsampler_core Threads::Threads)
+  add_test(NAME sampler-transfer COMMAND anvilsampler_transfer_tests)
 
   add_executable(anvilsampler_state_codec_tests
     tests/state_codec_tests.cpp
