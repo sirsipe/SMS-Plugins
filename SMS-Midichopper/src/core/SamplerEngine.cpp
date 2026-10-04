@@ -487,6 +487,14 @@ bool SamplerEngine::anyPlaybackActive() const noexcept {
     return false;
 }
 
+void SamplerEngine::togglePlayback(const std::uint32_t selectedPad) noexcept {
+    if (anyPlaybackActive()) {
+        stopAllPlayback();
+    } else if (!settings_.armed && selectedPad < kPadCount) {
+        startVoice(selectedPad, 127U);
+    }
+}
+
 void SamplerEngine::refreshActiveVoiceSettings(const std::uint32_t pad) noexcept {
     if (pad >= kPadCount || !pads_[pad].playing)
         return;

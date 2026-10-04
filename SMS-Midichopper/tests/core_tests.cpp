@@ -1181,6 +1181,21 @@ void stop_all_playback()
     engine.process(nullptr, nullptr, left, right, 4, events, 1);
     check(engine.anyPlaybackActive() && engine.padMetadata(0).active,
           "playback can restart after Stop");
+    engine.togglePlayback(1U);
+    check(!engine.anyPlaybackActive() && !engine.padMetadata(0).active,
+          "Play/Stop cuts an active voice even when another pad is selected");
+    engine.togglePlayback(midichopper::kPadCount);
+    check(!engine.anyPlaybackActive(),
+          "Play/Stop with no selection remains idle");
+    engine.togglePlayback(2U);
+    check(!engine.anyPlaybackActive(),
+          "Play/Stop with an empty selected pad remains idle");
+    engine.togglePlayback(1U);
+    check(engine.anyPlaybackActive() && engine.padMetadata(1).active,
+          "Play/Stop auditions the selected occupied pad");
+    engine.togglePlayback(0U);
+    check(!engine.anyPlaybackActive() && !engine.padMetadata(1).active,
+          "a second Play/Stop click cuts the audition");
 }
 
 void sample_region_and_adsr() {

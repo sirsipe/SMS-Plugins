@@ -1,15 +1,14 @@
 # SMS-Midichopper architecture
 
-The layers are:
+Layers:
 
-- `src/core` is the framework-free C++20 capture/playback engine.
+- `src/core` is the C++20 capture/playback engine.
 - `src/plugin` adapts DPF parameters, audio, MIDI, and state.
 - `src/ui/MidichopperUI.cpp` owns host communication;
   `MidichopperInteraction.hpp` resolves input and `MidichopperView.cpp` draws.
-- `tests` covers engine, state, WAV, and UI geometry.
-- `../Common-Src` contains reusable sample, DSP, state, and UI geometry code.
-- `../Common-UI` contains the shared theme, DPF/NanoVG base, controls,
-  context menus, pads, and waveform editing.
+- `tests` covers engine, state, WAV, and UI.
+- `../Common-Src` contains reusable DSP, state, and UI geometry.
+- `../Common-UI` contains shared theme, controls, pads, and waveform editing.
 
 ## MIDI mapping
 
@@ -19,9 +18,10 @@ changes regroup slots without changing notes.
 Every successful playback note-on also advances a hidden output event that
 encodes the global pad index in alternating halves of its range. Both UI views
 follow it to keep bank, MIDI labels, and last-played selection current.
-An appended hidden output reports whether any pad or raw preview is active;
-the Play/Stop UI uses it to choose between audition and the appended Stop All
-trigger. Stop All hard-cuts every voice at the next audio block boundary.
+An appended hidden output reports whether any pad or raw preview is active.
+The UI sends `play_stop_request` through state transport; the DSP decides from
+its voice state whether to audition the selected pad or hard-cut every voice at
+the next audio block. An appended Stop All trigger also supports host control.
 All Banks limits the effective base note to 64 so every layout remains within
 MIDI notes 0–127. UI notes and labels use the engine mapping. Selected Bank reuses one range,
 with `active_bank` choosing its target, and retains the released fixed 16-slot

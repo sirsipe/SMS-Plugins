@@ -2732,19 +2732,25 @@ private:
 
     void togglePlayStop()
     {
+        // The DSP decides whether to stop or play from its actual voice state.
+        // VST3 hosts do not always deliver UI writes to hidden trigger parameters.
+        const bool selected = hasSelectedPad() &&
+            bankForGlobalPad(fSelectedPad) == fBank &&
+            localPadForGlobalPad(fSelectedPad) < visiblePadCount() &&
+            fPadState[static_cast<std::size_t>(localPadForGlobalPad(fSelectedPad))] != '0' &&
+            fPadState[static_cast<std::size_t>(localPadForGlobalPad(fSelectedPad))] != '.';
+        char request[4];
+        std::snprintf(request, sizeof(request), "%d", selected ? fSelectedPad + 1 : 0);
+#if DISTRHO_PLUGIN_WANT_STATE
+        setState("play_stop_request", request);
+#endif
+        releasePressedPad();
         if (fAnyPlaybackActive) {
-            releasePressedPad();
-            setParameterValue(kParameterStopAllPlayback, 1.0f);
             fAnyPlaybackActive = false;
             stopLocalPlayhead(false);
-        } else if (hasSelectedPad() && bankForGlobalPad(fSelectedPad) == fBank) {
-            const int localPad = localPadForGlobalPad(fSelectedPad);
-            if (localPad >= 0 && localPad < visiblePadCount() &&
-                fPadState[static_cast<std::size_t>(localPad)] != '0' &&
-                fPadState[static_cast<std::size_t>(localPad)] != '.') {
-                pressPlaybackPad(localPad);
-                fAnyPlaybackActive = true;
-            }
+        } else if (selected) {
+            fAnyPlaybackActive = true;
+            startLocalPlayhead(fSelectedPad);
         }
         requestRepaint();
     }

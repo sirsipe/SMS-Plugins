@@ -208,6 +208,8 @@ public:
     /** Hard-cut every pad voice and raw preview at the next audio block boundary. */
     void stopAllPlayback() noexcept;
     [[nodiscard]] bool anyPlaybackActive() const noexcept;
+    /** UI transport action: cut active voices, otherwise audition this pad. */
+    void togglePlayback(std::uint32_t selectedPad) noexcept;
     [[nodiscard]] sms::dsp::SamplePlaybackSettings padPlaybackSettings(std::uint32_t pad) const noexcept;
     void setPadPlaybackSettings(std::uint32_t pad,
                                 const sms::dsp::SamplePlaybackSettings& settings) noexcept;
