@@ -28,7 +28,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends \
-            build-essential cmake ninja-build pkg-config git \
+            build-essential cmake ninja-build pkg-config git python3 \
             lv2-dev lilv-utils libgl1-mesa-dev libx11-dev libxext-dev \
             libxrandr-dev libxcursor-dev libxinerama-dev libdbus-1-dev
 

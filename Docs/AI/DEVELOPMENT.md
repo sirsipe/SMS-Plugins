@@ -23,6 +23,7 @@ ctest --test-dir build --output-on-failure
 Outputs: `build/bin/SMS-AnvilSampler.lv2` and, when enabled,
 `build/bin/SMS-AnvilSampler.vst3`. `ANVILSAMPLER_BUILD_CLAP=ON` adds CLAP;
 CLAP is not currently covered by CI. Both optional format switches default OFF.
+Python 3 runs DPF's resource converter to embed `res/anvil.png` in each UI binary.
 Use a fresh ignored `build-*` directory if an existing CMake cache uses a
 different source path or generator. Avoid repeatedly rebuilding unchanged code.
 

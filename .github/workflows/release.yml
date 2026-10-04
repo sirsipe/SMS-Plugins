@@ -38,7 +38,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends \
-            build-essential cmake ninja-build pkg-config git \
+            build-essential cmake ninja-build pkg-config git python3 \
             lv2-dev lilv-utils libgl1-mesa-dev libx11-dev libxext-dev \
             libxrandr-dev libxcursor-dev libxinerama-dev libdbus-1-dev
 
@@ -47,7 +47,8 @@ jobs:
           cmake -S SMS-AnvilSampler -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_TESTING=ON \
-            -DANVILSAMPLER_BUILD_VST3=ON
+            -DANVILSAMPLER_BUILD_VST3=ON \
+            -DANVILSAMPLER_HELP_REF="$GITHUB_REF_NAME"
 
       - name: Build and test
         run: |

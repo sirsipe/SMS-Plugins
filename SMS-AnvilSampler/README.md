@@ -4,7 +4,7 @@ _A live stereo chopping sampler for Linux._
 
 > Special thanks to **Manolo Anville** ([@ManoloAnville](https://github.com/ManoloAnville)) for collaboration.
 
-![SMS-Anvil Sampler interface](Docs/SMS-AnvilSampler-v0.0.5.png)
+![SMS-Anvil Sampler interface](Docs/SMS-AnvilSampler-v0.0.6.png)
 
 **VST3 is the preferred version.** Its GUI loads faster than LV2, and it has been generally human-tested the most. LV2 is mostly AI-tested, and CLAP (if even made available) has NOT been tested.
 
@@ -39,7 +39,11 @@ Right click on a PAD reveals context menu with various operations.
 ![Context menu](Docs/context-menu.png)
 
 
-The hamburger menu has layout and bank mode selection. Select **All Banks** (unique notes, default) for gapless notes or **Selected Bank**
+The hamburger menu has layout and bank mode selection. **Online Help** opens this
+guide from the matching tag in official releases, or from `main` in development
+builds. **Report Issue** opens the project's issues page.
+
+Select **All Banks** (unique notes, default) for gapless notes or **Selected Bank**
 (shared notes) for playing a sample with "bank A notes", based on currently active bank. All Banks limits the base note to 64.
 
 Layouts show 16, 12, or 8 pads; for best experience, choose what fits best with your physical controller. Changing the layout is non-destructive for existing samples.
@@ -112,9 +116,9 @@ See [Docs/VISION.md](Docs/VISION.md) for product direction and feature scope.
 Ubuntu/Debian prerequisites:
 
 ```bash
-sudo apt install build-essential cmake ninja-build pkg-config git \
+sudo apt install build-essential cmake ninja-build pkg-config git python3 \
   lv2-dev libgl1-mesa-dev libx11-dev libxext-dev \
-  libxrandr-dev libxcursor-dev libxinerama-dev libdbus-1-dev
+  libxrandr-dev libxcursor-dev libxinerama-dev libdbus-1-dev xdg-utils
 ```
 
 From the repository root:

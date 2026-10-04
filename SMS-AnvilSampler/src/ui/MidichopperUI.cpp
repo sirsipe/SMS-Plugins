@@ -51,6 +51,7 @@
 #include "MidichopperLayout.hpp"
 #include "MidichopperInteraction.hpp"
 #include "MidichopperView.hpp"
+#include "HelpLinks.hpp"
 #include "WaveformDetailProtocol.hpp"
 #include "PadClipboardProtocol.hpp"
 #include "PadColorState.hpp"
@@ -58,6 +59,7 @@
 #include "PadStructureProtocol.hpp"
 #include "Parameters.hpp"
 #include "PluginUiBridge.hpp"
+#include "anvilsampler_artwork.hpp"
 
 #include <algorithm>
 #include <array>
@@ -68,6 +70,13 @@
 #include <cstring>
 #include <string>
 #include <string_view>
+
+#if defined(__linux__)
+# include <cerrno>
+# include <spawn.h>
+# include <sys/wait.h>
+extern char** environ;
+#endif
 
 START_NAMESPACE_DISTRHO
 
@@ -80,6 +89,32 @@ using WaveformEditTarget = sms::ui::waveform::EditTarget;
 inline constexpr auto kClearConfirmationTimeout = std::chrono::seconds(2);
 inline constexpr auto kMeterFrameInterval = std::chrono::milliseconds(33);
 inline constexpr auto kEditorSnapshotRetryInterval = std::chrono::milliseconds(250);
+
+[[nodiscard]] bool openBrowser(const char* const url)
+{
+#if defined(__linux__)
+    // The shell only starts xdg-open in the background; wait for the short-lived
+    // shell so the host never inherits an unreaped child. The URL is passed as
+    // a positional argument and is never parsed as shell code.
+    char* const args[] = {
+        const_cast<char*>("sh"), const_cast<char*>("-c"),
+        const_cast<char*>("command -v xdg-open >/dev/null 2>&1 || exit 127; "
+                          "xdg-open \"$1\" >/dev/null 2>&1 &"),
+        const_cast<char*>("sh"), const_cast<char*>(url), nullptr};
+    pid_t child = 0;
+    if (posix_spawnp(&child, "sh", nullptr, nullptr, args, environ) != 0)
+        return false;
+    int status = 0;
+    while (waitpid(child, &status, 0) < 0) {
+        if (errno != EINTR)
+            return false;
+    }
+    return WIFEXITED(status) && WEXITSTATUS(status) == 0;
+#else
+    (void)url;
+    return false;
+#endif
+}
 
 [[nodiscard]] midichopper::ui::KnobAdjustment knobAdjustment(
     const uint modifiers) noexcept
@@ -895,6 +930,10 @@ protected:
         fill();
 
         beginLogicalDisplay();
+        if (!fLogo.isValid())
+            fLogo = createImageFromMemory(anvilsampler_artwork::anvilData,
+                                          anvilsampler_artwork::anvilDataSize,
+                                          DGL_NAMESPACE::NanoVG::IMAGE_GENERATE_MIPMAPS);
         char collapseLabel[48];
         const int collapsingPads = collapseShiftCount();
         if (collapsingPads == 0) {
@@ -950,6 +989,7 @@ protected:
             fChopActiveBoundary, chopReady(),
             chopDirty(), fChopApplying, canNavigateChop(-1), canNavigateChop(1), fStatus,
             fWaveformViewport, fDetailReady ? &fWaveformDetail : nullptr,
+            &fLogo,
         };
         midichopper::ui::draw(*this, view);
         endLogicalDisplay();
@@ -1066,6 +1106,18 @@ protected:
                         clicked, midichopper::ui::InteractiveType::menuMidiBankMode)) {
                     fMenuOpen = false;
                     selectMidiBankMode(clicked.index);
+                    return true;
+                }
+                if (midichopper::ui::isTarget(
+                        clicked, midichopper::ui::InteractiveType::menuLink)) {
+                    fMenuOpen = false;
+                    const std::string helpUrl = midichopper::ui::onlineHelpUrl(
+                        ANVILSAMPLER_HELP_REF);
+                    const char* const url = clicked.index == 0
+                        ? helpUrl.c_str() : midichopper::ui::kIssueUrl.data();
+                    if (!openBrowser(url))
+                        setLocalStatus("Could not open the browser");
+                    requestRepaint();
                     return true;
                 }
                 fMenuOpen = false;
@@ -1896,6 +1948,7 @@ protected:
 #endif
 
 private:
+    DGL_NAMESPACE::NanoImage fLogo;
     bool fArm;
     float fRecordMode;
     float fFixedLength;

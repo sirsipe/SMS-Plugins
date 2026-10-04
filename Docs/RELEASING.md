@@ -37,4 +37,6 @@ To publish a release:
 
 The release workflow checks that the tag matches the CMake version, performs a
 fresh build and test run, and publishes separate Linux x86-64 LV2 and VST3
-archives with SHA-256 checksums. No manual upload is needed.
+archives with SHA-256 checksums. It embeds the release tag as the Online Help
+reference, so the menu opens the README from that exact release. Ordinary builds
+default to the current `main` README. No manual upload is needed.

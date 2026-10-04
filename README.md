@@ -17,7 +17,7 @@ I choose **quality over quantity**. Slow and steady. I only build what I'm also 
 - [SMS-Anvil Sampler](SMS-AnvilSampler/README.md) — live stereo chopping sampler
   for LV2 and VST3.
 
-![SMS-Anvil Sampler interface](SMS-AnvilSampler/Docs/SMS-AnvilSampler-v0.0.5.png)
+![SMS-Anvil Sampler interface](SMS-AnvilSampler/Docs/SMS-AnvilSampler-v0.0.6.png)
 
 
 ## Quick Start: AI autopilot in an isolated container

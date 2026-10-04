@@ -71,6 +71,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     x11-xserver-utils \
     xdotool \
     xterm \
+    xdg-utils \
     xdg-desktop-portal \
     xdg-desktop-portal-gtk \
     && rm -rf /var/lib/apt/lists/*

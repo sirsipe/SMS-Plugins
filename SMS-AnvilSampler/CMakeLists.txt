@@ -1,9 +1,10 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(SMSAnvilSampler VERSION 0.0.5 LANGUAGES C CXX)
+project(SMSAnvilSampler VERSION 0.0.6 LANGUAGES C CXX)
 
 include(CTest)
 include(GNUInstallDirs)
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -12,6 +13,15 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(ANVILSAMPLER_BUILD_VST3 "Also build a VST3 bundle" OFF)
 option(ANVILSAMPLER_BUILD_CLAP "Also build a CLAP bundle" OFF)
+set(ANVILSAMPLER_HELP_REF "main" CACHE STRING
+  "Git ref used for Online Help (main for development builds, release tag for releases)")
+if(NOT ANVILSAMPLER_HELP_REF MATCHES "^(main|SMS-AnvilSampler-v[0-9]+\\.[0-9]+\\.[0-9]+)$")
+  message(FATAL_ERROR "ANVILSAMPLER_HELP_REF must be main or an SMS-AnvilSampler-vX.Y.Z tag")
+endif()
+if(NOT ANVILSAMPLER_HELP_REF STREQUAL "main" AND
+   NOT ANVILSAMPLER_HELP_REF STREQUAL "SMS-AnvilSampler-v${PROJECT_VERSION}")
+  message(FATAL_ERROR "ANVILSAMPLER_HELP_REF must match the CMake project version")
+endif()
 
 set(SMS_DPF_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/DPF")
 
@@ -60,9 +70,24 @@ set(ANVILSAMPLER_DSP_SOURCES
   src/plugin/MidichopperPlugin.cpp
   src/plugin/PadFileActions.cpp
   src/plugin/StateCodec.cpp)
+set(ANVILSAMPLER_ARTWORK_DIR "${PROJECT_BINARY_DIR}/generated")
+file(MAKE_DIRECTORY "${ANVILSAMPLER_ARTWORK_DIR}")
+add_custom_command(
+  OUTPUT
+    "${ANVILSAMPLER_ARTWORK_DIR}/anvilsampler_artwork.cpp"
+    "${ANVILSAMPLER_ARTWORK_DIR}/anvilsampler_artwork.hpp"
+  COMMAND "${Python3_EXECUTABLE}" "${SMS_DPF_ROOT}/utils/res2c.py"
+    anvilsampler_artwork "${CMAKE_CURRENT_SOURCE_DIR}/res"
+    "${ANVILSAMPLER_ARTWORK_DIR}"
+  DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/res/anvil.png"
+    "${SMS_DPF_ROOT}/utils/res2c.py"
+  VERBATIM)
 set(ANVILSAMPLER_UI_SOURCES
   src/ui/MidichopperUI.cpp
-  src/ui/MidichopperView.cpp)
+  src/ui/MidichopperView.cpp
+  "${ANVILSAMPLER_ARTWORK_DIR}/anvilsampler_artwork.cpp"
+  "${ANVILSAMPLER_ARTWORK_DIR}/anvilsampler_artwork.hpp")
 
 dpf_add_plugin(SMS-AnvilSampler
   TARGETS ${ANVILSAMPLER_PLUGIN_FORMATS}
@@ -127,10 +152,15 @@ foreach(anvilsampler_target IN LISTS anvilsampler_targets)
     "${CMAKE_CURRENT_SOURCE_DIR}/src/ui")
   target_link_libraries(${anvilsampler_target} PUBLIC sms_common_ui)
   target_link_libraries(${anvilsampler_target}-dsp PRIVATE anvilsampler_core)
+  target_include_directories(${anvilsampler_target}-ui PRIVATE
+    "${ANVILSAMPLER_ARTWORK_DIR}")
   target_compile_definitions(${anvilsampler_target}-dsp PRIVATE
     ANVILSAMPLER_VERSION_MAJOR=${PROJECT_VERSION_MAJOR}
     ANVILSAMPLER_VERSION_MINOR=${PROJECT_VERSION_MINOR}
     ANVILSAMPLER_VERSION_PATCH=${PROJECT_VERSION_PATCH})
+  target_compile_definitions(${anvilsampler_target}-ui PRIVATE
+    ANVILSAMPLER_VERSION_STRING="${PROJECT_VERSION}"
+    ANVILSAMPLER_HELP_REF="${ANVILSAMPLER_HELP_REF}")
 endforeach()
 
 if(BUILD_TESTING)
