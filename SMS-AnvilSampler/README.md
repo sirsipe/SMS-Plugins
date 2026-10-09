@@ -157,7 +157,3 @@ cp -a build/bin/SMS-AnvilSampler.vst3 ~/.vst3/
 ## Technical Architecture
 
 See [Technical Architecture](../Docs/ARCHITECTURE.md).
-
-## Honest Quality Review
-
-See [Honest Quality Review](../Docs/QUALITY-REVIEW.md).

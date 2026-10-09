@@ -12,7 +12,7 @@ Windows and macOS versions may follow later.
 
 I choose **quality over quantity**. Slow and steady. I only build what I'm also willing and able to maintain. The focus is on usability and simple, clear functionality.
 
-[Technical Quality Review](Docs/QUALITY-REVIEW.md)
+[Click Here for an Honest technical Quality Review of This Project](https://chatgpt.com/?temporary-chat=true&prompt=Give%20an%20honest%20technical%20quality%20review%20of%20this%20project:%20https://github.com/sirsipe/SMS-Plugins).
 
 ## Plugins
 
