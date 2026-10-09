@@ -12,6 +12,8 @@ Windows and macOS versions may follow later.
 
 I choose **quality over quantity**. Slow and steady. I only build what I'm also willing and able to maintain. The focus is on usability and simple, clear functionality.
 
+[Technical Quality Review](Docs/QUALITY-REVIEW.md)
+
 ## Plugins
 
 - [SMS-Anvil Sampler](SMS-AnvilSampler/README.md) — live stereo chopping sampler

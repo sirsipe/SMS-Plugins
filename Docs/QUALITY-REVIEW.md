@@ -1,3 +1,6 @@
+> _If and when you do not trust this quality review, you are welcome to [requests one yourself](https://chatgpt.com/?temporary-chat=true&prompt=Give%20an%20honest%20technical%20quality%20review%20of%20this%20project:%20https://github.com/sirsipe/SMS-Plugins)._
+
+
 # Honest Quality Review
 
 Reviewed 9 October 2026, after the responsibility refactor and raw-preview
