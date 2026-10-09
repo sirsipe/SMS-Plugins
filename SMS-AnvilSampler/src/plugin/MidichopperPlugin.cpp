@@ -15,6 +15,7 @@
 #include "PadFileActions.hpp"
 #include "PadStructureProtocol.hpp"
 #include "Parameters.hpp"
+#include "CaptureActionProtocol.hpp"
 #include "PluginUiBridge.hpp"
 #include "StateCodec.hpp"
 #include "WaveformDetailProtocol.hpp"
@@ -81,7 +82,8 @@ constexpr std::uint32_t kPadColorStateOffset = kWaveformDetailDataState + 1U;
 constexpr std::uint32_t kPlayStopRequestState = kPadColorStateOffset + midichopper::kPadCount;
 constexpr std::uint32_t kChopSnapshotRequestState = kPlayStopRequestState + 1U;
 constexpr std::uint32_t kChopSnapshotDataState = kChopSnapshotRequestState + 1U;
-constexpr std::uint32_t kStateCount = kChopSnapshotDataState + 1U;
+constexpr std::uint32_t kCaptureActionRequestState = kChopSnapshotDataState + 1U;
+constexpr std::uint32_t kStateCount = kCaptureActionRequestState + 1U;
 constexpr const char* kWaveformRequestKey = "waveform_request";
 constexpr const char* kWaveformDataKey = "waveform_data";
 constexpr const char* kWaveformDetailRequestKey = "waveform_detail_request";
@@ -323,7 +325,7 @@ protected:
         case kParameterUndo:
             setupParameter(index, parameter, "Undo Last Slice", "undo", "",
                            kParameterIsBoolean | kParameterIsInteger | kParameterIsTrigger,
-                           "Discard the most recently committed slice.");
+                           "Discard the open slice, or the last committed slice when idle.");
             break;
         case kParameterClearAll:
             setupParameter(index, parameter, "Clear All Pads", "clear_all", "",
@@ -563,6 +565,11 @@ protected:
             state.label = "Chop Snapshot Data";
             state.defaultValue = "";
             state.hints = kStateIsOnlyForUI;
+        } else if (index == kCaptureActionRequestState) {
+            state.key = midichopper::plugin::kCaptureActionRequestKey;
+            state.label = "Capture Action Request";
+            state.defaultValue = "";
+            state.hints = kStateIsOnlyForDSP;
         } else if (index >= kPadColorStateOffset) {
             state.key = kPadColorStateKeys[index - kPadColorStateOffset].c_str();
             state.label = "Pad Color";
@@ -671,6 +678,8 @@ protected:
         if (std::strcmp(key, kPadStructureRequestKey) == 0 ||
             std::strcmp(key, kPadStructureStatusKey) == 0)
             return String();
+        if (std::strcmp(key, midichopper::plugin::kCaptureActionRequestKey) == 0)
+            return String();
         if (std::strcmp(key, kPlayStopRequestKey) == 0)
             return String();
         if (std::strcmp(key, kWaveformDetailRequestKey) == 0 ||
@@ -711,6 +720,11 @@ protected:
 
     void applyState(const char* const key, const char* const value)
     {
+        if (std::strcmp(key, midichopper::plugin::kCaptureActionRequestKey) == 0) {
+            pendingCommands_.fetch_or(midichopper::plugin::captureActionRequestMask(
+                value != nullptr ? value : ""), std::memory_order_release);
+            return;
+        }
         if (std::strcmp(key, kChopSnapshotRequestKey) == 0) {
             midichopper::plugin::ChopSnapshotRequest request;
             if (midichopper::plugin::decodeChopSnapshotRequest(value, request)) {

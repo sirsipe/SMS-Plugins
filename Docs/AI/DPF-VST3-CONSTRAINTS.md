@@ -26,8 +26,14 @@ bound tests. No audio callback uses the bus. LV2 retains separate DSP/UI
 binaries and uses its existing DPF callback; VST3 uses a combined controller
 so its view receives the same plug-in instance pointer.
 
-Pad selection, Sample Editor entry, MIDI selection, import, clipboard and cut
-actions use this return path for waveform, settings and status messages. The
+Capture buttons use `capture_action_request` (`finalize`, `undo`, `clear`). The
+pinned VST3 `parameter-set` handler skips trigger writes. The adapter queues
+commands atomically for the next block, sharing command
+bits. Parameter IDs stay fixed; empty restored values are inert. Clear requires
+confirmation.
+
+Selection, editors, import, clipboard, and cut actions use this return path
+for waveform/settings/status. The
 hidden `pad_file_result_event` still provides a small completion signal. In
 Carla on Linux at 48 kHz/2048 frames, WAV import displayed its waveform,
 editor settings survived pad switching, and Split Sample opened and applied.

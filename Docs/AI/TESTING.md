@@ -77,7 +77,8 @@ tool. Confirm the graph actually carries audio and MIDI before judging results.
 Applicable checks:
 
 - Capture: ARM; first note starts capture, later notes split consecutive visible
-  pads; FINALIZE keeps the last slice. Check bank transitions and fixed mode
+  pads; FINALIZE keeps the open slice. UNDO discards the open/last slice;
+  confirmed CLEAR empties all banks. Repeat in VST3/LV2. Check transitions/fixed mode
   when affected, and compare recorded output for timing/pre-roll changes.
 - Playback: return to PLAY; verify expected notes/banks, one-shot/gated behavior,
   voice limits, and stereo output.

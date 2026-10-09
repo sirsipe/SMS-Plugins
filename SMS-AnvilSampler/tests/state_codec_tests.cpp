@@ -5,6 +5,7 @@
 #include "EditorSnapshotProtocol.hpp"
 #include "PadStructureProtocol.hpp"
 #include "PadColorState.hpp"
+#include "CaptureActionProtocol.hpp"
 
 #include <cmath>
 #include <cstdlib>
@@ -410,6 +411,19 @@ void padStructureProtocolRoundTrip()
           "malformed pad structure messages are rejected");
 }
 
+void captureActionsRejectRestoredOrMalformedState()
+{
+    using midichopper::plugin::captureActionRequestMask;
+    check(captureActionRequestMask("finalize") == 0x1U &&
+          captureActionRequestMask("undo") == 0x2U &&
+          captureActionRequestMask("clear") == 0x4U,
+          "capture action requests match the existing audio-block command bits");
+    for (const auto value : {"", "0", "1", "CLEAR", "clear_all", "clear;undo",
+                             "finalize ", " undo", "unknown"})
+        check(captureActionRequestMask(value) == 0U,
+              "empty restored and malformed capture requests never run an action");
+}
+
 } // namespace
 
 int main()
@@ -453,5 +467,6 @@ int main()
     editorSnapshotProtocolRoundTrip();
     chopProtocolRoundTrip();
     padStructureProtocolRoundTrip();
+    captureActionsRejectRestoredOrMalformedState();
     std::cout << "state codec tests passed\n";
 }

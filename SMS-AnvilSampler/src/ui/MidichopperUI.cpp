@@ -60,6 +60,7 @@
 #include "PadFileActionProtocol.hpp"
 #include "PadStructureProtocol.hpp"
 #include "Parameters.hpp"
+#include "CaptureActionProtocol.hpp"
 #include "PluginUiBridge.hpp"
 #include "anvilsampler_artwork.hpp"
 
@@ -229,7 +230,6 @@ public:
           fSelectedPad(-1),
           fLastPlayedPad(-1),
           fCurrentPad(-1),
-          fPressedActionParameter(-1),
           fClearArmed(false),
           fMenuOpen(false),
           fPadContextMenuOpen(false),
@@ -1476,15 +1476,17 @@ protected:
             if (midichopper::ui::isTarget(
                     clicked, midichopper::ui::InteractiveType::finalizeAction))
             {
-                setParameterValue(kParameterFinalize, 1.0f);
-                fPressedActionParameter = kParameterFinalize;
+#if DISTRHO_PLUGIN_WANT_STATE
+                setState(midichopper::plugin::kCaptureActionRequestKey, "finalize");
+#endif
                 setLocalStatus("Chop finalized");
                 return true;
             }
             if (midichopper::ui::isTarget(clicked, midichopper::ui::InteractiveType::undoAction))
             {
-                setParameterValue(kParameterUndo, 1.0f);
-                fPressedActionParameter = kParameterUndo;
+#if DISTRHO_PLUGIN_WANT_STATE
+                setState(midichopper::plugin::kCaptureActionRequestKey, "undo");
+#endif
                 setLocalStatus("Last chop undone");
                 return true;
             }
@@ -1499,8 +1501,9 @@ protected:
                 }
                 else
                 {
-                    setParameterValue(kParameterClearAll, 1.0f);
-                    fPressedActionParameter = kParameterClearAll;
+#if DISTRHO_PLUGIN_WANT_STATE
+                    setState(midichopper::plugin::kCaptureActionRequestKey, "clear");
+#endif
                     fClearArmed = false;
                     setLocalStatus("Pads cleared");
                 }
@@ -1577,12 +1580,6 @@ protected:
         {
             releasePressedPad();
             requestRepaint();
-            return true;
-        }
-        else if (fPressedActionParameter >= 0)
-        {
-            setParameterValue(static_cast<uint32_t>(fPressedActionParameter), 0.0f);
-            fPressedActionParameter = -1;
             return true;
         }
         return false;
@@ -2056,7 +2053,6 @@ private:
     int fLastPlayedPad;
     int fCurrentPad;
     midichopper::ui::PadPressTracker fPadPress;
-    int fPressedActionParameter;
     midichopper::ui::SpaceKeyTracker fSpaceKey;
     bool fClearArmed;
     std::chrono::steady_clock::time_point fClearDeadline{};

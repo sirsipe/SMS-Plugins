@@ -33,7 +33,8 @@ Tested in **REAPER**, **Ardour**, and **Carla**.
    the current slice and continue at the next pad.
     > NOTE: **ANY** MIDI note-on (i.e. any pad of your controller) starts and chops.
 
-4. **FINALIZE** or releasing **ARM** keeps the open slice.
+4. **FINALIZE** or releasing **ARM** keeps the open slice. **UNDO** discards the
+   open/last slice; **CLEAR** clears all banks after a confirmation click.
 
 5. Right click on a pad to edit the sample, split it to neighbouring pads, or adjust the existing cut points with neighbouring pads.
 
