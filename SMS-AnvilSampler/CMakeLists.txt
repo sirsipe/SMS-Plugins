@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(SMSAnvilSampler VERSION 0.0.7 LANGUAGES C CXX)
+project(SMSAnvilSampler VERSION 0.0.8 LANGUAGES C CXX)
 
 include(CTest)
 include(GNUInstallDirs)

@@ -4,7 +4,7 @@ _A live stereo chopping sampler for Linux._
 
 > Special thanks to **Manolo Anville** ([@ManoloAnville](https://github.com/ManoloAnville)) for collaboration.
 
-![SMS-Anvil Sampler interface](Docs/SMS-AnvilSampler-v0.0.6.png)
+![SMS-Anvil Sampler interface](Docs/SMS-AnvilSampler-v0.0.8.png)
 
 **VST3 is the preferred version.** Its GUI loads faster than LV2, and it has been generally human-tested the most. LV2 is mostly AI-tested, and CLAP (if even made available) has NOT been tested.
 
