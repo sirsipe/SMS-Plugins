@@ -1,14 +1,15 @@
 # Pad storage and thread handoff
 
 Audience: agents changing sample transfers, storage, state, or lifecycle.
-Implemented by `SamplerEngine.*`, `RealtimeCommandDispatcher.hpp`, and the
-adapter's `ControlWorker.hpp`. Parameter identities and PCM/settings codecs
+Implemented by `SamplerEngine.*`, `SampleStoragePool.*`,
+`RealtimeCommandDispatcher.hpp`, and the adapter's `ControlWorker.hpp`. Parameter identities and PCM/settings codecs
 are unchanged; cut-baseline transport adds only transient states.
 
 ## Ownership
 
-The audio thread owns pad voices, recording, logical capacity, capture block
-allocation, and descriptor changes. Imported/staged PCM is immutable. Capture
+`SamplerEngine` owns pad voices, recording, logical capacity, and publication.
+`SampleStoragePool` owns physical PCM, capture maps, and imported allocations;
+audio owns capture block allocation and descriptor changes. Imported/staged PCM is immutable. Capture
 uses preallocated descriptors and block mappings; completed captures remain
 immutable until their descriptor has no references.
 
@@ -78,7 +79,8 @@ capacity, and applies PCM/settings together; invalid batches preserve existing
 pads and set `stateRestoreFailed()`. Mailbox merging uses CAS so settings cannot
 replay PCM that the callback already consumed. This supports VST3 hosts that
 activate an instance but suspend processing during state load, as well as
-hosts restoring while callbacks continue. The adapter serializes pad workflows and sample-rate reconfiguration.
+hosts restoring while callbacks continue. `PadWorkflows` owns clipboard/split workflows and their mutation mutex, which the
+adapter also uses for durable state and sample-rate reconfiguration.
 The UI's `ChopEditorSession` owns coherent cut baselines and Apply readiness.
 `EditorSnapshotSession` matches one waveform/settings reply by sequence and pad.
 Detail retries reuse the pending sequence; changing selection/range invalidates

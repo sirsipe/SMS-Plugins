@@ -2,15 +2,19 @@
 
 Layers:
 
-- `src/core` is the C++20 capture/playback engine.
-- `src/plugin` adapts DPF parameters, audio, MIDI, and state.
-- `src/ui/MidichopperUI.cpp` owns host communication;
-  `MidichopperInteraction.hpp` resolves input, `ChopEditorSession.hpp` collects
-  coherent cut baselines, `EditorSnapshotSession.hpp` matches sample snapshots,
-  and `MidichopperView.cpp` draws.
-- `tests` covers engine, state, WAV, and UI.
-- `../Common-Src` contains reusable DSP, state, and UI geometry.
-- `../Common-UI` contains shared theme, controls, pads, and waveform editing.
+- `src/core`: `SamplerEngine` orchestrates capture, voices, pad publication,
+  and logical capacity. `SampleStoragePool` owns PCM, capture reserve, block
+  maps, immutable imports, resampling, and bounded reclamation.
+- `src/plugin`: `MidichopperPlugin` adapts DPF parameters, audio, MIDI, state,
+  and lifecycle. `PadWorkflows` owns serialized file/clipboard/cut/split actions;
+  `PadWorkflowObserver` returns transport messages and output notifications.
+- `src/ui`: `MidichopperUI` coordinates host communication and input;
+  `MidichopperInteraction` resolves gestures and `MidichopperView` draws.
+  `ChopEditorController` owns cut/split sessions; `EditorSnapshotSession` matches
+  waveform/settings replies. `WaveformDetailSession` owns zoom/detail requests,
+  `PlaybackIndicator` owns playhead timing, and `MixerValueEntry` owns text editing.
+- `Common-Src` provides framework-neutral DSP, codecs, audio handoff, geometry.
+  `Common-UI` provides shared controls, pads, waveform editing and DPF rendering.
 
 ## MIDI mapping
 
@@ -29,11 +33,8 @@ MIDI notes 0–127. UI notes and labels use the engine mapping. Selected Bank re
 with `active_bank` choosing its target, and retains the released fixed 16-slot
 bank organization.
 
-ARM hides global mixing. Edge faders work across views. Clicks focus DGL. Space consumes key/text events:
-`play_stop_request` in PLAY/Sample Editor, balanced MIDI tap in ARM. Overlays,
-numeric entry, file dialogs, and cut-point views block it. Held-key tracking/native
-repeat suppression prevent repeated taps; focus loss resets tracking. Hosts may
-intercept keys first.
+Keyboard routing, focus, repeat suppression and blocked overlays follow the
+[plugin guide](../README.md#general-controls) and `MidichopperInteraction.hpp`.
 
 ## Capture model
 

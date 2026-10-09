@@ -14,6 +14,7 @@ Filter with `ctest --test-dir build --output-on-failure -R NAME`:
 
 | CTest name | Coverage |
 | --- | --- |
+| `pad-workflows` | Control workflow copy-time snapshots, replies, split commit/conflict, invalid actions |
 | `sampler-core` | Capture, banks/layouts, storage, voices, region/ADSR, pad/global mixer sums, filter response and dirty conversion, raw chop preview/repartition, resampling, clipboard, lifecycle, and more than 1,024 MIDI events per block |
 | `sampler-transfer` | Concurrent transfers, exact monitoring/MIDI/recording continuity, retained storage, stale commits, capacity, published host snapshots, dispatcher lifecycle, and audio-thread allocation/destruction |
 | `state-codec` | Audio, editor-state, MX1/MX2 mixer compatibility, cut commands, and visible waveform request/reply round trips; malformed/corrupt state |
@@ -21,7 +22,7 @@ Filter with `ctest --test-dir build --output-on-failure -R NAME`:
 | `ui-message-bus` | Bounded VST3 message ordering, independent view cursors, explicit gap reporting on wrap, and large replies |
 | `wav-codec` | WAV formats, validation, file actions, offline render, real-time access gate |
 
-Rebuild affected targets before testing. Run all six before handing off code
+Rebuild affected targets before testing. Run the complete suite before handing off code
 changes. For docs-only changes, run the doc checks and verify
 changed commands against CMake/tool help; no audio rebuild is required.
 Test long audio with an optional WAV argument; keep supplied audio out of Git:
@@ -110,8 +111,8 @@ automation through noVNC port 6080; avoid VNC mouse input during a sequence.
 `bash .devcontainer/scripts/test-plugin.sh` builds VST3/LV2, runs CTest and
 `lv2info`, launches LV2 in Carla, clicks ARM, and captures the plug-in window in
 ignored `build/gui-test/`. It sets VNC to 1920x1080. Use `--keep-open` for further
-interaction. `screenshot-window WINDOW_ID OUTPUT.png` refuses desktop capture;
-resolve the window after relaunch/resize.
+interaction. `screenshot-window WINDOW_ID OUTPUT.png` captures one window; resolve it again
+after relaunch/resize.
 
 Capture only the plug-in window, never the full desktop. Inspect every artifact
 before sharing or committing it, and exclude usernames, home paths, machine
@@ -124,7 +125,6 @@ desktop. Import a WAV, open Sample Editor, switch pads and back, and check the
 waveform and settings. Exercise Split Sample or Adjust Cut Points. Then save,
 close, delete the source WAV, reload, and compare audio and editor values.
 
-Report host/frontend, sample rate/buffer size for audio tests, steps, observed
-results, and failures. If JACK, a display, or routing is unavailable, say which
-integration checks remain untested. CI currently runs CTest and `lv2info`, not
-interactive host/UI tests. Do not silently substitute one layer for another.
+Report host/frontend, audio rate/buffer, steps, results, failures and unavailable
+integration checks. CI runs CTest and `lv2info`; manual host/UI evidence remains
+necessary. A launch or metadata check alone does not validate audio/UI behavior.

@@ -8,8 +8,7 @@
 namespace midichopper {
 namespace {
 constexpr float kSilence = 0.0f;
-constexpr std::uint32_t kSampleBlockFrames = 1024;
-constexpr std::uint32_t kNoBlock = ~std::uint32_t{0};
+constexpr auto kSampleBlockFrames = SampleStoragePool::kBlockFrames;
 constexpr std::uint32_t clampPad(std::uint32_t p) noexcept { return p < kPadCount ? p : kPadCount; }
 constexpr std::uint32_t poolBlocks(const std::uint32_t captureFrames) noexcept {
     // Leave room for the partially filled final blocks created by splitting a
@@ -26,15 +25,9 @@ SamplerEngine::SamplerEngine(double sampleRate, double maxRecordSeconds)
       total_blocks_(poolBlocks(static_cast<std::uint32_t>(
           std::max(1.0, std::ceil(sample_rate_ * max_record_seconds_))))),
       max_frames_(total_blocks_ * kSampleBlockFrames),
-      samples_(static_cast<std::size_t>(total_blocks_) * kSampleBlockFrames * 4U, 0.0f),
-      free_blocks_(total_blocks_ * 2U),
-      free_block_count_(total_blocks_ * 2U),
+      storagePool_(total_blocks_),
       ringCapacityFrames_(static_cast<std::uint32_t>(std::max(1.0, std::ceil(sample_rate_ * 0.1)))),
       ring_(static_cast<std::size_t>(ringCapacityFrames_) * 2U, 0.0f) {
-    for (std::uint32_t block = 0; block < total_blocks_ * 2U; ++block)
-        free_blocks_[block] = total_blocks_ * 2U - block - 1U;
-    for (auto& storage : captureStorage_)
-        storage.blocks.assign(total_blocks_, kNoBlock);
     for (auto& p : pads_) p.sourceSampleRate = sample_rate_;
     setSettings(settings_);
 }
@@ -78,24 +71,15 @@ void SamplerEngine::setSampleRate(double sampleRate) {
 
         total_blocks_ = requiredBlocks;
         max_frames_ = total_blocks_ * kSampleBlockFrames;
-        samples_.assign(static_cast<std::size_t>(total_blocks_) * kSampleBlockFrames * 4U, 0.0f);
-        for (auto& storage : captureStorage_) {
-            storage.references.store(0, std::memory_order_relaxed);
-            storage.allocatedBlocks = 0;
-            storage.blocks.assign(total_blocks_, kNoBlock);
-        }
         for (auto& pad : pads_) {
-            if (pad.storage && pad.storage->blocks.empty())
+            if (pad.storage)
                 pad.storage->references.fetch_sub(1, std::memory_order_release);
             pad.storage = nullptr;
             pad.publishedStorage.store(nullptr, std::memory_order_release);
         }
         used_blocks_ = 0;
         collectImportedStorage();
-        free_blocks_.resize(total_blocks_ * 2U);
-        free_block_count_ = total_blocks_ * 2U;
-        for (std::uint32_t block = 0; block < total_blocks_ * 2U; ++block)
-            free_blocks_[block] = total_blocks_ * 2U - block - 1U;
+        storagePool_.configure(total_blocks_);
         for (auto& pad : pads_) {
             pad.allocatedBlocks = 0;
             pad.recordedFrames = pad.recordPosition = 0;
@@ -268,9 +252,7 @@ std::uint32_t SamplerEngine::followingCapturePad(const std::uint32_t pad) const 
 
 void SamplerEngine::collectImportedStorage() {
     collectPendingState();
-    std::erase_if(importedStorage_, [](const auto& storage) {
-        return storage->references.load(std::memory_order_acquire) == 0U;
-    });
+    storagePool_.collectImported();
 }
 
 void SamplerEngine::collectPendingState() {
@@ -414,43 +396,16 @@ void SamplerEngine::overlayPendingState(const std::uint32_t pad, Snapshot& snaps
     if (update->replaceMixer) snapshot.mixer = update->mixer;
 }
 
-void SamplerEngine::reclaimCaptureStorage(std::uint32_t budget) noexcept {
-    for (auto& storage : captureStorage_) {
-        if (storage.references.load(std::memory_order_acquire) != 0U)
-            continue;
-        while (storage.allocatedBlocks != 0U && budget != 0U) {
-            auto& block = storage.blocks[--storage.allocatedBlocks];
-            free_blocks_[free_block_count_++] = block;
-            block = kNoBlock;
-            --budget;
-        }
-        if (budget == 0U) break;
-    }
-}
-
 bool SamplerEngine::ensurePadBlock(const std::uint32_t pad,
                                    const std::uint32_t block) noexcept {
     if (pad >= kPadCount || block >= total_blocks_) return false;
     auto& p = pads_[pad];
-    if (!p.storage) {
-        for (auto& storage : captureStorage_) {
-            if (storage.allocatedBlocks == 0U) {
-                std::uint32_t expected = 0;
-                if (storage.references.compare_exchange_strong(expected, 1U, std::memory_order_acq_rel)) {
-                    p.storage = &storage;
-                    break;
-                }
-            }
-        }
-    }
-    if (!p.storage || p.storage->blocks.empty()) return false;
-    auto& mapped = p.storage->blocks[block];
-    if (mapped != kNoBlock) return true;
-    if (free_block_count_ == 0U || used_blocks_ == total_blocks_) return false;
-    mapped = free_blocks_[--free_block_count_];
+    if (!p.storage) p.storage = storagePool_.acquireCapture();
+    if (!p.storage || !p.storage->isCapture()) return false;
+    if (storagePool_.hasCaptureBlock(*p.storage, block)) return true;
+    if (used_blocks_ == total_blocks_ || !storagePool_.ensureCaptureBlock(*p.storage, block)) return false;
     ++used_blocks_;
-    p.allocatedBlocks = std::max(p.allocatedBlocks, block + 1U);
-    p.storage->allocatedBlocks = p.allocatedBlocks;
+    p.allocatedBlocks = p.storage->allocatedBlocks;
     return true;
 }
 
@@ -471,37 +426,23 @@ void SamplerEngine::trimPadBlocks(const std::uint32_t pad,
     auto& p = pads_[pad];
     const std::uint32_t keep = frames == 0U ? 0U :
         (frames + kSampleBlockFrames - 1U) / kSampleBlockFrames;
-    while (p.allocatedBlocks > keep) {
-        auto& mapped = p.storage->blocks[--p.allocatedBlocks];
-        free_blocks_[free_block_count_++] = mapped;
-        mapped = kNoBlock;
-        --used_blocks_;
+    if (p.storage) {
+        used_blocks_ -= storagePool_.trimCapture(*p.storage, keep);
+        p.allocatedBlocks = p.storage->allocatedBlocks;
     }
-    if (p.storage) p.storage->allocatedBlocks = p.allocatedBlocks;
 }
 
 float SamplerEngine::sampleAt(const std::uint32_t pad, const std::uint32_t frame,
                               const std::uint32_t channel) const noexcept {
     if (pad >= kPadCount || frame >= max_frames_ || channel >= 2U) return 0.0f;
-    const auto* storage = pads_[pad].storage;
-    if (!storage) return 0.0f;
-    if (storage->blocks.empty())
-        return frame < storage->frames ? storage->stereo[static_cast<std::size_t>(frame) * 2U + channel] : 0.0f;
-    const auto mapped = storage->blocks[frame / kSampleBlockFrames];
-    if (mapped == kNoBlock) return 0.0f;
-    return samples_[(static_cast<std::size_t>(mapped) * kSampleBlockFrames +
-                     frame % kSampleBlockFrames) * 2U + channel];
+    return storagePool_.sample(pads_[pad].storage, frame, channel);
 }
 
 bool SamplerEngine::storeSample(const std::uint32_t pad, const std::uint32_t frame,
                                 const float left, const float right) noexcept {
     if (pad >= kPadCount || frame >= max_frames_ ||
         !ensurePadBlock(pad, frame / kSampleBlockFrames)) return false;
-    const auto mapped = pads_[pad].storage->blocks[frame / kSampleBlockFrames];
-    const auto offset = (static_cast<std::size_t>(mapped) * kSampleBlockFrames +
-                         frame % kSampleBlockFrames) * 2U;
-    samples_[offset] = left;
-    samples_[offset + 1U] = right;
+    storagePool_.writeCapture(*pads_[pad].storage, frame, left, right);
     return true;
 }
 
@@ -842,7 +783,7 @@ void SamplerEngine::process(const float* inputLeft, const float* inputRight,
                             std::uint32_t frames, MidiEventSource events) noexcept {
     if (!outputLeft || !outputRight) return;
     applyPendingState();
-    reclaimCaptureStorage(1024U);
+    storagePool_.reclaimCapture(1024U);
     if (settings_.armed != previousArmed_) {
         if (settings_.armed) {
             // setSettings() already prepared either the automatic empty target
@@ -1015,13 +956,8 @@ void SamplerEngine::captureSnapshot(const std::uint32_t pad, Snapshot& result) c
 
 float SamplerEngine::snapshotSample(const Snapshot& snapshot, const std::uint32_t frame,
                                     const std::uint32_t channel) const noexcept {
-    const auto* storage = snapshot.storage;
-    if (!storage || frame >= snapshot.metadata.frames) return 0.0f;
-    if (storage->blocks.empty())
-        return storage->stereo[static_cast<std::size_t>(frame) * 2U + channel];
-    const auto mapped = storage->blocks[frame / kSampleBlockFrames];
-    return samples_[(static_cast<std::size_t>(mapped) * kSampleBlockFrames +
-                     frame % kSampleBlockFrames) * 2U + channel];
+    if (frame >= snapshot.metadata.frames) return 0.0f;
+    return storagePool_.sample(snapshot.storage, frame, channel);
 }
 
 bool SamplerEngine::summarizePadRange(const std::uint32_t firstPad,
@@ -1173,48 +1109,11 @@ void SamplerEngine::copySnapshot(const Snapshot& snapshot, PadData& destination,
     if (playback) *playback = snapshot.playback;
     if (mixer) *mixer = snapshot.mixer;
     destination.stereo.resize(static_cast<std::size_t>(destination.frames) * 2U);
-    if (snapshot.storage && snapshot.storage->blocks.empty()) {
-        std::copy_n(snapshot.storage->stereo.data(), destination.stereo.size(), destination.stereo.data());
-    } else {
-        for (std::uint32_t frame = 0; frame < destination.frames; ++frame) {
-            destination.stereo[static_cast<std::size_t>(frame) * 2U] = snapshotSample(snapshot, frame, 0);
-            destination.stereo[static_cast<std::size_t>(frame) * 2U + 1U] = snapshotSample(snapshot, frame, 1);
-        }
-    }
+    storagePool_.copySamples(snapshot.storage, destination.stereo);
 }
 
 SamplerEngine::Storage* SamplerEngine::prepareStorage(const PadData& source) {
-    if (!std::isfinite(source.sampleRate) || source.sampleRate <= 1.0 || source.frames == 0U ||
-        !std::isfinite(source.peak) || source.peak < 0.0f || !std::isfinite(source.rms) || source.rms < 0.0f ||
-        source.stereo.size() < static_cast<std::size_t>(source.frames) * 2U ||
-        !std::all_of(source.stereo.begin(), source.stereo.begin() + static_cast<std::size_t>(source.frames) * 2U,
-            [](float sample) noexcept { return std::isfinite(sample); })) return nullptr;
-    auto storage = std::make_unique<Storage>();
-    storage->frames = source.frames;
-    storage->sampleRate = source.sampleRate;
-    storage->peak = source.peak;
-    storage->rms = source.rms;
-    if (source.frames <= max_frames_) {
-        storage->stereo.assign(source.stereo.begin(), source.stereo.begin() + static_cast<std::size_t>(source.frames) * 2U);
-    } else {
-        const auto frames = static_cast<std::uint64_t>(std::llround(static_cast<double>(source.frames) * sample_rate_ / source.sampleRate));
-        if (frames == 0U || frames > max_frames_) return nullptr;
-        storage->frames = static_cast<std::uint32_t>(frames);
-        storage->sampleRate = sample_rate_;
-        storage->stereo.resize(static_cast<std::size_t>(frames) * 2U);
-        for (std::uint32_t frame = 0; frame < frames; ++frame) {
-            const double position = std::min(static_cast<double>(source.frames - 1U), frame * source.sampleRate / sample_rate_);
-            const auto first = static_cast<std::uint32_t>(position), second = std::min(first + 1U, source.frames - 1U);
-            const auto fraction = static_cast<float>(position - first);
-            for (std::uint32_t channel = 0; channel < 2U; ++channel) {
-                const auto a = static_cast<std::size_t>(first) * 2U + channel, b = static_cast<std::size_t>(second) * 2U + channel;
-                storage->stereo[static_cast<std::size_t>(frame) * 2U + channel] = source.stereo[a] + (source.stereo[b] - source.stereo[a]) * fraction;
-            }
-        }
-    }
-    Storage* result = storage.get();
-    importedStorage_.push_back(std::move(storage));
-    return result;
+    return storagePool_.prepareImport(source, sample_rate_, max_frames_);
 }
 
 void SamplerEngine::publishStorage(const std::uint32_t pad, Storage* storage,

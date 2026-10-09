@@ -33,8 +33,11 @@
 
 #include "Audio/WaveformSummary.hpp"
 #include "ChopEditor.hpp"
-#include "ChopEditorSession.hpp"
+#include "ChopEditorController.hpp"
 #include "EditorSnapshotSession.hpp"
+#include "PlaybackIndicator.hpp"
+#include "MixerValueEntry.hpp"
+#include "WaveformDetailSession.hpp"
 #include "ChopEditorProtocol.hpp"
 #include "Configuration.hpp"
 #include "ContextMenu.hpp"
@@ -204,7 +207,8 @@ const auto kPadColorStateKeys = makePadStateKeys("pad_color_");
 
 } // namespace
 
-class MidichopperUI final : public sms::ui::dpf::NanoUI
+class MidichopperUI final : public sms::ui::dpf::NanoUI,
+                            private midichopper::ui::ChopEditorHost
 {
 public:
     MidichopperUI()
@@ -249,7 +253,6 @@ public:
         fPadState.fill('0');
         fPadStatus.fill('0');
         fPadColors.fill(0);
-        fChopSession.offsets.fill(0);
         fStatus[0] = '\0';
 
 #if DISTRHO_PLUGIN_WANT_DIRECT_ACCESS
@@ -266,7 +269,7 @@ public:
 
     ~MidichopperUI() override
     {
-        if (!fChopEditorMode)
+        if (!fChopEditor.active())
             return;
 #if DISTRHO_PLUGIN_WANT_DIRECT_ACCESS
         if (fUiBridge != nullptr) {
@@ -274,7 +277,7 @@ public:
             return;
         }
 #endif
-        disableChopMidiPreview();
+        fChopEditor.disableMidi();
     }
 
 protected:
@@ -358,52 +361,13 @@ protected:
         }
         if (index == kParameterChopPreviewPosition)
         {
-            if (std::isfinite(value) && value > 0.0f) {
-                fChopPreviewPosition = value;
-                fChopPlaying = true;
-                fChopPreviewPad = -1;
-                if (fChopEditorMode && chopReady()) {
-                    const int encodedPad = static_cast<int>(std::floor(value)) - 1;
-                    const int originalPad = encodedPad - fChopFirstPad;
-                    const double sourceFrame = midichopper::ui::chop::sourceFrameForPlayhead(
-                        fChopSession.waveforms, originalPad, value - std::floor(value));
-                    const int displayedPads = fChopSplitMode ? 2 : 3;
-                    for (int pad = 0; sourceFrame >= 0.0 && pad < displayedPads; ++pad) {
-                        const auto start = midichopper::ui::chop::adjustedStartFrame(
-                            fChopSession.waveforms, fChopSession.offsets, pad);
-                        const auto frames = midichopper::ui::chop::adjustedFrames(
-                            fChopSession.waveforms, fChopSession.offsets, pad);
-                        if (frames != 0U && sourceFrame >= static_cast<double>(start) &&
-                            sourceFrame < static_cast<double>(start + frames)) {
-                            fChopPreviewPad = pad;
-                            break;
-                        }
-                    }
-                }
-            } else {
-                if (fChopPlaying)
-                    fChopPreviewPosition = 0.0f;
-                fChopPlaying = false;
-                fChopPreviewPad = -1;
-            }
+            fChopEditor.acceptPreviewPosition(value);
             requestRepaint();
             return;
         }
         if (index == kParameterPlaybackPosition)
         {
-            if (std::isfinite(value) && value > 0.0f) {
-                fPlaybackPosition = value;
-                fLocalPlayheadPad = static_cast<int>(std::floor(value)) - 1;
-                fLocalPlayheadFraction = value - std::floor(value);
-                fLocalPlayheadActive = true;
-                fLocalPlayheadTick = std::chrono::steady_clock::now();
-                fLocalPlayheadClearDeadline = {};
-            } else {
-                fPlaybackPosition = 0.0f;
-                fLocalPlayheadActive = false;
-                fLocalPlayheadPad = -1;
-                fLocalPlayheadClearDeadline = {};
-            }
+            fPlaybackIndicator.acceptHostPosition(value, std::chrono::steady_clock::now());
             if (fEditorMode)
                 requestRepaint();
             return;
@@ -442,7 +406,7 @@ protected:
             fPadStatus[static_cast<std::size_t>(localPad)] = isActive ? '1' : '0';
             if (isActive && !fArm)
                 startLocalPlayhead(globalPad(localPad));
-            else if (!isActive && globalPad(localPad) == fLocalPlayheadPad)
+            else if (!isActive && globalPad(localPad) == fPlaybackIndicator.pad())
                 stopLocalPlayhead(true);
             requestRepaint();
             return;
@@ -456,12 +420,12 @@ protected:
             if (!changed)
                 break;
             closePadContextMenu();
-            cancelMixerValueEntry();
+            fMixerValueEntry.cancel();
             if (fGlobalMixerDragIndex == 5)
                 editParameter(kParameterGlobalFilterSlope, false);
             fGlobalMixerDragIndex = -1;
-            if (armed && fChopEditorMode)
-                cancelChopEditor();
+            if (armed && fChopEditor.active())
+                fChopEditor.cancel();
             if (armed) {
                 fPendingSplitTarget = -1;
                 fPendingSplitFirst = -1;
@@ -474,7 +438,7 @@ protected:
             fLastPlayedPad = -1;
             if (fArm) {
                 fEditorMode = false;
-                stopChopPreview();
+                fChopEditor.stopPreview();
                 stopLocalPlayhead(false);
                 fDragTarget = WaveformEditTarget::none;
                 fMixerDragIndex = -1;
@@ -524,8 +488,8 @@ protected:
             fMidiBankMode = mode;
             if (changed) {
                 closePadContextMenu();
-                if (fChopEditorMode)
-                    cancelChopEditor();
+                if (fChopEditor.active())
+                    fChopEditor.cancel();
                 else if (fEditorMode && localPad >= 0)
                     selectEditorPad(globalPad(std::clamp(localPad, 0, visiblePadCount() - 1)));
                 else {
@@ -587,8 +551,8 @@ protected:
                 ? std::clamp(localPadForGlobalPad(fSelectedPad), 0, visiblePadCount() - 1)
                 : 0;
             fBank = bank;
-            if (fChopEditorMode)
-                cancelChopEditor();
+            if (fChopEditor.active())
+                fChopEditor.cancel();
             else if (fEditorMode)
                 selectEditorPad(globalPad(localPad));
             else {
@@ -609,10 +573,10 @@ protected:
             fLayout = layout;
             if (fStartPad >= visiblePadCount())
                 fStartPad = 0;
-            if (!fArm && !fEditorMode && !fChopEditorMode)
+            if (!fArm && !fEditorMode && !fChopEditor.active())
                 fLastPlayedPad = -1;
-            if (fChopEditorMode)
-                cancelChopEditor();
+            if (fChopEditor.active())
+                fChopEditor.cancel();
             normalizeSelectionForContext();
             break;
         }
@@ -640,7 +604,7 @@ protected:
             const std::uint32_t pad = fPlaybackPadEvents.consume(value);
             // MIDI performance remains audible in the Cut Point Editor, but it must not
             // silently switch the editor bank or discard a pending boundary plan.
-            changed = !fArm && !fChopEditorMode && pad < midichopper::kPadCount;
+            changed = !fArm && !fChopEditor.active() && pad < midichopper::kPadCount;
             if (!changed)
                 break;
             closePadContextMenu();
@@ -734,52 +698,13 @@ protected:
         else if (std::strcmp(key, "waveform_detail_data") == 0)
         {
             midichopper::plugin::WaveformDetailReply reply;
-            if (midichopper::plugin::decodeWaveformDetailReply(value, reply) &&
-                reply.request.sequence == fDetailRequest.sequence &&
-                reply.request.sequence == fDetailSequence &&
-                reply.request.firstPad == fDetailRequest.firstPad &&
-                reply.request.padCount == fDetailRequest.padCount &&
-                reply.request.start == fWaveformViewport.start &&
-                reply.request.end == fWaveformViewport.end &&
-                fWaveformViewport.zoomed()) {
-                fWaveformDetail = reply.waveform;
-                fDetailReady = true;
-                fDetailDirty = false;
-            }
+            if (midichopper::plugin::decodeWaveformDetailReply(value, reply))
+                static_cast<void>(fWaveformDetail.accept(reply));
         }
-        else if (std::strcmp(key, "chop_snapshot_data") == 0)
+        else if (std::strcmp(key, "chop_snapshot_data") == 0 ||
+                 std::strcmp(key, "chop_status") == 0)
         {
-            midichopper::plugin::ChopSnapshotReply reply;
-            midichopper::plugin::ChopApplyStatus error;
-            if (fChopEditorMode && !fChopSplitMode &&
-                midichopper::plugin::decodeChopSnapshotReply(value, reply) &&
-                fChopSession.accept(reply)) {
-                if (chopReady()) {
-                    fWaveformViewport.reset(midichopper::ui::chop::totalFrames(fChopSession.waveforms));
-                    fStatus[0] = '\0';
-                    updateChopMidiPreview();
-                } else {
-                    muteChopMidiPreview();
-                    copyString(fStatus, "Non-empty samples must use one sample rate");
-                }
-            } else if (fChopEditorMode && !fChopSplitMode &&
-                       midichopper::plugin::decodeChopSnapshotError(value, error) &&
-                       fChopSession.acceptsError(error.sequence)) {
-                copyString(fStatus, error.message.data());
-            }
-        }
-        else if (std::strcmp(key, "chop_status") == 0)
-        {
-            midichopper::plugin::ChopApplyStatus status;
-            if (fChopEditorMode && !fChopSplitMode &&
-                midichopper::plugin::decodeChopApplyStatus(value, status) &&
-                fChopSession.acceptStatus(status)) {
-                fChopApplying = false;
-                stopChopPreview();
-                resetChopWaveforms();
-                muteChopMidiPreview();
-                copyString(fStatus, status.success ? "Cut points applied" : status.message.data());
-            }
+            static_cast<void>(fChopEditor.acceptState(key, value));
         }
         else if (std::strcmp(key, "pad_structure_status") == 0)
         {
@@ -794,9 +719,9 @@ protected:
                 fPendingSplitFirst = -1;
                 fPendingSplitCount = 0;
                 if (expected) {
-                    beginSplitEditor(plan);
+                    fChopEditor.openSplit(plan);
                 } else {
-                    cancelSplitPlan(plan.planId);
+                    fChopEditor.cancelPlan(plan.planId);
                     copyString(fStatus, "Split cancelled because pad context changed");
                 }
             } else if (std::strcmp(value, "PS1;O;0;C") == 0) {
@@ -804,37 +729,22 @@ protected:
                 copyString(fStatus, "Pad gap collapsed");
                 if (fEditorMode)
                     refreshSelectedWaveform();
-            } else if (const std::string expected = "PS1;O;" +
-                           std::to_string(fSplitPlanId) + ";S";
-                       fSplitPlanId != 0U && expected == value) {
-                fPadStructureBusy = false;
-                const int cutTarget = midichopper::ui::chop::postSplitEditorTarget(
-                    localPadForGlobalPad(fSelectedPad), visiblePadCount());
-                if (cutTarget >= 0)
-                    beginChopEditor(globalPad(cutTarget));
-                else
-                    cancelChopEditor();
-                copyString(fStatus, "Sample split applied");
+            } else if (fChopEditor.acceptSplitStatus(value, globalPad(0), visiblePadCount())) {
+                fPendingSplitTarget = -1;
+                fPendingSplitFirst = -1;
+                fPendingSplitCount = 0;
             } else if (std::strncmp(value, "PS1;E;", 6U) == 0) {
                 char* idEnd = nullptr;
                 const auto errorPlanId = std::strtoull(value + 6U, &idEnd, 10);
                 if (idEnd == value + 6U || idEnd == nullptr || *idEnd != ';')
                     return;
-                const bool activeSplitError = fChopSplitMode &&
-                    errorPlanId == fSplitPlanId;
                 const bool pendingError = errorPlanId == 0U && fPadStructureBusy;
-                if (!activeSplitError && !pendingError)
+                if (!pendingError)
                     return;
                 fPadStructureBusy = false;
                 fPendingSplitTarget = -1;
                 fPendingSplitFirst = -1;
                 fPendingSplitCount = 0;
-                if (activeSplitError) {
-                    fSplitPlanId = 0U;
-                    fChopSplitMode = false;
-                    cancelChopEditor();
-                }
-                fChopApplying = false;
                 copyString(fStatus, idEnd + 1U);
             }
         }
@@ -878,9 +788,8 @@ protected:
                     fPendingSplitTarget = -1;
                     fPendingSplitFirst = -1;
                     fPendingSplitCount = 0;
-                    if (fChopSplitMode || fChopApplying)
-                        cancelChopEditor();
-                    fChopApplying = false;
+                    if (fChopEditor.split() || fChopEditor.applying())
+                        fChopEditor.cancel();
                     refreshSelectedWaveform();
                     setLocalStatus("UI replies were missed; check the pad and retry");
                 }
@@ -906,11 +815,10 @@ protected:
             fNextMeterRepaint = now + kMeterFrameInterval;
             requestRepaint();
         }
-        if (fChopEditorMode && !fChopSplitMode && fChopSession.requestDue(now))
-            requestChopSnapshot(now);
+        fChopEditor.idle(now);
         if (fEditorSnapshot.pending() && now >= fEditorSnapshotRetryDeadline)
             sendEditorSnapshotRequest(now);
-        if (fDetailDirty && now >= fDetailRequestDeadline)
+        if (fWaveformDetail.requestDue(now))
             requestWaveformDetail();
         updateLocalPlayhead(now);
     }
@@ -977,19 +885,21 @@ protected:
             fPadColorMenuOpen, fPadColorMenu,
             std::span<const sms::ui::ContextMenuItemView>{colorMenuItems},
             fHover.target(),
-            fMixerValueEntryTarget, fMixerValueEntryText.data(),
-            fEditorMode, fChopEditorMode, fChopSplitMode, fPlayOnSelect,
+            fMixerValueEntry.target(), fMixerValueEntry.text(),
+            fEditorMode, fChopEditor.active(), fChopEditor.split(), fPlayOnSelect,
             fAnyPlaybackActive, fHasWaveform,
             fInputLevels, fOutputLevels, fPadState, fPadStatus, fPadColors,
-            fEditorSettings, fMixerSettings, fWaveform, fPlaybackPosition,
+            fEditorSettings, fMixerSettings, fWaveform, fPlaybackIndicator.position(),
             std::span<const sms::audio::WaveformSummary>{
-                fChopSession.waveforms.data(), fChopSession.waveforms.size()},
+                fChopEditor.waveforms().data(), fChopEditor.waveforms().size()},
             std::span<const std::int64_t>{
-                fChopSession.offsets.data(), fChopSession.offsets.size()},
-            fChopFirstPad, fSelectedPad, fChopPreviewPosition, fChopPreviewPad,
-            fChopActiveBoundary, chopReady(),
-            chopDirty(), fChopApplying, canNavigateChop(-1), canNavigateChop(1), fStatus,
-            fWaveformViewport, fDetailReady ? &fWaveformDetail : nullptr,
+                fChopEditor.offsets().data(), fChopEditor.offsets().size()},
+            fChopEditor.firstPad(), fSelectedPad, fChopEditor.previewPosition(), fChopEditor.previewPad(),
+            fChopEditor.activeBoundary(), fChopEditor.ready(),
+            fChopEditor.dirty(), fChopEditor.applying(),
+            fChopEditor.canNavigate(-1, globalPad(0), visiblePadCount()),
+            fChopEditor.canNavigate(1, globalPad(0), visiblePadCount()), fStatus,
+            fWaveformDetail.viewport(), fWaveformDetail.detail(),
             &fLogo,
         };
         midichopper::ui::draw(*this, view);
@@ -1013,7 +923,7 @@ protected:
                 return captured;
             }
             const auto clicked = resolveInteractiveTarget(x, y);
-            cancelMixerValueEntry();
+            fMixerValueEntry.cancel();
             if (resetMixerControl(clicked)) {
                 fResetPointerCaptured = true;
                 return true;
@@ -1025,8 +935,8 @@ protected:
         {
             if (!ev.press)
                 return fPadContextMenuOpen;
-            cancelMixerValueEntry();
-            if (fArm || fChopEditorMode)
+            fMixerValueEntry.cancel();
+            if (fArm || fChopEditor.active())
                 return false;
 
             const int visualIndex = fEditorMode
@@ -1067,8 +977,8 @@ protected:
         if (ev.press)
         {
             const auto clicked = resolveInteractiveTarget(x, y);
-            if (fMixerValueEntryTarget.valid() && clicked != fMixerValueEntryTarget)
-                cancelMixerValueEntry();
+            if (fMixerValueEntry.target().valid() && clicked != fMixerValueEntry.target())
+                fMixerValueEntry.cancel();
             if (fHover.update(clicked))
                 requestRepaint();
             if (midichopper::ui::isTarget(clicked,
@@ -1155,43 +1065,40 @@ protected:
                 requestRepaint();
                 return true;
             }
-            if (fChopEditorMode)
+            if (fChopEditor.active())
             {
                 if (beginViewportDrag(clicked, x, y))
                     return true;
                 if (midichopper::ui::isTarget(
                         clicked, midichopper::ui::InteractiveType::chopBoundary)) {
-                    fChopActiveBoundary = clicked.index;
-                    fChopDragStartX = x;
-                    fChopDragStartOffset =
-                        fChopSession.offsets[static_cast<std::size_t>(clicked.index)];
+                    fChopEditor.beginBoundaryDrag(clicked.index, x);
                     return true;
                 }
                 if (midichopper::ui::isTarget(
                         clicked, midichopper::ui::InteractiveType::chopPadPreview)) {
-                    previewChopPad(clicked.index);
+                    fChopEditor.preview(clicked.index);
                     return true;
                 }
                 if (midichopper::ui::isTarget(
                         clicked, midichopper::ui::InteractiveType::chopApply)) {
-                    if (chopDirty() && !fChopApplying)
-                        applyChops();
+                    if (fChopEditor.dirty() && !fChopEditor.applying())
+                        fChopEditor.apply();
                     return true;
                 }
                 if (midichopper::ui::isTarget(
                         clicked, midichopper::ui::InteractiveType::chopPrevious)) {
-                    navigateChopEditor(-1);
+                    fChopEditor.navigate(-1, globalPad(0), visiblePadCount());
                     return true;
                 }
                 if (midichopper::ui::isTarget(
                         clicked, midichopper::ui::InteractiveType::chopExit)) {
-                    if (!fChopApplying)
-                        cancelChopEditor();
+                    if (!fChopEditor.applying())
+                        fChopEditor.cancel();
                     return true;
                 }
                 if (midichopper::ui::isTarget(
                         clicked, midichopper::ui::InteractiveType::chopNext)) {
-                    navigateChopEditor(1);
+                    fChopEditor.navigate(1, globalPad(0), visiblePadCount());
                     return true;
                 }
                 return false;
@@ -1225,7 +1132,7 @@ protected:
                     std::chrono::steady_clock::now().time_since_epoch()).count();
                 if (midichopper::ui::isTarget(
                         clicked, midichopper::ui::InteractiveType::mixerValueLabel)) {
-                    if (clicked == fMixerValueEntryTarget)
+                    if (clicked == fMixerValueEntry.target())
                         return true;
                     if (fDoubleClick.press(clicked, {x, y},
                             static_cast<std::uint64_t>(now))) {
@@ -1347,7 +1254,7 @@ protected:
             }
             if (midichopper::ui::isTarget(
                     clicked, midichopper::ui::InteractiveType::globalMixerValueLabel)) {
-                if (clicked == fMixerValueEntryTarget)
+                if (clicked == fMixerValueEntry.target())
                     return true;
                 if (fDoubleClick.press(clicked, {x, y}, static_cast<std::uint64_t>(now))) {
                     fGlobalMixerDragIndex = -1;
@@ -1521,9 +1428,9 @@ protected:
             fPadContextPointerCaptured = false;
             return true;
         }
-        else if (fChopEditorMode && fChopActiveBoundary >= 0)
+        else if (fChopEditor.active() && fChopEditor.activeBoundary() >= 0)
         {
-            fChopActiveBoundary = -1;
+            fChopEditor.endBoundaryDrag();
             requestRepaint();
             return true;
         }
@@ -1598,19 +1505,9 @@ protected:
             updateViewportDrag(x, y);
             return true;
         }
-        if (fChopEditorMode && fChopActiveBoundary >= 0) {
-            const auto boundary = static_cast<std::size_t>(fChopActiveBoundary);
-            const auto total = midichopper::ui::chop::totalFrames(fChopSession.waveforms);
-            const auto delta = static_cast<std::int64_t>(std::llround(
-                (x - fChopDragStartX) * static_cast<double>(fWaveformViewport.zoomed()
-                    ? fWaveformViewport.end - fWaveformViewport.start : total) /
-                uiLayout::chopWaveform.width));
-            const auto requested = fChopDragStartOffset + delta;
-            fChopSession.offsets[boundary] = clampChopBoundaryOffset(
-                fChopActiveBoundary, requested);
-            updateChopMidiPreview();
-            fStatus[0] = '\0';
-            requestRepaint();
+        if (fChopEditor.active() && fChopEditor.activeBoundary() >= 0) {
+            fChopEditor.dragBoundary(x, uiLayout::chopWaveform.width,
+                                    fWaveformDetail.viewport());
             return true;
         }
         if (fEditorMode && fDragTarget != WaveformEditTarget::none) {
@@ -1683,17 +1580,16 @@ protected:
             return true;
         }
 
-        const auto waveformBounds = fChopEditorMode ? uiLayout::chopWaveform :
+        const auto waveformBounds = fChopEditor.active() ? uiLayout::chopWaveform :
             uiLayout::editorWaveform;
-        if ((fEditorMode || (fChopEditorMode && chopReady() && !fChopApplying)) &&
-            waveformBounds.contains({x, y}) && fWaveformViewport.total != 0U &&
+        if ((fEditorMode || (fChopEditor.active() && fChopEditor.ready() && !fChopEditor.applying())) &&
+            waveformBounds.contains({x, y}) && fWaveformDetail.viewport().total != 0U &&
             (ev.mod & (DGL_NAMESPACE::kModifierControl |
                        DGL_NAMESPACE::kModifierShift)) != 0U) {
             const bool changed = (ev.mod & DGL_NAMESPACE::kModifierControl) != 0U
-                ? fWaveformViewport.zoom(delta, x, waveformBounds)
-                : fWaveformViewport.pan(delta);
+                ? fWaveformDetail.zoom(delta, x, waveformBounds, std::chrono::steady_clock::now())
+                : fWaveformDetail.pan(delta, std::chrono::steady_clock::now());
             if (changed) {
-                scheduleWaveformDetail();
                 requestRepaint();
             }
             return true;
@@ -1701,21 +1597,15 @@ protected:
 
         if (midichopper::ui::isTarget(
                 hovered, midichopper::ui::InteractiveType::chopBoundary)) {
-            const auto boundary = static_cast<std::size_t>(hovered.index);
-            const auto requested = midichopper::ui::chop::wheelAdjustedBoundaryOffset(
-                fChopSession.waveforms, fChopSession.offsets, hovered.index, delta,
-                uiLayout::chopWaveform, fWaveformViewport);
-            fChopSession.offsets[boundary] = clampChopBoundaryOffset(hovered.index, requested);
-            updateChopMidiPreview();
-            fStatus[0] = '\0';
-            requestRepaint();
+            fChopEditor.wheelBoundary(hovered.index, delta, uiLayout::chopWaveform,
+                                     fWaveformDetail.viewport());
             return true;
         }
         if (midichopper::ui::isTarget(
                 hovered, midichopper::ui::InteractiveType::regionHandle)) {
             sms::ui::waveform::adjustRegionByWheel(
                 fEditorSettings, static_cast<WaveformEditTarget>(hovered.index), delta,
-                fWaveform.frames, uiLayout::editorWaveform, fWaveformViewport);
+                fWaveform.frames, uiLayout::editorWaveform, fWaveformDetail.viewport());
             commitEditorSettings();
             requestRepaint();
             return true;
@@ -1877,8 +1767,8 @@ protected:
             // Consume Space even under overlays or numeric entry. X11 repeat
             // includes synthetic releases, so suppress it while Space is held.
             getWindow().setIgnoringKeyRepeat(ev.press);
-            const bool blocked = fMixerValueEntryTarget.valid() || fMenuOpen ||
-                fPadContextMenuOpen || fChopEditorMode ||
+            const bool blocked = fMixerValueEntry.target().valid() || fMenuOpen ||
+                fPadContextMenuOpen || fChopEditor.active() ||
                 fPendingFileDialog != PendingFileDialog::none;
             const auto action = fSpaceKey.update(ev.press, blocked, fArm);
             if (action == midichopper::ui::SpaceAction::playStop)
@@ -1894,27 +1784,19 @@ protected:
             }
             return true;
         }
-        if (fMixerValueEntryTarget.valid()) {
+        if (fMixerValueEntry.target().valid()) {
             if (!ev.press)
                 return true;
             if (ev.key == DGL_NAMESPACE::kKeyEscape) {
-                cancelMixerValueEntry();
+                fMixerValueEntry.cancel();
                 requestRepaint();
             } else if (ev.key == DGL_NAMESPACE::kKeyEnter) {
                 commitMixerValueEntry();
             } else if (ev.key == DGL_NAMESPACE::kKeyBackspace) {
-                if (fMixerValueEntryReplaceOnType) {
-                    fMixerValueEntryLength = 0U;
-                    fMixerValueEntryReplaceOnType = false;
-                } else if (fMixerValueEntryLength > 0U) {
-                    --fMixerValueEntryLength;
-                }
-                fMixerValueEntryText[fMixerValueEntryLength] = '\0';
+                fMixerValueEntry.backspace();
                 requestRepaint();
             } else if (ev.key == DGL_NAMESPACE::kKeyDelete) {
-                fMixerValueEntryLength = 0U;
-                fMixerValueEntryText[0] = '\0';
-                fMixerValueEntryReplaceOnType = false;
+                fMixerValueEntry.clear();
                 requestRepaint();
             }
             return true;
@@ -1926,8 +1808,8 @@ protected:
             requestRepaint();
             return true;
         }
-        if (fChopEditorMode && !fChopApplying) {
-            cancelChopEditor();
+        if (fChopEditor.active() && !fChopEditor.applying()) {
+            fChopEditor.cancel();
             return true;
         }
         return false;
@@ -1937,32 +1819,10 @@ protected:
     {
         if (ev.character == ' ')
             return true;
-        if (!fMixerValueEntryTarget.valid())
+        if (!fMixerValueEntry.target().valid())
             return false;
-        if (ev.character > 0x7fU)
-            return true;
-        const char character = static_cast<char>(ev.character);
-        const bool digit = character >= '0' && character <= '9';
-        const bool decimalPoint = character == '.';
-        const bool sign = character == '+' || character == '-';
-        if (!digit && !decimalPoint && !sign)
-            return true;
-
-        if (fMixerValueEntryReplaceOnType) {
-            fMixerValueEntryLength = 0U;
-            fMixerValueEntryText[0] = '\0';
-            fMixerValueEntryReplaceOnType = false;
-        }
-        const std::string_view current{
-            fMixerValueEntryText.data(), fMixerValueEntryLength};
-        if ((decimalPoint && current.find('.') != std::string_view::npos) ||
-            (sign && fMixerValueEntryLength != 0U) ||
-            fMixerValueEntryLength + 1U >= fMixerValueEntryText.size())
-            return true;
-
-        fMixerValueEntryText[fMixerValueEntryLength++] = character;
-        fMixerValueEntryText[fMixerValueEntryLength] = '\0';
-        requestRepaint();
+        if (fMixerValueEntry.type(ev.character))
+            requestRepaint();
         return true;
     }
 
@@ -2084,9 +1944,6 @@ private:
     PendingFileDialog fActiveFileAction = PendingFileDialog::none;
     int fActiveFilePad = -1;
     bool fEditorMode;
-    bool fChopEditorMode = false;
-    bool fChopSplitMode = false;
-    std::uint64_t fSplitPlanId = 0U;
     bool fPlayOnSelect;
     WaveformEditTarget fDragTarget;
     int fMixerDragIndex;
@@ -2105,11 +1962,7 @@ private:
     midichopper::ui::KnobAdjustment fGlobalMixerDragAdjustment =
         midichopper::ui::KnobAdjustment::normal;
     midichopper::ui::DoubleClickTracker fDoubleClick;
-    sms::ui::InteractiveTarget fMixerValueEntryTarget{};
-    std::array<char, 24> fMixerValueEntryText{};
-    std::size_t fMixerValueEntryLength = 0U;
-    int fMixerValueEntryPad = -1;
-    bool fMixerValueEntryReplaceOnType = false;
+    midichopper::ui::MixerValueEntry fMixerValueEntry;
     float fDragStartX;
     float fDragStartY;
     bool fHasWaveform;
@@ -2136,30 +1989,9 @@ private:
     sms::dsp::SampleMixerSettings fMixerSettings{};
     int fMixerSettingsPad = -1;
     sms::audio::WaveformSummary fWaveform{};
-    sms::ui::waveform::Viewport fWaveformViewport{};
-    sms::audio::WaveformSummary fWaveformDetail{};
-    midichopper::plugin::WaveformDetailRequest fDetailRequest{};
-    std::uint64_t fDetailSequence = 0U;
-    bool fDetailReady = false;
-    bool fDetailDirty = false;
-    std::chrono::steady_clock::time_point fDetailRequestDeadline{};
-    midichopper::ui::ChopEditorSession fChopSession;
-    int fChopFirstPad = -1;
-    int fChopActiveBoundary = -1;
-    float fChopDragStartX = 0.0f;
-    std::int64_t fChopDragStartOffset = 0;
-    bool fChopPlaying = false;
-    int fChopPreviewPad = -1;
-    bool fChopApplying = false;
-    float fChopPreviewPosition = 0.0f;
-    float fPlaybackPosition = 0.0f;
-    bool fLocalPlayheadActive = false;
-    bool fLocalPlayheadAwaitingSettings = false;
-    int fLocalPlayheadPad = -1;
-    float fLocalPlayheadFraction = 0.0f;
-    std::chrono::steady_clock::time_point fLocalPlayheadTick{};
-    std::chrono::steady_clock::time_point fLocalPlayheadStarted{};
-    std::chrono::steady_clock::time_point fLocalPlayheadClearDeadline{};
+    midichopper::ui::WaveformDetailSession fWaveformDetail;
+    midichopper::ui::ChopEditorController fChopEditor{*this};
+    midichopper::ui::PlaybackIndicator fPlaybackIndicator;
     char fStatus[160];
 
     [[nodiscard]] sms::ui::InteractiveTarget
@@ -2173,20 +2005,22 @@ private:
         const auto envelope = envelopeGraphGeometry();
         midichopper::ui::InteractionContext context;
         context.editorMode = fEditorMode;
-        context.chopEditorMode = fChopEditorMode;
-        context.chopSplitMode = fChopSplitMode;
+        context.chopEditorMode = fChopEditor.active();
+        context.chopSplitMode = fChopEditor.split();
         context.menuOpen = fMenuOpen;
         context.padContextMenuOpen = fPadContextMenuOpen;
         context.padColorMenuOpen = fPadColorMenuOpen;
         context.armed = fArm;
         context.fixedCapture = fRecordMode >= 0.5f;
         context.captureActive = fArm && fCurrentPad >= 0;
-        context.chopReady = chopReady();
-        context.chopApplying = fChopApplying;
-        context.chopApplyEnabled = chopReady() && chopDirty() && !fChopApplying;
-        context.chopPreviousEnabled = canNavigateChop(-1) && !fChopApplying;
-        context.chopExitEnabled = !fChopApplying;
-        context.chopNextEnabled = canNavigateChop(1) && !fChopApplying;
+        context.chopReady = fChopEditor.ready();
+        context.chopApplying = fChopEditor.applying();
+        context.chopApplyEnabled = fChopEditor.ready() && fChopEditor.dirty() && !fChopEditor.applying();
+        context.chopPreviousEnabled =
+            fChopEditor.canNavigate(-1, globalPad(0), visiblePadCount()) && !fChopEditor.applying();
+        context.chopExitEnabled = !fChopEditor.applying();
+        context.chopNextEnabled =
+            fChopEditor.canNavigate(1, globalPad(0), visiblePadCount()) && !fChopEditor.applying();
         context.padLayout = fLayout;
         context.padContextMenu = fPadContextMenu;
         context.padContextMenuEnabled = menuEnabled;
@@ -2194,9 +2028,9 @@ private:
         context.padColorMenuItemCount = static_cast<int>(kPadColorMenuItemCount);
         context.editorSettings = &fEditorSettings;
         context.envelope = &envelope;
-        context.chopWaveforms = fChopSession.waveforms;
-        context.chopOffsets = fChopSession.offsets;
-        context.waveformViewport = fWaveformViewport;
+        context.chopWaveforms = fChopEditor.waveforms();
+        context.chopOffsets = fChopEditor.offsets();
+        context.waveformViewport = fWaveformDetail.viewport();
         return midichopper::ui::interactiveTargetAt({x, y}, context);
     }
 
@@ -2228,8 +2062,8 @@ private:
         fViewportDrag = clicked.type;
         if (midichopper::ui::isTarget(clicked,
                 midichopper::ui::InteractiveType::waveformScroll)) {
-            const auto track = fChopEditorMode ? uiLayout::chopScroll : uiLayout::editorScroll;
-            const auto thumb = fWaveformViewport.scrollThumb(track);
+            const auto track = fChopEditor.active() ? uiLayout::chopScroll : uiLayout::editorScroll;
+            const auto thumb = fWaveformDetail.viewport().scrollThumb(track);
             fViewportScrollGrabX = thumb.contains({x, y})
                 ? x - thumb.x : thumb.width * 0.5f;
         }
@@ -2242,22 +2076,21 @@ private:
         bool changed = false;
         if (fViewportDrag == static_cast<int>(
                 midichopper::ui::InteractiveType::waveformZoom)) {
-            const auto track = fChopEditorMode ? uiLayout::chopZoom : uiLayout::editorZoom;
-            changed = fWaveformViewport.setZoomPosition(std::clamp(
+            const auto track = fChopEditor.active() ? uiLayout::chopZoom : uiLayout::editorZoom;
+            changed = fWaveformDetail.setZoomPosition(std::clamp(
                 (track.y + track.height - 6.0f - y) / (track.height - 12.0f),
-                0.0f, 1.0f));
+                0.0f, 1.0f), std::chrono::steady_clock::now());
         } else if (fViewportDrag == static_cast<int>(
                 midichopper::ui::InteractiveType::waveformScroll)) {
-            const auto track = fChopEditorMode ? uiLayout::chopScroll : uiLayout::editorScroll;
-            const auto thumb = fWaveformViewport.scrollThumb(track);
+            const auto track = fChopEditor.active() ? uiLayout::chopScroll : uiLayout::editorScroll;
+            const auto thumb = fWaveformDetail.viewport().scrollThumb(track);
             if (track.width > thumb.width)
-                changed = fWaveformViewport.setScrollPosition(
-                    (x - fViewportScrollGrabX - track.x) / (track.width - thumb.width));
+                changed = fWaveformDetail.setScrollPosition(
+                    (x - fViewportScrollGrabX - track.x) / (track.width - thumb.width),
+                    std::chrono::steady_clock::now());
         }
-        if (changed) {
-            scheduleWaveformDetail();
+        if (changed)
             requestRepaint();
-        }
     }
 
     void updateMainSliderDrag(const float x)
@@ -2277,17 +2110,6 @@ private:
                     uiLayout::preRoll(fRecordMode >= 0.5f),
                     parameterRanges::preRollMs, true));
         }
-    }
-
-    [[nodiscard]] std::int64_t clampChopBoundaryOffset(
-        const int boundary, const std::int64_t requested) const noexcept
-    {
-        const auto clamped = midichopper::ui::chop::clampBoundaryOffset(
-            fChopSession.waveforms, fChopSession.offsets, boundary, requested);
-        if (!fChopSplitMode || boundary != 0 || fChopSession.waveforms[0].frames < 2U)
-            return clamped;
-        const auto original = static_cast<std::int64_t>(fChopSession.waveforms[0].frames);
-        return std::clamp(clamped, 1 - original, std::int64_t{-1});
     }
 
     void openPadContextMenu(const int pad, const sms::ui::Point anchor)
@@ -2526,7 +2348,7 @@ private:
         case PadMenuAction::adjustCutPoints: {
             const int pad = fPadContextTarget;
             closePadContextMenu();
-            beginChopEditor(pad);
+            fChopEditor.open(pad, globalPad(0), visiblePadCount());
             return;
         }
         case PadMenuAction::splitSample: {
@@ -2900,73 +2722,22 @@ private:
 
     void startLocalPlayhead(const int pad)
     {
-        if (pad < 0 || pad >= static_cast<int>(midichopper::kPadCount))
-            return;
-        const auto now = std::chrono::steady_clock::now();
-        if (fLocalPlayheadActive && fLocalPlayheadPad == pad &&
-            now - fLocalPlayheadStarted < std::chrono::milliseconds(150))
-            return;
-        fLocalPlayheadPad = pad;
-        fLocalPlayheadAwaitingSettings = fEditorSettingsPad != pad;
-        fLocalPlayheadFraction = fLocalPlayheadAwaitingSettings
-            ? 0.0f : sms::dsp::sanitize(fEditorSettings).start;
-        fLocalPlayheadActive = true;
-        fLocalPlayheadTick = now;
-        fLocalPlayheadStarted = now;
-        fLocalPlayheadClearDeadline = {};
-        fPlaybackPosition = static_cast<float>(pad + 1) + fLocalPlayheadFraction;
-        if (fEditorMode)
+        if (fPlaybackIndicator.start(pad, fEditorSettingsPad, fEditorSettings,
+                                     std::chrono::steady_clock::now()) && fEditorMode)
             requestRepaint();
     }
 
     void stopLocalPlayhead(const bool holdFinal)
     {
-        fLocalPlayheadActive = false;
-        fLocalPlayheadAwaitingSettings = false;
-        if (holdFinal && fLocalPlayheadPad >= 0) {
-            fLocalPlayheadFraction = std::min(fLocalPlayheadFraction, 0.985f);
-            fPlaybackPosition = static_cast<float>(fLocalPlayheadPad + 1) +
-                                fLocalPlayheadFraction;
-            fLocalPlayheadClearDeadline = std::chrono::steady_clock::now() +
-                                           std::chrono::milliseconds(100);
-        } else {
-            fLocalPlayheadPad = -1;
-            fPlaybackPosition = 0.0f;
-            fLocalPlayheadClearDeadline = {};
-        }
+        fPlaybackIndicator.stop(holdFinal, std::chrono::steady_clock::now());
         if (fEditorMode)
             requestRepaint();
     }
 
     void updateLocalPlayhead(const std::chrono::steady_clock::time_point now)
     {
-        if (!fLocalPlayheadActive) {
-            if (fLocalPlayheadClearDeadline.time_since_epoch().count() != 0 &&
-                now >= fLocalPlayheadClearDeadline)
-                stopLocalPlayhead(false);
-            return;
-        }
-        if (fLocalPlayheadAwaitingSettings || fLocalPlayheadPad != fSelectedPad ||
-            !fHasWaveform || fWaveform.frames == 0U || fWaveform.sampleRate <= 1.0) {
-            fLocalPlayheadTick = now;
-            return;
-        }
-        const double elapsed = std::chrono::duration<double>(now - fLocalPlayheadTick).count();
-        fLocalPlayheadTick = now;
-        const auto playback = sms::dsp::sanitize(fEditorSettings);
-        const auto mixer = sms::dsp::sanitize(fMixerSettings);
-        const double tuneRatio = std::exp2(
-            static_cast<double>(mixer.tuneSemitones + fGlobalTune) / 12.0);
-        fLocalPlayheadFraction = sms::ui::waveform::advancePlaybackFraction(
-            fLocalPlayheadFraction, elapsed, fWaveform.frames, fWaveform.sampleRate,
-            tuneRatio, playback.end);
-        fPlaybackPosition = static_cast<float>(fLocalPlayheadPad + 1) +
-                            fLocalPlayheadFraction;
-        if (fLocalPlayheadFraction >= playback.end - 1.0e-6f) {
-            stopLocalPlayhead(true);
-            return;
-        }
-        if (fEditorMode)
+        if (fPlaybackIndicator.update(now, fSelectedPad, fHasWaveform, fWaveform,
+                fEditorSettings, fMixerSettings, fGlobalTune) && fEditorMode)
             requestRepaint();
     }
 
@@ -2984,7 +2755,7 @@ private:
     void requestWaveform()
     {
 #if DISTRHO_PLUGIN_WANT_STATE
-        resetWaveformViewport();
+        fWaveformDetail.reset();
         if (!hasSelectedPad())
             return;
         fEditorSnapshot.begin(fSelectedPad);
@@ -2992,40 +2763,17 @@ private:
 #endif
     }
 
-    void resetWaveformViewport() noexcept
-    {
-        ++fDetailSequence;
-        fWaveformViewport.reset(0U);
-        fDetailReady = false;
-        fDetailDirty = false;
-    }
-
-    void scheduleWaveformDetail() noexcept
-    {
-        fDetailReady = false;
-        fDetailDirty = fWaveformViewport.zoomed();
-        fDetailRequestDeadline = std::chrono::steady_clock::now() +
-            std::chrono::milliseconds(50);
-    }
-
     void requestWaveformDetail()
     {
 #if DISTRHO_PLUGIN_WANT_STATE
-        if (!fWaveformViewport.zoomed() || (!fEditorMode && !fChopEditorMode)) {
-            fDetailDirty = false;
-            return;
+        const auto request = fWaveformDetail.request(
+            fChopEditor.active() ? fChopEditor.firstPad() : fSelectedPad,
+            static_cast<std::uint32_t>(fChopEditor.active() && !fChopEditor.split() ? 3 : 1),
+            fEditorMode || fChopEditor.active(), std::chrono::steady_clock::now());
+        if (request) {
+            const auto encoded = midichopper::plugin::encodeWaveformDetailRequest(*request);
+            setState("waveform_detail_request", encoded.c_str());
         }
-        const int firstPad = fChopEditorMode ? fChopFirstPad : fSelectedPad;
-        if (firstPad < 0)
-            return;
-        fDetailRequest = midichopper::ui::waveformDetailRequest(
-            fDetailRequest, fDetailSequence, static_cast<std::uint32_t>(firstPad),
-            static_cast<std::uint32_t>(fChopEditorMode && !fChopSplitMode ? 3 : 1),
-            fWaveformViewport.start, fWaveformViewport.end);
-        const auto encoded = midichopper::plugin::encodeWaveformDetailRequest(fDetailRequest);
-        fDetailRequestDeadline = std::chrono::steady_clock::now() +
-            kEditorSnapshotRetryInterval;
-        setState("waveform_detail_request", encoded.c_str());
 #endif
     }
 
@@ -3047,48 +2795,21 @@ private:
         if (!fEditorSnapshot.readyFor(fSelectedPad))
             return;
         fWaveform = fEditorSnapshot.waveform();
-        fWaveformViewport.reset(fWaveform.frames);
+        fWaveformDetail.reset(fWaveform.frames);
         fHasWaveform = fWaveform.frames != 0U;
         fEditorSettings = fEditorSnapshot.playback();
         fEditorSettingsPad = fSelectedPad;
         fMixerSettings = fEditorSnapshot.mixer();
         fMixerSettingsPad = fSelectedPad;
-        if (fLocalPlayheadAwaitingSettings && fLocalPlayheadPad == fSelectedPad) {
-            fLocalPlayheadFraction = fEditorSettings.start;
-            fPlaybackPosition = static_cast<float>(fSelectedPad + 1) +
-                                fEditorSettings.start;
-            fLocalPlayheadAwaitingSettings = false;
-            fLocalPlayheadTick = std::chrono::steady_clock::now();
-        }
+        fPlaybackIndicator.acceptSettings(fSelectedPad, fEditorSettings,
+                                          std::chrono::steady_clock::now());
         fEditorSnapshot.complete();
-    }
-
-    [[nodiscard]] bool chopDirty() const noexcept
-    {
-        if (fChopSplitMode)
-            return chopReady();
-        return std::any_of(fChopSession.offsets.begin(), fChopSession.offsets.end(),
-            [](const std::int64_t offset) { return offset != 0; });
-    }
-
-    [[nodiscard]] bool chopReady() const noexcept
-    {
-        return fChopSplitMode ? midichopper::ui::chop::ready(fChopSession.waveforms) : fChopSession.ready();
-    }
-
-    [[nodiscard]] bool canNavigateChop(const int direction) const noexcept
-    {
-        if (!fChopEditorMode || direction == 0)
-            return false;
-        return midichopper::ui::chop::navigationTarget(
-            localPadForGlobalPad(fSelectedPad), direction, visiblePadCount()) >= 0;
     }
 
     void beginSampleEditor(const int targetPad)
     {
         const int pad = clampPad(static_cast<float>(targetPad));
         fEditorMode = true;
-        fChopEditorMode = false;
         fStatus[0] = '\0';
         if (midichopper::ui::editorPadSelectionChanged(fSelectedPad, pad))
             selectEditorPad(pad);
@@ -3097,248 +2818,46 @@ private:
         requestRepaint();
     }
 
-    void resetChopWaveforms()
-    {
-        resetWaveformViewport();
-        fChopSession.waveforms.fill({});
-        fChopSession.offsets.fill(0);
-        if (!fChopSplitMode && fChopFirstPad >= 0)
-            fChopSession.begin(static_cast<std::uint32_t>(fChopFirstPad));
-        else
-            fChopSession.cancel();
-        fChopActiveBoundary = -1;
-        fChopPreviewPosition = 0.0f;
-        fChopPreviewPad = -1;
-    }
-
-    void beginChopEditor(const int targetPad)
-    {
-        const int localPad = localPadForGlobalPad(targetPad);
-        if (targetPad < 0 || localPad <= 0 || localPad + 1 >= visiblePadCount())
-            return;
-        stopChopPreview();
-        fEditorMode = false;
-        fChopEditorMode = true;
-        fChopSplitMode = false;
-        fSplitPlanId = 0U;
-        fEditorSnapshot.complete();
-        fSelectedPad = targetPad;
-        fChopFirstPad = targetPad - 1;
-        resetChopWaveforms();
-        fChopApplying = false;
-        fStatus[0] = '\0';
-        muteChopMidiPreview();
-        requestRepaint();
-    }
-
-    void beginSplitEditor(const midichopper::plugin::SplitPlanReady& plan)
-    {
-        if (plan.targetPad >= midichopper::kPadCount ||
-            plan.emptyPad <= plan.targetPad || plan.emptyPad >= midichopper::kPadCount ||
-            plan.waveform.pad != plan.targetPad || plan.waveform.frames < 2U)
-            return;
-        stopChopPreview();
-        fEditorMode = false;
-        fChopEditorMode = true;
-        fChopSplitMode = true;
-        fEditorSnapshot.complete();
-        fSelectedPad = static_cast<int>(plan.targetPad);
-        fChopFirstPad = static_cast<int>(plan.targetPad);
-        fSplitPlanId = plan.planId;
-        resetChopWaveforms();
-        fChopSession.waveforms[0] = plan.waveform;
-        fChopSession.waveforms[1] = {plan.targetPad + 1U, 0U,
-                             plan.waveform.sampleRate, {}, {}};
-        fChopSession.waveforms[2] = {plan.targetPad + 1U, 0U,
-                             plan.waveform.sampleRate, {}, {}};
-        fWaveformViewport.reset(plan.waveform.frames);
-        const auto midpoint = static_cast<std::int64_t>(plan.waveform.frames / 2U);
-        fChopSession.offsets[0] = midpoint - static_cast<std::int64_t>(plan.waveform.frames);
-        fChopApplying = false;
-        fStatus[0] = '\0';
-        updateChopMidiPreview();
-        requestRepaint();
-    }
-
-    void navigateChopEditor(const int direction)
-    {
-        if (fChopApplying || !canNavigateChop(direction))
-            return;
-        const int nextLocalPad = midichopper::ui::chop::navigationTarget(
-            localPadForGlobalPad(fSelectedPad), direction, visiblePadCount());
-        if (fChopSplitMode)
-            cancelSplitPlan(fSplitPlanId);
-        beginChopEditor(globalPad(nextLocalPad));
-    }
-
-    void cancelSplitPlan(const std::uint64_t planId)
+    void sendChopState(const char* const key, const std::string& value) override
     {
 #if DISTRHO_PLUGIN_WANT_STATE
-        if (planId != 0U) {
-            midichopper::plugin::PadStructureRequest request;
-            request.action = PadStructureAction::cancelSplit;
-            request.planId = planId;
-            const auto encoded = encodePadStructureRequest(request);
-            setState("pad_structure_request", encoded.c_str());
-        }
+        setState(key, value.c_str());
 #else
-        static_cast<void>(planId);
+        static_cast<void>(key);
+        static_cast<void>(value);
 #endif
     }
 
-    void cancelChopEditor()
+    void selectChopPad(const int pad) override
     {
-        if (fChopSplitMode)
-            cancelSplitPlan(fSplitPlanId);
-        stopChopPreview();
-        disableChopMidiPreview();
-        fChopEditorMode = false;
-        fChopSplitMode = false;
-        fSplitPlanId = 0U;
-        fChopFirstPad = -1;
-        fChopSession.cancel();
-        fChopActiveBoundary = -1;
-        fChopApplying = false;
-        fStatus[0] = '\0';
+        fEditorMode = false;
+        fEditorSnapshot.complete();
+        fSelectedPad = pad;
+    }
+
+    void leaveChopEditor() override
+    {
         refreshSelectedWaveform();
+    }
+
+    void resetChopViewport(const std::uint64_t frames) override
+    {
+        fWaveformDetail.reset(frames);
+    }
+
+    void setChopStatus(const char* const message) override
+    {
+        copyString(fStatus, message);
+    }
+
+    void setChopStructureBusy(const bool busy) override
+    {
+        fPadStructureBusy = busy;
+    }
+
+    void repaintChopEditor() override
+    {
         requestRepaint();
-    }
-
-    void requestChopSnapshot(const std::chrono::steady_clock::time_point now)
-    {
-#if DISTRHO_PLUGIN_WANT_STATE
-        const auto encoded = midichopper::plugin::encodeChopSnapshotRequest(fChopSession.request(now));
-        setState("chop_snapshot_request", encoded.c_str());
-#else
-        static_cast<void>(now);
-#endif
-    }
-
-    void previewChopPad(const int padInEditor)
-    {
-#if DISTRHO_PLUGIN_WANT_STATE
-        if (!chopReady() || padInEditor < 0 || padInEditor >= 3) {
-            setLocalStatus("Non-empty samples must use one sample rate");
-            return;
-        }
-        const auto start = midichopper::ui::chop::adjustedStartFrame(
-            fChopSession.waveforms, fChopSession.offsets, padInEditor);
-        const auto frames = midichopper::ui::chop::adjustedFrames(
-            fChopSession.waveforms, fChopSession.offsets, padInEditor);
-        if (frames == 0U)
-            return;
-        const auto end = start + frames;
-        const auto request = midichopper::plugin::encodeChopPreviewRequest(
-            {true, static_cast<std::uint32_t>(fChopFirstPad),
-             fChopSplitMode ? 1U : 3U, start, end});
-        setState("chop_preview_request", request.c_str());
-        fChopPlaying = true;
-        fChopPreviewPad = padInEditor;
-        requestRepaint();
-#else
-        static_cast<void>(padInEditor);
-#endif
-    }
-
-    void stopChopPreview()
-    {
-#if DISTRHO_PLUGIN_WANT_STATE
-        const auto request = midichopper::plugin::encodeChopPreviewRequest(
-            {false, static_cast<std::uint32_t>(std::max(fChopFirstPad, 0)),
-             fChopSplitMode ? 1U : 3U, 0U, 0U});
-        setState("chop_preview_request", request.c_str());
-#endif
-        fChopPlaying = false;
-        fChopPreviewPad = -1;
-        requestRepaint();
-    }
-
-    void updateChopMidiPreview()
-    {
-#if DISTRHO_PLUGIN_WANT_STATE
-        if (!fChopEditorMode || fChopApplying || fChopFirstPad < 0 || !chopReady()) {
-            if (fChopEditorMode && fChopFirstPad >= 0)
-                muteChopMidiPreview();
-            else
-                disableChopMidiPreview();
-            return;
-        }
-        midichopper::plugin::ChopMidiPreviewRequest request;
-        request.active = true;
-        request.firstPad = static_cast<std::uint32_t>(fChopFirstPad);
-        request.sourcePadCount = fChopSplitMode ? 1U : 3U;
-        request.previewPadCount = fChopSplitMode ? 2U : 3U;
-        for (std::uint32_t pad = 0; pad < request.previewPadCount; ++pad) {
-            const auto localPad = static_cast<int>(pad);
-            request.sourceFrames[pad] = midichopper::ui::chop::adjustedStartFrame(
-                fChopSession.waveforms, fChopSession.offsets, localPad);
-            request.sourceEndFrames[pad] = request.sourceFrames[pad] +
-                midichopper::ui::chop::adjustedFrames(
-                    fChopSession.waveforms, fChopSession.offsets, localPad);
-        }
-        const auto encoded = midichopper::plugin::encodeChopMidiPreviewRequest(request);
-        setState("chop_midi_preview", encoded.c_str());
-#endif
-    }
-
-    void muteChopMidiPreview()
-    {
-#if DISTRHO_PLUGIN_WANT_STATE
-        if (fChopFirstPad < 0)
-            return;
-        midichopper::plugin::ChopMidiPreviewRequest request;
-        request.active = true;
-        request.firstPad = static_cast<std::uint32_t>(fChopFirstPad);
-        request.sourcePadCount = fChopSplitMode ? 1U : 3U;
-        const auto encoded = midichopper::plugin::encodeChopMidiPreviewRequest(request);
-        setState("chop_midi_preview", encoded.c_str());
-#endif
-    }
-
-    void disableChopMidiPreview()
-    {
-#if DISTRHO_PLUGIN_WANT_STATE
-        const auto encoded = midichopper::plugin::encodeChopMidiPreviewRequest({});
-        setState("chop_midi_preview", encoded.c_str());
-#endif
-    }
-
-    void applyChops()
-    {
-#if DISTRHO_PLUGIN_WANT_STATE
-        if (!chopReady()) {
-            setLocalStatus("Non-empty samples must use one sample rate");
-            return;
-        }
-        if (fChopSplitMode) {
-            const auto splitFrame = midichopper::ui::chop::adjustedBoundary(
-                fChopSession.waveforms, fChopSession.offsets, 0);
-            if (fSplitPlanId == 0U || splitFrame <= 0 ||
-                splitFrame >= static_cast<std::int64_t>(fChopSession.waveforms[0].frames)) {
-                setLocalStatus("Both split halves must contain audio");
-                return;
-            }
-            midichopper::plugin::PadStructureRequest request;
-            request.action = PadStructureAction::applySplit;
-            request.planId = fSplitPlanId;
-            request.splitFrame = static_cast<std::uint32_t>(splitFrame);
-            stopChopPreview();
-            muteChopMidiPreview();
-            fChopApplying = true;
-            fPadStructureBusy = true;
-            setLocalStatus("Applying sample split...");
-            const auto encoded = encodePadStructureRequest(request);
-            setState("pad_structure_request", encoded.c_str());
-            return;
-        }
-        const auto request = fChopSession.applyRequest();
-        stopChopPreview();
-        muteChopMidiPreview();
-        fChopApplying = true;
-        setLocalStatus("Applying chop boundaries...");
-        const auto encoded = midichopper::plugin::encodeChopApplyRequest(request);
-        setState("chop_apply_request", encoded.c_str());
-#endif
     }
 
     void refreshSelectedWaveform()
@@ -3362,7 +2881,7 @@ private:
         const int selectedBank = std::clamp(bank, 0, static_cast<int>(midichopper::kBankCount - 1));
         if (selectedBank == fBank || (fArm && fCurrentPad >= 0))
             return;
-        if (fChopEditorMode) {
+        if (fChopEditor.active()) {
             setLocalStatus("Apply or Exit before changing bank");
             return;
         }
@@ -3392,7 +2911,7 @@ private:
             static_cast<int>(parameterRanges::padLayout.maximum));
         if (selectedLayout == fLayout)
             return;
-        if (fChopEditorMode) {
+        if (fChopEditor.active()) {
             setLocalStatus("Apply or Exit before changing layout");
             return;
         }
@@ -3411,7 +2930,7 @@ private:
         if (fArm && fCurrentPad >= 0)
             return;
         const int selectedMode = mode == 0 ? 0 : 1;
-        if (fChopEditorMode) {
+        if (fChopEditor.active()) {
             setLocalStatus("Apply or Exit before changing MIDI mode");
             return;
         }
@@ -3458,9 +2977,9 @@ private:
             return;
 
         float displayedValue = 0.0f;
+        int entryPad = -1;
         if (midichopper::ui::isTarget(target, midichopper::ui::InteractiveType::levelValueLabel)) {
             displayedValue = target.index == 0 ? fMonitorGain : fGain;
-            fMixerValueEntryPad = -1;
         } else if (midichopper::ui::isTarget(
                 target, midichopper::ui::InteractiveType::globalMixerValueLabel)) {
             switch (target.index) {
@@ -3471,7 +2990,6 @@ private:
             case 4: displayedValue = fGlobalHighpass * 100.0f; break;
             default: return;
             }
-            fMixerValueEntryPad = -1;
         } else {
             switch (target.index) {
             case 0: displayedValue = fMixerSettings.gainDecibels; break;
@@ -3481,14 +2999,10 @@ private:
             case 4: displayedValue = fMixerSettings.highpass * 100.0f; break;
             default: return;
             }
-            fMixerValueEntryPad = fSelectedPad;
+            entryPad = fSelectedPad;
         }
 
-        std::snprintf(fMixerValueEntryText.data(), fMixerValueEntryText.size(),
-                      "%.6g", displayedValue);
-        fMixerValueEntryLength = std::strlen(fMixerValueEntryText.data());
-        fMixerValueEntryTarget = target;
-        fMixerValueEntryReplaceOnType = true;
+        fMixerValueEntry.begin(target, entryPad, displayedValue);
         fStatus[0] = '\0';
         // Embedded hosts can leave keyboard focus on their own proxy window
         // after the double-click, so explicitly focus the DGL child view.
@@ -3496,18 +3010,9 @@ private:
         requestRepaint();
     }
 
-    void cancelMixerValueEntry() noexcept
-    {
-        fMixerValueEntryTarget = sms::ui::kNoInteractiveTarget;
-        fMixerValueEntryText[0] = '\0';
-        fMixerValueEntryLength = 0U;
-        fMixerValueEntryPad = -1;
-        fMixerValueEntryReplaceOnType = false;
-    }
-
     void commitMixerValueEntry()
     {
-        const auto target = fMixerValueEntryTarget;
+        const auto target = fMixerValueEntry.target();
         if (!midichopper::ui::isMixerValueLabel(target) ||
             target.index < 0 || target.index >= 5)
             return;
@@ -3552,8 +3057,8 @@ private:
             default: return;
             }
         } else {
-            if (fMixerValueEntryPad != fSelectedPad) {
-                cancelMixerValueEntry();
+            if (fMixerValueEntry.pad() != fSelectedPad) {
+                fMixerValueEntry.cancel();
                 requestRepaint();
                 return;
             }
@@ -3577,15 +3082,13 @@ private:
             }
         }
 
-        const auto value = midichopper::ui::mixerValueFromText(
-            {fMixerValueEntryText.data(), fMixerValueEntryLength},
-            displayScale, minimum, maximum);
+        const auto value = fMixerValueEntry.value(displayScale, minimum, maximum);
         if (!value) {
             setLocalStatus("Enter a numeric mixer value");
             return;
         }
 
-        cancelMixerValueEntry();
+        fMixerValueEntry.cancel();
         if (global) {
             editParameter(parameter, true);
             setControlValue(parameter, *value);
@@ -3715,13 +3218,9 @@ private:
                     fEditorSettings = decoded;
                     fEditorSettingsPad = decodedPad;
                 }
-                if (!fEditorSnapshot.pending() && fLocalPlayheadAwaitingSettings &&
-                    fLocalPlayheadPad == decodedPad) {
-                    fLocalPlayheadFraction = decoded.start;
-                    fPlaybackPosition = static_cast<float>(pad + 1U) + decoded.start;
-                    fLocalPlayheadAwaitingSettings = false;
-                    fLocalPlayheadTick = std::chrono::steady_clock::now();
-                }
+                if (!fEditorSnapshot.pending())
+                    fPlaybackIndicator.acceptSettings(decodedPad, decoded,
+                                                      std::chrono::steady_clock::now());
             }
             return true;
         }
@@ -3831,7 +3330,7 @@ private:
             fDragTarget == WaveformEditTarget::regionEnd) {
             sms::ui::waveform::updateRegion(
                 fEditorSettings, fDragTarget, x, uiLayout::editorWaveform,
-                fWaveformViewport);
+                fWaveformDetail.viewport());
         } else if (fDragTarget >= WaveformEditTarget::attackSlider &&
                    fDragTarget <= WaveformEditTarget::releaseSlider) {
             const int slider = static_cast<int>(fDragTarget) -

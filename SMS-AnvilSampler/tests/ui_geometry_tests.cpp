@@ -2,7 +2,11 @@
 #include "ContextMenu.hpp"
 #include "ChopEditor.hpp"
 #include "ChopEditorSession.hpp"
+#include "ChopEditorController.hpp"
 #include "EditorSnapshotSession.hpp"
+#include "MixerValueEntry.hpp"
+#include "PlaybackIndicator.hpp"
+#include "WaveformDetailSession.hpp"
 #include "DSP/SamplePlaybackSettings.hpp"
 #include "Interaction.hpp"
 #include "HelpLinks.hpp"
@@ -19,6 +23,8 @@
 #include <array>
 #include <cstdlib>
 #include <iostream>
+#include <string>
+#include <vector>
 
 namespace {
 
@@ -1076,6 +1082,296 @@ void chopEditorGeometry()
           "editor waits for an empty neighbor waveform response");
 }
 
+class ChopHost final : public midichopper::ui::ChopEditorHost {
+public:
+    void sendChopState(const char* key, const std::string& value) override
+    { messages.emplace_back(key, value); }
+    void selectChopPad(const int pad) override { selectedPad = pad; }
+    void leaveChopEditor() override { ++exits; }
+    void resetChopViewport(const std::uint64_t frames) override { viewportFrames = frames; }
+    void setChopStatus(const char* message) override { status = message; }
+    void setChopStructureBusy(const bool value) override { busy = value; }
+    void repaintChopEditor() override { ++repaints; }
+    const std::string& last(const std::string_view key) const
+    {
+        for (auto it = messages.rbegin(); it != messages.rend(); ++it)
+            if (it->first == key)
+                return it->second;
+        check(false, "expected a workflow transport message");
+        std::abort();
+    }
+    std::vector<std::pair<std::string, std::string>> messages;
+    int selectedPad = -1;
+    int exits = 0;
+    int repaints = 0;
+    std::uint64_t viewportFrames = 0U;
+    std::string status;
+    bool busy = false;
+};
+
+void chopEditorWorkflow()
+{
+    using namespace std::chrono_literals;
+    namespace plugin = midichopper::plugin;
+    ChopHost host;
+    midichopper::ui::ChopEditorController editor(host);
+    const auto now = midichopper::ui::ChopEditorController::Clock::time_point{} + 1s;
+    editor.open(0, 0, 16);
+    check(!editor.active(), "ordinary cut editing requires both visible neighbors");
+    editor.open(5, 0, 16);
+    plugin::ChopMidiPreviewRequest midi;
+    check(editor.active() && !editor.split() && !editor.ready() && host.selectedPad == 5 &&
+          plugin::decodeChopMidiPreviewRequest(host.last("chop_midi_preview"), midi) &&
+          midi.active && midi.previewPadCount == 0U,
+          "opening the cut workflow selects its center and exclusively mutes MIDI while loading");
+    editor.idle(now);
+    plugin::ChopSnapshotReply reply;
+    check(plugin::decodeChopSnapshotRequest(host.last("chop_snapshot_request"), reply.request),
+          "the workflow requests a coherent three-pad baseline");
+    for (std::size_t pad = 0U; pad < reply.waveforms.size(); ++pad) {
+        reply.waveforms[pad].pad = reply.request.firstPad + static_cast<std::uint32_t>(pad);
+        reply.waveforms[pad].frames = 100U;
+        reply.waveforms[pad].sampleRate = 1000.0;
+        reply.generations[pad] = pad + 1U;
+    }
+    const auto baseline = plugin::encodeChopSnapshotReply(reply);
+    check(editor.acceptState("chop_snapshot_data", baseline.c_str()) && editor.ready() &&
+          host.viewportFrames == 300U &&
+          plugin::decodeChopMidiPreviewRequest(host.last("chop_midi_preview"), midi) &&
+          midi.previewPadCount == 3U,
+          "a coherent baseline enables the three proposed MIDI slices");
+    sms::ui::waveform::Viewport viewport;
+    viewport.reset(300U);
+    editor.beginBoundaryDrag(0, 0.0f);
+    editor.dragBoundary(25.0f, 300.0f, viewport);
+    editor.endBoundaryDrag();
+    check(editor.dirty() && editor.offsets()[0] == 25 &&
+          plugin::decodeChopMidiPreviewRequest(host.last("chop_midi_preview"), midi) &&
+          midi.sourceEndFrames[0] == 125U && midi.sourceFrames[1] == 125U,
+          "dragging a cut updates the owned baseline and audition map together");
+    editor.preview(1);
+    plugin::ChopPreviewRequest preview;
+    check(plugin::decodeChopPreviewRequest(host.last("chop_preview_request"), preview) &&
+          preview.play && preview.sourceFrame == 125U && preview.sourceEndFrame == 200U,
+          "pad preview uses the proposed raw source range");
+    editor.acceptPreviewPosition(6.5f);
+    check(editor.previewPad() == 1 && editor.previewPosition() == 6.5f,
+          "raw host playheads map into the proposed slice");
+    editor.apply();
+    plugin::ChopApplyRequest apply;
+    check(editor.applying() &&
+          plugin::decodeChopApplyRequest(host.last("chop_apply_request"), apply) &&
+          apply.sequence == reply.request.sequence && apply.boundaryOffsets[0] == 25 &&
+          apply.expectedGenerations[0] == 1U &&
+          plugin::decodeChopMidiPreviewRequest(host.last("chop_midi_preview"), midi) &&
+          midi.active && midi.previewPadCount == 0U,
+          "Apply sends the guarded baseline and exclusively mutes preview MIDI");
+    editor.navigate(-1, 0, 16);
+    check(host.selectedPad == 5, "navigation waits for Apply completion");
+    plugin::ChopApplyStatus status;
+    status.sequence = apply.sequence + 1U;
+    status.success = true;
+    auto encodedStatus = plugin::encodeChopStatus(status.sequence, status.success, status.message);
+    check(!editor.acceptState("chop_status", encodedStatus.c_str()) && editor.applying(),
+          "an earlier Apply result cannot finish the current edit");
+    status.sequence = apply.sequence;
+    encodedStatus = plugin::encodeChopStatus(status.sequence, status.success, status.message);
+    check(editor.acceptState("chop_status", encodedStatus.c_str()) && !editor.applying() &&
+          !editor.ready() && !editor.dirty() && host.viewportFrames == 0U &&
+          !editor.acceptState("chop_snapshot_data", baseline.c_str()),
+          "Apply completion clears offsets and waits for a fresh baseline");
+    editor.idle(now + 1s);
+    plugin::ChopSnapshotRequest refreshed;
+    check(plugin::decodeChopSnapshotRequest(host.last("chop_snapshot_request"), refreshed) &&
+          refreshed.sequence != reply.request.sequence,
+          "post-Apply refresh advances the baseline identity");
+    editor.navigate(-1, 0, 16);
+    check(host.selectedPad == 4 && editor.firstPad() == 3,
+          "ordinary navigation loads the neighboring center");
+    editor.cancel();
+    check(!editor.active() && host.exits == 1 &&
+          plugin::decodeChopMidiPreviewRequest(host.last("chop_midi_preview"), midi) && !midi.active,
+          "Exit releases exclusive MIDI and returns to the sample-selection workflow");
+}
+
+void splitEditorWorkflow()
+{
+    namespace plugin = midichopper::plugin;
+    ChopHost host;
+    midichopper::ui::ChopEditorController editor(host);
+    plugin::SplitPlanReady plan;
+    plan.planId = 42U;
+    plan.targetPad = 4U;
+    plan.emptyPad = 7U;
+    plan.waveform.pad = 4U;
+    plan.waveform.frames = 100U;
+    plan.waveform.sampleRate = 1000.0;
+    editor.openSplit(plan);
+    plugin::ChopMidiPreviewRequest midi;
+    check(editor.active() && editor.split() && editor.ready() && editor.dirty() &&
+          editor.offsets()[0] == -50 && editor.splitPlanId() == 42U &&
+          plugin::decodeChopMidiPreviewRequest(host.last("chop_midi_preview"), midi) &&
+          midi.sourcePadCount == 1U && midi.previewPadCount == 2U &&
+          midi.sourceFrames[1] == 50U && midi.sourceEndFrames[1] == 100U,
+          "split plans own two virtual slices from a single physical source");
+    editor.preview(1);
+    plugin::ChopPreviewRequest preview;
+    check(plugin::decodeChopPreviewRequest(host.last("chop_preview_request"), preview) &&
+          preview.padCount == 1U && preview.sourceFrame == 50U && preview.sourceEndFrame == 100U,
+          "split suffix preview never includes the physical neighbor");
+    sms::ui::waveform::Viewport viewport;
+    viewport.reset(100U);
+    editor.beginBoundaryDrag(0, 0.0f);
+    editor.dragBoundary(-100.0f, 100.0f, viewport);
+    check(editor.offsets()[0] == -99, "split edits retain at least one prefix frame");
+    editor.dragBoundary(100.0f, 100.0f, viewport);
+    editor.endBoundaryDrag();
+    check(editor.offsets()[0] == -1, "split edits retain at least one suffix frame");
+    editor.apply();
+    plugin::PadStructureRequest apply;
+    check(editor.applying() && host.busy &&
+          plugin::decodePadStructureRequest(host.last("pad_structure_request"), apply) &&
+          apply.action == plugin::PadStructureAction::applySplit &&
+          apply.planId == 42U && apply.splitFrame == 99U,
+          "split Apply retains its owned plan and adjusted cut");
+    check(!editor.acceptSplitStatus("PS1;O;41;S", 0, 16) &&
+          !editor.acceptSplitStatus("PS1;E;41;stale", 0, 16) && editor.applying(),
+          "unrelated split statuses cannot change the active plan");
+    check(editor.acceptSplitStatus("PS1;O;42;S", 0, 16) && editor.active() && !editor.split() &&
+          !editor.applying() && !host.busy && host.selectedPad == 5 && !editor.ready(),
+          "split completion opens a fresh ordinary editor around the resulting halves");
+    editor.openSplit(plan);
+    editor.navigate(-1, 0, 16);
+    check(plugin::decodePadStructureRequest(host.last("pad_structure_request"), apply) &&
+          apply.action == plugin::PadStructureAction::cancelSplit && apply.planId == 42U &&
+          !editor.split() && host.selectedPad == 3,
+          "split navigation cancels the owned plan before loading ordinary cuts");
+    editor.openSplit(plan);
+    const auto count = host.messages.size();
+    check(editor.acceptSplitStatus("PS1;E;42;Sample changed", 0, 16) &&
+          !editor.active() && editor.splitPlanId() == 0U && host.status == "Sample changed",
+          "a matching split error releases its plan and exits the workflow");
+    for (std::size_t index = count; index < host.messages.size(); ++index)
+        check(host.messages[index].first != "pad_structure_request",
+              "failed split plans are not cancelled again after the DSP discarded them");
+}
+
+void waveformDetailSession()
+{
+    using namespace std::chrono_literals;
+    midichopper::ui::WaveformDetailSession session;
+    const auto now = midichopper::ui::WaveformDetailSession::Time{} + 1s;
+    const sms::ui::Rect bounds{0.0f, 0.0f, 100.0f, 100.0f};
+    session.reset(1000U);
+    check(session.zoom(1.0f, 50.0f, bounds, now) &&
+          !session.requestDue(now + 49ms) && session.requestDue(now + 50ms),
+          "viewport changes debounce detail requests for 50 milliseconds");
+    const auto request = session.request(7, 3U, true, now + 50ms);
+    check(request && request->start == session.viewport().start &&
+          request->end == session.viewport().end && request->padCount == 3U &&
+          !session.requestDue(now + 299ms) && session.requestDue(now + 300ms),
+          "detail requests track the visible range and retry after 250 milliseconds");
+    const auto retry = session.request(7, 3U, true, now + 300ms);
+    check(retry && retry->sequence == request->sequence,
+          "detail retries retain their request identity");
+    midichopper::plugin::WaveformDetailReply reply{*request, {}};
+    ++reply.request.firstPad;
+    check(!session.accept(reply), "detail replies from a different pad are ignored");
+    reply.request = *request;
+    check(session.accept(reply) && session.detail() != nullptr &&
+          !session.requestDue(now + 1s),
+          "matching detail replies stop retries and become visible");
+    check(!session.pan(0.0f, now) && session.detail() != nullptr,
+          "an unchanged viewport retains its matching detail");
+    check(session.pan(-1.0f, now + 1s) && session.detail() == nullptr &&
+          !session.accept(reply),
+          "panning hides old detail and rejects the previous range");
+    const auto moved = session.request(7, 3U, true, now + 1050ms);
+    check(moved && moved->sequence != request->sequence,
+          "a changed viewport creates a new detail identity");
+    session.reset(1000U);
+    check(session.detail() == nullptr && !session.accept({*moved, {}}) &&
+          !session.requestDue(now + 2s),
+          "source resets invalidate previous replies and pending retries");
+    check(session.setZoomPosition(0.5f, now + 2s) &&
+          !session.request(7, 1U, false, now + 2050ms) &&
+          !session.requestDue(now + 3s),
+          "hidden editors cancel detail retries");
+}
+
+void playbackIndicator()
+{
+    using namespace std::chrono_literals;
+    midichopper::ui::PlaybackIndicator indicator;
+    const auto now = midichopper::ui::PlaybackIndicator::Time{} + 1s;
+    sms::audio::WaveformSummary waveform;
+    waveform.frames = 1000U;
+    waveform.sampleRate = 1000.0;
+    sms::dsp::SamplePlaybackSettings playback;
+    playback.start = 0.25f;
+    playback.end = 0.75f;
+    sms::dsp::SampleMixerSettings mixer;
+    check(indicator.start(7, -1, playback, now) && indicator.position() == 8.0f,
+          "audition starts at zero until coherent editor settings arrive");
+    check(!indicator.update(now + 1s, 7, true, waveform, playback, mixer, 0.0f) &&
+          indicator.position() == 8.0f,
+          "playhead waits for its settings without accumulating elapsed time");
+    indicator.acceptSettings(6, playback, now + 1s);
+    check(indicator.position() == 8.0f, "another pad's settings cannot move the playhead");
+    indicator.acceptSettings(7, playback, now + 1s);
+    check(indicator.position() == 8.25f &&
+          indicator.update(now + 1100ms, 7, true, waveform, playback, mixer, 0.0f) &&
+          std::abs(indicator.position() - 8.35f) < 1.0e-5f,
+          "matching settings restart the elapsed-time origin at the saved region start");
+    check(indicator.start(7, 7, playback, now + 2s) &&
+          !indicator.start(7, 7, playback, now + 2100ms),
+          "nearby duplicate playback notifications do not restart the indicator");
+    check(indicator.update(now + 2200ms, 7, true, waveform, playback, mixer, 12.0f) &&
+          std::abs(indicator.position() - 8.65f) < 1.0e-5f,
+          "playhead interpolation follows global varispeed tuning");
+    check(indicator.update(now + 2300ms, 7, true, waveform, playback, mixer, 12.0f) &&
+          indicator.position() == 8.75f &&
+          !indicator.update(now + 2399ms, 7, true, waveform, playback, mixer, 12.0f) &&
+          indicator.update(now + 2400ms, 7, true, waveform, playback, mixer, 12.0f) &&
+          indicator.position() == 0.0f,
+          "the final playhead position is held for 100 milliseconds before clearing");
+    indicator.acceptHostPosition(4.5f, now + 3s);
+    check(indicator.pad() == 3 && indicator.position() == 4.5f,
+          "host positions replace the local estimate");
+    indicator.stop(false, now + 3s);
+    check(indicator.pad() == -1 && indicator.position() == 0.0f,
+          "explicit Stop clears the indicator immediately");
+}
+
+void mixerValueEntry()
+{
+    midichopper::ui::MixerValueEntry entry;
+    const sms::ui::InteractiveTarget target{
+        static_cast<int>(midichopper::ui::InteractiveType::mixerValueLabel), 1};
+    entry.begin(target, 7, 25.0f);
+    check(entry.target() == target && entry.pad() == 7 &&
+          std::string_view(entry.text()) == "25",
+          "numeric entry retains its target pad and initial display value");
+    check(!entry.type('x') && std::string_view(entry.text()) == "25" &&
+          entry.type('-') && entry.type('1') && entry.type('.') && entry.type('5') &&
+          !entry.type('.') && !entry.type('+') && !entry.type(0x100U) &&
+          entry.value(0.01f, -1.0f, 1.0f) == -0.015f,
+          "first numeric character replaces the old value and later input follows decimal syntax");
+    entry.backspace();
+    check(std::string_view(entry.text()) == "-1.", "backspace removes one typed character");
+    entry.begin(target, 7, 25.0f);
+    entry.backspace();
+    check(std::string_view(entry.text()).empty() && !entry.value(1.0f, -1.0f, 1.0f),
+          "first backspace clears the selected initial value");
+    for (int index = 0; index < 23; ++index)
+        check(entry.type('1'), "numeric input fits its bounded text buffer");
+    check(!entry.type('1') && std::string_view(entry.text()).size() == 23U,
+          "numeric input reserves its terminating null byte");
+    entry.cancel();
+    check(!entry.target().valid() && entry.pad() == -1 && std::string_view(entry.text()).empty(),
+          "cancellation resets numeric entry state");
+}
+
 } // namespace
 
 int main()
@@ -1088,6 +1384,11 @@ int main()
     spaceKeyTracking();
     padPressTracking();
     editorSnapshotCollection();
+    chopEditorWorkflow();
+    splitEditorWorkflow();
+    waveformDetailSession();
+    playbackIndicator();
+    mixerValueEntry();
     wheelAdjustment();
     mainSliderDragging();
     levelFaderTargets();

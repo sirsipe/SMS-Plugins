@@ -32,6 +32,43 @@ void checkPadSettingsCleared(const midichopper::SamplerEngine& engine,
           mixer.dirty == 0.0f, message);
 }
 
+void retained_storage_reserve_and_bounded_reclamation() {
+    midichopper::SampleStoragePool pool(2U); // two logical blocks, four physical blocks
+    auto* oldCapture = pool.acquireCapture();
+    check(oldCapture && pool.ensureCaptureBlock(*oldCapture, 0U) &&
+          pool.ensureCaptureBlock(*oldCapture, 1U), "allocate complete original capture");
+    pool.writeCapture(*oldCapture, 0U, 0.25f, -0.5f);
+    oldCapture->references.fetch_add(1U); // retained reader
+    oldCapture->references.fetch_sub(1U); // release original pad
+
+    auto* replacement = pool.acquireCapture();
+    check(replacement && replacement != oldCapture &&
+          pool.ensureCaptureBlock(*replacement, 0U) &&
+          pool.ensureCaptureBlock(*replacement, 1U),
+          "physical reserve allows replacement beside retained original");
+    pool.writeCapture(*replacement, 0U, 0.75f, -0.125f);
+    pool.reclaimCapture(4U);
+    close(pool.sample(oldCapture, 0U, 0U), 0.25f, "retained original survives reserve writes");
+    close(pool.sample(oldCapture, 0U, 1U), -0.5f, "retained original preserves stereo");
+
+    auto* nextCapture = pool.acquireCapture();
+    check(nextCapture && !pool.ensureCaptureBlock(*nextCapture, 0U),
+          "physical exhaustion fails without reclaiming retained storage");
+    oldCapture->references.fetch_sub(1U); // reader finishes
+    pool.reclaimCapture(1U);
+    check(oldCapture->allocatedBlocks == 1U &&
+          pool.ensureCaptureBlock(*nextCapture, 0U) &&
+          !pool.ensureCaptureBlock(*nextCapture, 1U),
+          "one-block budget returns exactly one retired block");
+    close(pool.sample(replacement, 0U, 0U), 0.75f,
+          "bounded reclaim preserves active replacement");
+    pool.reclaimCapture(1U);
+    check(oldCapture->allocatedBlocks == 0U && pool.ensureCaptureBlock(*nextCapture, 1U),
+          "later callback returns remaining retired capacity");
+    replacement->references.fetch_sub(1U);
+    nextCapture->references.fetch_sub(1U);
+}
+
 void newSessionDefaults()
 {
     namespace ranges = midichopper::plugin::parameterRanges;
@@ -1739,6 +1776,7 @@ int main() {
     playback_and_rate_conversion();
     playback_trigger_notifications();
     shared_storage_blocks();
+    retained_storage_reserve_and_bounded_reclamation();
     maximum_voice_limit();
     stop_all_playback();
     sample_region_and_adsr();

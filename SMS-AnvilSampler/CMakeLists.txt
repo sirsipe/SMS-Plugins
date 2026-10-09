@@ -45,7 +45,8 @@ add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../Common-UI"
 
 add_library(anvilsampler_core STATIC
   src/core/PadClipboard.cpp
-  src/core/SamplerEngine.cpp)
+  src/core/SamplerEngine.cpp
+  src/core/SampleStoragePool.cpp)
 
 target_include_directories(anvilsampler_core
   PUBLIC
@@ -70,6 +71,7 @@ set(ANVILSAMPLER_DSP_SOURCES
   ../Common-Src/Audio/WavCodec.cpp
   src/plugin/MidichopperPlugin.cpp
   src/plugin/PadFileActions.cpp
+  src/plugin/PadWorkflows.cpp
   src/plugin/StateCodec.cpp)
 set(ANVILSAMPLER_ARTWORK_DIR "${PROJECT_BINARY_DIR}/generated")
 file(MAKE_DIRECTORY "${ANVILSAMPLER_ARTWORK_DIR}")
@@ -165,6 +167,17 @@ foreach(anvilsampler_target IN LISTS anvilsampler_targets)
 endforeach()
 
 if(BUILD_TESTING)
+  add_executable(anvilsampler_pad_workflow_tests
+    tests/pad_workflow_tests.cpp
+    src/plugin/PadWorkflows.cpp
+    src/plugin/PadFileActions.cpp
+    src/plugin/StateCodec.cpp
+    ../Common-Src/Audio/WavCodec.cpp)
+  target_include_directories(anvilsampler_pad_workflow_tests PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/plugin")
+  target_link_libraries(anvilsampler_pad_workflow_tests PRIVATE anvilsampler_core Threads::Threads)
+  add_test(NAME pad-workflows COMMAND anvilsampler_pad_workflow_tests)
+
   add_executable(anvilsampler_core_tests tests/core_tests.cpp)
   target_link_libraries(anvilsampler_core_tests PRIVATE anvilsampler_core)
   add_test(NAME sampler-core COMMAND anvilsampler_core_tests)

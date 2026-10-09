@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Configuration.hpp"
+#include "SampleStoragePool.hpp"
 #include "Audio/WaveformSummary.hpp"
 #include "DSP/AdsrEnvelope.hpp"
 #include "DSP/ColorEffects.hpp"
@@ -66,16 +67,6 @@ struct EngineSettings {
     float filterSlope = 0.0f;
     float dirty = 0.0f;
     std::uint8_t maxVoices = 1U;
-};
-
-/** A non-real-time copy of one pad, suitable for project state and UI work. */
-struct PadData {
-    double sampleRate = 48000.0;
-    std::uint32_t frames = 0;
-    float peak = 0.0f;
-    float rms = 0.0f;
-    std::vector<float> stereo;
-    std::uint64_t generation = 0; // transient snapshot revision; not serialized
 };
 
 struct PadMetadata {
@@ -260,18 +251,7 @@ public:
     void undoLastSlice() noexcept;
 
 private:
-    // Control owns imported allocations. Audio owns capture blocks and runtime state.
-    // Retaining a completed descriptor pins both its mapping and PCM without copying.
-    struct Storage {
-        std::atomic<std::uint32_t> references{0};
-        std::vector<float> stereo; // immutable imported/staged PCM
-        std::vector<std::uint32_t> blocks; // preallocated capture mapping
-        std::uint32_t allocatedBlocks = 0;
-        std::uint32_t frames = 0;
-        double sampleRate = 48000.0;
-        float peak = 0.0f;
-        float rms = 0.0f;
-    };
+    using Storage = SampleStoragePool::Storage;
     static_assert(std::atomic<bool>::is_always_lock_free);
     static_assert(std::atomic<std::uint32_t>::is_always_lock_free);
     static_assert(std::atomic<std::uint64_t>::is_always_lock_free);
@@ -317,7 +297,6 @@ private:
     [[nodiscard]] float snapshotSample(const Snapshot& snapshot, std::uint32_t frame,
                                        std::uint32_t channel) const noexcept;
     void collectImportedStorage();
-    void reclaimCaptureStorage(std::uint32_t budget) noexcept;
     [[nodiscard]] Storage* prepareStorage(const PadData& source);
     void publishStorage(std::uint32_t pad, Storage* storage, bool resetSettings) noexcept;
     void setPadPlaybackSettingsDirect(std::uint32_t pad,
@@ -427,10 +406,7 @@ private:
     std::uint32_t total_blocks_;
     std::uint32_t max_frames_;
     EngineSettings settings_{};
-    std::vector<float> samples_;
-    static constexpr std::size_t kCaptureStorageCount = kPadCount * 2U + 1U;
-    std::array<Storage, kCaptureStorageCount> captureStorage_;
-    std::vector<std::unique_ptr<Storage>> importedStorage_;
+    SampleStoragePool storagePool_;
     std::array<std::atomic<PendingState*>, kPadCount> pendingState_{};
     std::vector<std::unique_ptr<PendingState>> pendingStateOwners_;
     std::atomic<bool> stateRestoreFailed_{false};
@@ -438,8 +414,6 @@ private:
     void* controlContext_ = nullptr;
     void (*controlDispatch_)(void*, void (*)(void*) noexcept, void*) = nullptr;
     std::uint32_t used_blocks_ = 0; // active pad capacity; retained readers use reserve blocks
-    std::vector<std::uint32_t> free_blocks_;
-    std::uint32_t free_block_count_ = 0;
     std::array<Pad, kPadCount> pads_{};
     std::uint32_t ringCapacityFrames_ = 0;
     std::vector<float> ring_;

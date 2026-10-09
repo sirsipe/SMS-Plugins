@@ -10,7 +10,8 @@ namespace midichopper::ui {
 
 /** Collects a coherent ordinary-editor baseline and rejects superseded replies.
  * Retries preserve the request identity; navigation and Apply refresh replace it.
- * The host transport and split-plan lifecycle stay in MidichopperUI.
+ * ChopEditorController owns the workflow and split-plan lifecycle; its host
+ * supplies transport and presentation effects.
  */
 class ChopEditorSession {
 public:
