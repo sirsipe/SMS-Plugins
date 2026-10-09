@@ -29,6 +29,12 @@ MIDI notes 0–127. UI notes and labels use the engine mapping. Selected Bank re
 with `active_bank` choosing its target, and retains the released fixed 16-slot
 bank organization.
 
+ARM hides global mixing. Edge faders work across views. Clicks focus DGL. Space consumes key/text events:
+`play_stop_request` in PLAY/Sample Editor, balanced MIDI tap in ARM. Overlays,
+numeric entry, file dialogs, and cut-point views block it. Held-key tracking/native
+repeat suppression prevent repeated taps; focus loss resets tracking. Hosts may
+intercept keys first.
+
 ## Capture model
 
 Arming chooses the first empty visible pad, or the first when full; idle
@@ -59,26 +65,24 @@ volume, pan, and tune combine during playback. Active voices refresh mixer,
 ADSR, and End atomics per block; Start remains fixed until retrigger.
 The filter and Dirty processing contract is in [Mixing](../../Docs/AI/MIXING.md).
 
-Pad transfers retain immutable completed audio, prepare replacements off-thread,
-and commit bounded descriptor changes at audio block boundaries. Monitoring and
-unrelated voices continue during transfers. Host state reads use coherent
-published revisions without waiting for processing. See the
+Pad transfers retain immutable audio and commit prepared descriptors at block
+boundaries while monitoring and unrelated voices continue. Host reads use
+published revisions without waiting. See the
 [storage handoff contract](../../Docs/AI/PAD-STORAGE.md) for ownership, reserve
 memory, conflicts, lifecycle, and regression coverage.
 
-Collapse Gap moves descriptors and complete pad settings without copying PCM.
-Split and ordinary cut edits stage only affected PCM, then validate generations
-before an atomic transaction. Recording start, completion, resets, audio, and
-settings changes invalidate stale plans. Both structure actions stay within the
-active visible bank/page.
+Collapse Gap moves descriptors/settings without copying PCM. Split and cut edits
+stage affected PCM and validate generations before atomic commit. Recording,
+resets, audio, and settings changes invalidate stale plans. Structure actions
+stay within the active visible bank/page.
 
-Four outputs report input/output peaks. Redraws cap at 30 FPS and follow LED
-boundaries. Host hard bypass cannot be metered.
+Four outputs report peaks; redraws cap at 30 FPS at LED boundaries. Host hard
+bypass cannot be metered.
 
 ## Project state
 
-Each pad stores versioned, CRC-checked interleaved PCM16 audio, Base64 encoded
-for DPF state. Decoding checks size and structure. Empty pads use empty values.
+Pad state stores versioned, CRC-checked PCM16 as Base64; decoding validates it.
+Empty pads use empty values.
 Durable restoration stages per-pad desired updates without waiting for
 processing; published reads include them, and the next block commits them.
 
@@ -90,12 +94,11 @@ returns a 128-bin min/max summary through DPF state in LV2 or the bounded
 direct-access bus in VST3. Ctrl-wheel zoom requests a new 128-bin summary of
 the visible frame range, across up to three adjacent pads; Shift-wheel pans.
 Request sequence and range reject stale detail replies. The control worker scans retained immutable sample storage outside the callback.
-Zoom is UI-local and resets on pad or editor change. Waveform work stays outside
+UI-local zoom resets on pad/editor changes. Waveform work stays outside
 the audio callback.
 
-Each pad slot also saves a `pad_color_01..64` theme palette index. Zero removes
-the tint. The UI treats an unavailable index as no color; colors stay with pad
-slots through sample edits and moves.
+`pad_color_01..64` saves slot palette indices. Zero/unavailable indices mean no
+tint; colors stay with slots through sample edits and moves.
 
 `pad_clear_request` publishes an atomic command consumed at the next block.
 `pad_file_request` carries an action, pad, and UTF-8 path. VST3 queues transient transfers on an instance-owned worker; LV2 executes

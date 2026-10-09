@@ -84,6 +84,18 @@ void wideCanvasGeometry()
           inside(layout::sidePanel, layout::monitor) &&
           inside(layout::sidePanel, layout::chopNext),
           "side-view controls remain inside the side panel");
+    check(layout::inputMeter.y + layout::inputMeter.height * 0.5f ==
+              layout::canvasHeight * 0.5f &&
+          layout::outputMeter.y == layout::inputMeter.y &&
+          layout::inputMeter.x == layout::canvasWidth -
+              layout::outputMeter.x - layout::outputMeter.width,
+          "input and output faders are centered vertically at symmetric edges");
+    check(layout::openEditor.x == layout::closeEditor.x &&
+          layout::openEditor.y == layout::closeEditor.y &&
+          layout::openEditor.width == layout::closeEditor.width &&
+          layout::openEditor.height == layout::closeEditor.height &&
+          layout::modeToggle.width == layout::openEditor.width,
+          "editor navigation shares exact geometry and ARM spans the control width");
 }
 
 void hamburgerMenuGeometry()
@@ -188,6 +200,31 @@ sms::ui::Point center(const sms::ui::Rect bounds)
     return {bounds.x + bounds.width * 0.5f, bounds.y + bounds.height * 0.5f};
 }
 
+void spaceKeyTracking()
+{
+    using midichopper::ui::SpaceAction;
+    midichopper::ui::SpaceKeyTracker key;
+    check(key.update(true, false, false) == SpaceAction::playStop &&
+          key.update(true, false, false) == SpaceAction::none &&
+          key.update(false, false, false) == SpaceAction::none,
+          "Space plays or stops once per press and release has no action");
+    check(key.update(true, false, true) == SpaceAction::chop &&
+          key.update(true, false, true) == SpaceAction::none,
+          "armed Space chops once without repeating while held");
+    check(key.update(true, false, false) == SpaceAction::none,
+          "mode changes while Space is held do not retrigger");
+    key.reset();
+    check(key.update(true, true, false) == SpaceAction::none &&
+          key.update(true, false, false) == SpaceAction::none,
+          "Space blocked by an overlay stays blocked until release");
+    static_cast<void>(key.update(false, false, false));
+    check(key.update(true, false, false) == SpaceAction::playStop,
+          "Space works again after the blocked press is released");
+    key.reset();
+    check(key.update(true, false, true) == SpaceAction::chop,
+          "focus loss clears a held Space even if its release was missed");
+}
+
 void interactionTargets()
 {
     namespace interaction = midichopper::ui;
@@ -207,6 +244,12 @@ void interactionTargets()
               interaction::InteractiveType::menuButton),
           "hamburger button resolves to one hover target");
     check(interaction::isTarget(
+              interaction::interactiveTargetAt(center(layout::modeToggle), context),
+              interaction::InteractiveType::modeToggle) &&
+          interaction::isTarget(interaction::interactiveTargetAt({1048.0f, 166.0f}, context),
+              interaction::InteractiveType::modeToggle),
+          "ARM uses a single full-width toggle");
+    check(interaction::isTarget(
               interaction::interactiveTargetAt(center(layout::oneShotMode), context),
               interaction::InteractiveType::oneShotMode) &&
           interaction::isTarget(
@@ -218,7 +261,7 @@ void interactionTargets()
               interaction::InteractiveType::monitor) &&
           !interaction::interactiveTargetAt(center(layout::finalizeAction), context).valid(),
           "play mode keeps the bottom monitor and hides chop actions");
-    for (int knob = 0; knob < 7; ++knob) {
+    for (int knob = 1; knob < 7; ++knob) {
         check(interaction::isTarget(
                   interaction::interactiveTargetAt(center(layout::globalMixerKnob(knob)), context),
                   interaction::InteractiveType::globalMixerKnob, knob),
@@ -229,8 +272,9 @@ void interactionTargets()
                   interaction::InteractiveType::globalMixerValueLabel, knob),
               "main view exposes each global mixer value label");
     }
-    check(layout::globalMixerKnob(0).y < layout::globalMixerKnob(2).y &&
-          layout::globalMixerKnob(6).y == layout::globalMixerKnob(0).y &&
+    check(layout::globalMixerKnob(0).width == 0.0f &&
+          layout::globalMixerKnob(1).y < layout::globalMixerKnob(2).y &&
+          layout::globalMixerKnob(6).y == layout::globalMixerKnob(1).y &&
           layout::globalMixerKnob(5).y > layout::globalMixerKnob(4).y +
               layout::globalMixerKnob(4).height,
           "global controls use the requested two rows and lower slope slider");
@@ -278,6 +322,21 @@ void interactionTargets()
     context.menuOpen = false;
 
     context.armed = true;
+    check(interaction::isTarget(
+              interaction::interactiveTargetAt(center(layout::modeToggle), context),
+              interaction::InteractiveType::modeToggle),
+          "same mode toggle remains available while armed");
+    for (int knob = 1; knob < 7; ++knob) {
+        const auto knobTarget = interaction::interactiveTargetAt(
+            center(layout::globalMixerKnob(knob)), context);
+        check(!knobTarget.valid(), "arm hides every global mixer control");
+        if (knob != 5) {
+            const auto labelTarget = interaction::interactiveTargetAt(
+                center(layout::globalMixerValueLabel(knob)), context);
+            check(!labelTarget.valid(),
+                  "hidden arm mixer labels cannot be edited or wheeled");
+        }
+    }
     check(!interaction::interactiveTargetAt(center(layout::openEditor), context).valid(),
           "disabled editor button is not hoverable");
     check(interaction::isTarget(
@@ -591,6 +650,46 @@ void mainSliderDragging()
               layout::preRoll(true).width * 0.5f, layout::preRoll(true),
               ranges::preRollMs, true) == 50.0f,
           "pre-roll drag follows the fixed capture slider");
+    const auto track = layout::levelFaderTrack(layout::levelFader(0));
+    check(interaction::levelFaderValueAtY(track.y - 100.0f, layout::levelFader(0),
+              ranges::monitorGainDb) == 12.0f &&
+          interaction::levelFaderValueAtY(track.y + track.height + 100.0f,
+              layout::levelFader(0), ranges::monitorGainDb) == -24.0f &&
+          std::abs(interaction::levelFaderValueAtY(track.y + track.height / 3.0f,
+              layout::levelFader(0), ranges::monitorGainDb)) < 1.0e-5f,
+          "vertical level fader is louder upwards, clamps, and maps unity correctly");
+}
+
+void levelFaderTargets()
+{
+    namespace interaction = midichopper::ui;
+    namespace layout = midichopper::ui::layout;
+    interaction::InteractionContext context;
+    for (int view = 0; view < 4; ++view) {
+        context.armed = view == 1;
+        context.editorMode = view == 2;
+        context.chopEditorMode = view == 3;
+        for (int level = 0; level < 2; ++level) {
+            check(interaction::isTarget(interaction::interactiveTargetAt(
+                      center(layout::levelFader(level)), context),
+                      interaction::InteractiveType::levelFader, level) &&
+                  interaction::isTarget(interaction::interactiveTargetAt(
+                      center(layout::levelValueLabel(level)), context),
+                      interaction::InteractiveType::levelValueLabel, level),
+                  "both level faders and value entries work in every view");
+        }
+    }
+    context.menuOpen = true;
+    check(!interaction::interactiveTargetAt(center(layout::levelFader(0)), context).valid(),
+          "menu overlays block edge fader edits");
+    const sms::ui::meter::StereoGeometry meter(layout::inputMeter,
+        sms::ui::meter::defaultSegmentCount, 18.0f);
+    const auto left = meter.channel(0U);
+    const auto right = meter.channel(1U);
+    const float capLeft = layout::inputMeter.x + layout::inputMeter.width * 0.5f - 9.0f;
+    check(left.width > 0.0f && right.width > 0.0f &&
+          left.x + left.width <= capLeft && right.x >= capLeft + 18.0f,
+          "fader cap travels between visible stereo LED columns");
 }
 
 void levelMeterGeometry()
@@ -986,10 +1085,12 @@ int main()
     hamburgerMenuGeometry();
     contextMenuGeometry();
     interactionTargets();
+    spaceKeyTracking();
     padPressTracking();
     editorSnapshotCollection();
     wheelAdjustment();
     mainSliderDragging();
+    levelFaderTargets();
     levelMeterGeometry();
     waveformGeometry();
     chopEditorGeometry();

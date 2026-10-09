@@ -98,9 +98,9 @@ fi
 
 window_name="$(DISPLAY="$DISPLAY" xdotool getwindowname "$plugin_window")"
 DISPLAY="$DISPLAY" xdotool windowactivate --sync "$plugin_window"
-# The original controls are translated by contentOffsetX in MidichopperLayout.hpp.
-# ARM is centered at logical coordinate (1202, 166).
-DISPLAY="$DISPLAY" xdotool mousemove --sync --window "$plugin_window" 1202 166
+# Controls are translated by contentOffsetX in MidichopperLayout.hpp.
+# The full-width ARM toggle is centered at logical coordinate (1145, 175).
+DISPLAY="$DISPLAY" xdotool mousemove --sync --window "$plugin_window" 1145 175
 DISPLAY="$DISPLAY" xdotool click 1
 sleep 0.5
 

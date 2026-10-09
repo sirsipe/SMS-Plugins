@@ -167,6 +167,9 @@ void SamplerEngine::setSettings(const EngineSettings& s) noexcept {
     if (settings_.startPad >= settings_.padsPerBank) settings_.startPad = 0;
     if (settings_.preRollMilliseconds < 0.0f) settings_.preRollMilliseconds = 0.0f;
     if (settings_.preRollMilliseconds > 100.0f) settings_.preRollMilliseconds = 100.0f;
+    settings_.gain = std::max(std::isfinite(settings_.gain) ? settings_.gain : 1.0f, 0.0f);
+    settings_.monitorGain = std::max(
+        std::isfinite(settings_.monitorGain) ? settings_.monitorGain : 1.0f, 0.0f);
     settings_.pan = std::clamp(std::isfinite(settings_.pan) ? settings_.pan : 0.0f,
                                -1.0f, 1.0f);
     settings_.tuneSemitones = std::clamp(
@@ -880,8 +883,8 @@ void SamplerEngine::process(const float* inputLeft, const float* inputRight,
         const float inL = inputLeft ? inputLeft[frame] : kSilence;
         const float inR = inputRight ? inputRight[frame] : kSilence;
         if (activePad_ >= 0) writeRecordFrame(frame, inL, inR);
-        float outL = settings_.monitorInput ? inL : 0.0f;
-        float outR = settings_.monitorInput ? inR : 0.0f;
+        float outL = 0.0f;
+        float outR = 0.0f;
         for (std::uint32_t pad = 0; pad < kPadCount; ++pad) {
             auto& p = pads_[pad];
             if (!p.playing) continue;
@@ -928,8 +931,10 @@ void SamplerEngine::process(const float* inputLeft, const float* inputRight,
             }
         }
         mixChopPreview(outL, outR);
-        outputLeft[frame] = outL * settings_.gain;
-        outputRight[frame] = outR * settings_.gain;
+        outputLeft[frame] = outL * settings_.gain +
+            (settings_.monitorInput ? inL * settings_.monitorGain : 0.0f);
+        outputRight[frame] = outR * settings_.gain +
+            (settings_.monitorInput ? inR * settings_.monitorGain : 0.0f);
         if (ringCapacityFrames_) {
             const auto ri = static_cast<std::size_t>(ringWritePosition_) * 2U;
             ring_[ri] = inL; ring_[ri + 1U] = inR;

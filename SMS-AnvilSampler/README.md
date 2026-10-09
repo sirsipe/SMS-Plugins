@@ -13,10 +13,11 @@ Tested in **REAPER**, **Ardour**, and **Carla**.
 - Control with any MIDI controller.
 - Record input and quickly chop input to pads, or load samples to pads.
 - Basic waveform editing and splitting.
-- Pad-specific and global mixer/FX: Vol/Gain, Pan, Dirty Mode, Tune (Varispeed), and Lowpass and Highpass with 6/12/24 dB slopes.
+- Pad/global mixer/FX: Gain, Pan, Dirty, Tune (Varispeed), and Lowpass/Highpass with 6/12/24 dB slopes; separate monitor and playback levels.
 - Sample specific amplitude envelope; Attack, Decay, Sustain, Release.
 - Layout options to match physical gear (2x4, 3x4, 4x4 pads), with 4 banks in shared/unique mode; and possibility to assign colors for pads.
-- Supports VST3 presets (not in Carla). You can save samples and settings into a VST3 preset, and it can be loaded across supported DAWs; e.g. a preset saved in Ardour works also in REAPER; and vice-versa.
+- VST3 presets store samples/settings across supported DAWs: Ardour presets also
+  load in REAPER and vice versa. Carla does not support them.
 
 > Versions 1.0.0+ are not backwards compatible with alpha releases (v0.0.1-v0.0.9). Alpha releases have been removed from GitHub releases to avoid confusion.
 
@@ -24,16 +25,19 @@ Tested in **REAPER**, **Ardour**, and **Carla**.
 
 1. Insert **SMS-Anvil Sampler** on a stereo REAPER track receiving audio and MIDI; or on MIDI-track in Ardour, with stereo input sidechain. Stereo input is necessary only if chopping live audio into its pads.
 
-2. To chop input audio into pads, click **ARM**. The first empty visible pad is selected; click another pad while idle to override it.
+2. Press **ARM** (red record circle) to arm; release it for PLAY.
+   The header light/text is red when ARMED and green in PLAY.
+   The first empty visible pad is selected; click another while idle to override it.
 
-3. **The first MIDI note-on starts the slice.** Later note-ons close the current slice and continue at the next pad.
+3. **The first MIDI note-on or Space press starts the slice.** Later taps close
+   the current slice and continue at the next pad.
     > NOTE: **ANY** MIDI note-on (i.e. any pad of your controller) starts and chops.
 
-4. Click **FINALIZE** or return to **PLAY** to keep the last open slice.
+4. **FINALIZE** or releasing **ARM** keeps the open slice.
 
 5. Right click on a pad to edit the sample, split it to neighbouring pads, or adjust the existing cut points with neighbouring pads.
 
-![ARM view with three sampled pads and the next capture destination](Docs/arm-view.png)
+![ARM capture view](Docs/arm-view.png)
 
 Right click on a PAD reveals context menu with various operations.
 ![Context menu](Docs/context-menu.png)
@@ -50,9 +54,12 @@ Layouts show 16, 12, or 8 pads; for best experience, choose what fits best with 
 
 ![Hamburger menu](Docs/hamburger-menu.png)
 
-**Sample Editor** shows waveform, ADSR, and pad mixing. See the
+**SAMPLE EDITOR** opens waveform, ADSR, and pad mixing; **MAIN VIEW** returns. See the
 [mixing guide](Docs/MIXING.md). **Play on Select** auditions selections. **Play/Stop** plays the selected occupied pad when idle or immediately cuts all
 playing samples. In Sample Editor it plays the open sample.
+The button shows a play triangle or stop square. ARM hides the global mixer.
+The edge faders remain visible: **IN** controls monitoring, **OUT** controls
+samples/previews.
 
 Over the waveform, **Ctrl + wheel** zooms and **Shift + wheel** scrolls; or drag the left vertical zoom control or the horizontal window box below the
 waveform. The box shows the visible range. Changing pads resets the view.
@@ -66,11 +73,16 @@ Right-click a middle pad for **Adjust cut points**. See the
 
 ### General Controls
 
-- Drag or wheel knobs and sliders.
+- Drag/wheel knobs and sliders.
 - **Shift** gives 10× knob precision; **Ctrl** steps e.g. Gain/Volume 1 dB, Pan 10%, and Tune one semitone.
-- Double-click a value to type exact value.
-- Double-click knob/slider or middle-click to reset to default.
+- Double-click values for exact entry.
+- Double/middle-click knobs, ADSR sliders, or edge faders to reset.
 - The wheel also adjusts ADSR, Start/End, and cut points.
+- Click the plug-in for keyboard focus. **Space** plays/stops in
+  PLAY and Sample Editor, or starts/chops capture in ARM. Holding Space does not
+  repeat. Menus, file dialogs, numeric entry, and cut-point views suppress it.
+  The plug-in consumes Space when delivered; a DAW that intercepts keyboard
+  shortcuts first may require its option to send keys to the plug-in.
 
 ## Other good-to-know
 - Total sample memory is approx 8 minutes.
@@ -97,7 +109,7 @@ and 6 dB/octave filter slopes.
 - Samples from all four banks are
 stored with the DAW project as 16-bit stereo state.
 
-- Stereo LED rails show raw input and final output, even with monitoring off.
+- Stereo LED rails around the faders show raw input and final output.
 
 Splitting a sample shifts possible neighbouring following samples to right.
 ![Split Sample view with two proposed slices](Docs/split-sample.png)

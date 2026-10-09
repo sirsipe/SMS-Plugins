@@ -26,6 +26,7 @@ struct ViewState {
     int baseMidiNote = static_cast<int>(kDefaultBaseMidiNote);
     int midiBankMode = static_cast<int>(kDefaultMidiBankMode);
     float outputGainDb = 0.0f;
+    float monitorGainDb = 0.0f;
     float globalPan = 0.0f;
     float globalTuneSemitones = 0.0f;
     float globalLowpass = 0.0f;

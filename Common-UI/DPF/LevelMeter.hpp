@@ -11,14 +11,14 @@ namespace sms::ui::dpf {
 
 inline void drawStereoLedMeter(DGL_NAMESPACE::NanoVG& canvas, const ui::Rect bounds,
                                const float left, const float right,
-                               const char* const label)
+                               const char* const label, const float channelGap = -1.0f)
 {
     ScopedCanvasState state(canvas);
     const auto& colors = theme();
     drawInsetSurface(canvas, bounds, 4.0f);
 
     constexpr std::uint32_t segmentCount = meter::defaultSegmentCount;
-    const meter::StereoGeometry geometry(bounds, segmentCount);
+    const meter::StereoGeometry geometry(bounds, segmentCount, channelGap);
     const std::array active{
         meter::activeSegmentCount(left, segmentCount),
         meter::activeSegmentCount(right, segmentCount),

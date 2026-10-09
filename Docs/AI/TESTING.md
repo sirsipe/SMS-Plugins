@@ -17,7 +17,7 @@ Filter with `ctest --test-dir build --output-on-failure -R NAME`:
 | `sampler-core` | Capture, banks/layouts, storage, voices, region/ADSR, pad/global mixer sums, filter response and dirty conversion, raw chop preview/repartition, resampling, clipboard, lifecycle, and more than 1,024 MIDI events per block |
 | `sampler-transfer` | Concurrent transfers, exact monitoring/MIDI/recording continuity, retained storage, stale commits, capacity, published host snapshots, dispatcher lifecycle, and audio-thread allocation/destruction |
 | `state-codec` | Audio, editor-state, MX1/MX2 mixer compatibility, cut commands, and visible waveform request/reply round trips; malformed/corrupt state |
-| `ui-geometry` | Pad mapping, editor snapshot assembly, waveform/chop geometry, viewport mapping, hit testing, wheel editing |
+| `ui-geometry` | Pad mapping, editor snapshots, waveform/chop geometry, viewport mapping, hit testing, wheel editing, Space press/repeat routing |
 | `ui-message-bus` | Bounded VST3 message ordering, independent view cursors, explicit gap reporting on wrap, and large replies |
 | `wav-codec` | WAV formats, validation, file actions, offline render, real-time access gate |
 
@@ -81,20 +81,21 @@ Applicable checks:
   when affected, and compare recorded output for timing/pre-roll changes.
 - Playback: return to PLAY; verify expected notes/banks, one-shot/gated behavior,
   voice limits, and stereo output.
-- UI/editor: verify drawing/resizing and input mapping; select pads, adjust
-  region/mixer/ADSR by dragging and wheel during playback, reset controls, and
-  check sound/playhead. Sweep the pointer and confirm only the
-  enabled target under it receives hover emphasis. In an embedded VST3 view,
-  double-click a global mixer value, type a number, and press Enter; verify the
-  displayed value changes. Open it again and press Escape; verify it stays put.
+- UI/editor: check drawing/resizing, pad selection, region/mixer/ADSR drag,
+  wheel/reset, sound/playhead, and single-target hover. In embedded VST3, type
+  a global value: Enter commits, Escape cancels. Check ARM/play/stop icons and
+  green PLAY/red ARMED indicators. ARM hides the mixer; both edge faders remain
+  editable in every view. Verify independent monitor/playback gain, raw preview,
+  and unchanged captured PCM. Click to focus: Space plays/stops
+  in PLAY/Sample Editor and starts/chops in ARM. Hold/release/tap to check repeat
+  suppression. Lose focus while held, release, return, and retry. Menus, numeric
+  entry, and cut-point views block Space. Verify DAW transport does not respond.
 - Cut Point Editor: follow its focused [validation contract](CHOP-EDITOR.md).
 - Pad clipboard: Copy an edited occupied pad, then alter or clear its source and
   Paste to empty and occupied targets. Confirm stereo audio and all editor settings
   match the copy-time snapshot, and that an empty clipboard disables Paste.
-- State: save populated pads and editor settings using the host's state-saving
-  facility, close, reload that state, and compare playback/settings. Inspect the
-  installed host's help for saving. Also check DAW project restoration when the
-  change concerns DAW integration.
+- State: save populated pads/settings, close, reload, and compare playback.
+  Inspect host help for saving; check DAW restoration for integration changes.
 
 ## UI interaction tooling
 
@@ -105,13 +106,11 @@ JACK, OpenGL, D-Bus, and portal FileChooser. Run `desktop-health --dialogs` afte
 an image rebuild or portal change to exercise Open and Save dialogs. Watch
 automation through noVNC port 6080; avoid VNC mouse input during a sequence.
 
-From `/workspaces/SMS-Plugins`, `test-plugin` runs the release VST3/LV2 build,
-CTest, `lv2info`, launches the built LV2 directly in Carla, resolves its visible
-window, clicks ARM at its layout coordinate, and saves an exact-window PNG under
-the ignored `build/gui-test/` directory. It sets VNC to 1920x1080 so the window
-fits. Use `test-plugin --keep-open` for more
-interactions. `screenshot-window WINDOW_ID OUTPUT.png` refuses desktop-wide
-capture. Resolve the window after relaunch or resize.
+`bash .devcontainer/scripts/test-plugin.sh` builds VST3/LV2, runs CTest and
+`lv2info`, launches LV2 in Carla, clicks ARM, and captures the plug-in window in
+ignored `build/gui-test/`. It sets VNC to 1920x1080. Use `--keep-open` for further
+interaction. `screenshot-window WINDOW_ID OUTPUT.png` refuses desktop capture;
+resolve the window after relaunch/resize.
 
 Capture only the plug-in window, never the full desktop. Inspect every artifact
 before sharing or committing it, and exclude usernames, home paths, machine

@@ -38,6 +38,8 @@ enum class InteractiveType : int {
     globalMixerKnob,
     mixerValueLabel,
     globalMixerValueLabel,
+    levelFader,
+    levelValueLabel,
     playOnSelect,
     playStop,
     openEditor,
@@ -47,8 +49,7 @@ enum class InteractiveType : int {
     chopPrevious,
     chopExit,
     chopNext,
-    playMode,
-    armMode,
+    modeToggle,
     sequentialMode,
     fixedMode,
     fixedLength,
@@ -89,6 +90,31 @@ private:
     int midiNote_ = -1;
 };
 
+enum class SpaceAction { none, playStop, chop };
+
+/** One action per physical press; the caller consumes both press and release. */
+class SpaceKeyTracker {
+public:
+    [[nodiscard]] SpaceAction update(const bool press, const bool blocked,
+                                    const bool armed) noexcept
+    {
+        if (!press) {
+            held_ = false;
+            return SpaceAction::none;
+        }
+        if (held_)
+            return SpaceAction::none;
+        held_ = true;
+        return blocked ? SpaceAction::none
+                       : armed ? SpaceAction::chop : SpaceAction::playStop;
+    }
+
+    void reset() noexcept { held_ = false; }
+
+private:
+    bool held_ = false;
+};
+
 [[nodiscard]] inline float mainSliderValueAtX(const float x,
     const sms::ui::Rect bounds, const plugin::ParameterRange range,
     const bool integral = false) noexcept
@@ -96,6 +122,15 @@ private:
     const float t = std::clamp((x - bounds.x) / bounds.width, 0.0f, 1.0f);
     const float value = range.minimum + t * (range.maximum - range.minimum);
     return integral ? std::round(value) : value;
+}
+
+[[nodiscard]] inline float levelFaderValueAtY(const float y, const sms::ui::Rect bounds,
+                                             const plugin::ParameterRange range) noexcept
+{
+    const auto track = layout::levelFaderTrack(bounds);
+    const float normalized = std::clamp((track.y + track.height - y) / track.height,
+                                        0.0f, 1.0f);
+    return range.minimum + normalized * (range.maximum - range.minimum);
 }
 
 class DoubleClickTracker {
@@ -126,6 +161,7 @@ private:
 {
     return candidate.is(static_cast<int>(InteractiveType::mixerKnob)) ||
            candidate.is(static_cast<int>(InteractiveType::globalMixerKnob)) ||
+           candidate.is(static_cast<int>(InteractiveType::levelFader)) ||
            candidate.is(static_cast<int>(InteractiveType::envelopeSlider));
 }
 
@@ -133,6 +169,7 @@ private:
     const sms::ui::InteractiveTarget candidate) noexcept
 {
     return candidate.is(static_cast<int>(InteractiveType::mixerValueLabel)) ||
+           candidate.is(static_cast<int>(InteractiveType::levelValueLabel)) ||
            candidate.is(static_cast<int>(InteractiveType::globalMixerValueLabel));
 }
 
@@ -377,6 +414,13 @@ interactiveTargetAt(const sms::ui::Point point, const InteractionContext& contex
         return sms::ui::kNoInteractiveTarget;
     }
 
+    for (int level = 0; level < 2; ++level) {
+        if (uiLayout::levelValueLabel(level).contains(point))
+            return target(InteractiveType::levelValueLabel, level);
+        if (uiLayout::levelFader(level).contains(point))
+            return target(InteractiveType::levelFader, level);
+    }
+
     const sms::ui::BankedPadLayout pads(context.padLayout);
     if (context.chopEditorMode) {
         if (context.chopApplyEnabled && uiLayout::chopApply.contains(point))
@@ -470,10 +514,8 @@ interactiveTargetAt(const sms::ui::Point point, const InteractionContext& contex
             return target(InteractiveType::pad, localPad);
     }
 
-    if (uiLayout::playMode.contains(point))
-        return target(InteractiveType::playMode);
-    if (uiLayout::armMode.contains(point))
-        return target(InteractiveType::armMode);
+    if (uiLayout::modeToggle.contains(point))
+        return target(InteractiveType::modeToggle);
     if (context.armed) {
         if (uiLayout::sequentialMode.contains(point))
             return target(InteractiveType::sequentialMode);
@@ -495,7 +537,7 @@ interactiveTargetAt(const sms::ui::Point point, const InteractionContext& contex
     }
     if (uiLayout::monitor.contains(point))
         return target(InteractiveType::monitor);
-    for (int knob = 0; knob < 7; ++knob) {
+    for (int knob = 1; !context.armed && knob < 7; ++knob) {
         if (knob != 5 && uiLayout::globalMixerValueLabel(knob).contains(point))
             return target(InteractiveType::globalMixerValueLabel, knob);
         if (uiLayout::globalMixerKnob(knob).contains(point))

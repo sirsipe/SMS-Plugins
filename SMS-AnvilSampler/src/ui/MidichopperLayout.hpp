@@ -13,8 +13,27 @@ inline constexpr sms::ui::Rect contentBounds{
     0.0f, 0.0f, static_cast<float>(canvasWidth) - contentOffsetX * 2.0f,
     static_cast<float>(canvasHeight)};
 
-inline constexpr sms::ui::Rect inputMeter{8.0f, 96.0f, 24.0f, 590.0f};
-inline constexpr sms::ui::Rect outputMeter{1312.0f, 96.0f, 24.0f, 590.0f};
+inline constexpr sms::ui::Rect inputMeter{6.0f, 140.0f, 44.0f, 476.0f};
+inline constexpr sms::ui::Rect outputMeter{1294.0f, 140.0f, 44.0f, 476.0f};
+
+/** Level controls use content coordinates for the shared input resolver. */
+[[nodiscard]] constexpr sms::ui::Rect levelFader(const int index) noexcept
+{
+    const auto meter = index == 0 ? inputMeter : outputMeter;
+    return {meter.x - contentOffsetX, meter.y, meter.width, meter.height};
+}
+
+[[nodiscard]] constexpr sms::ui::Rect levelValueLabel(const int index) noexcept
+{
+    const auto meter = levelFader(index);
+    return {meter.x - 2.0f, meter.y + meter.height + 24.0f, meter.width + 4.0f, 18.0f};
+}
+
+[[nodiscard]] constexpr sms::ui::Rect levelFaderTrack(const sms::ui::Rect bounds) noexcept
+{
+    return {bounds.x + bounds.width * 0.5f - 3.0f, bounds.y + 17.0f,
+            6.0f, bounds.height - 34.0f};
+}
 
 inline constexpr sms::ui::Rect mainPanel{24.0f, 96.0f, 934.0f, 596.0f};
 inline constexpr sms::ui::Rect sidePanel{974.0f, 96.0f, 266.0f, 596.0f};
@@ -30,8 +49,8 @@ inline constexpr sms::ui::Rect envelopeGraph{46.0f, 448.0f, 370.0f, 104.0f};
 inline constexpr sms::ui::Rect editorPadBounds{994.0f, 204.0f, 222.0f, 406.0f};
 inline constexpr sms::ui::Rect editorPlayStop{994.0f, 628.0f, 106.0f, 34.0f};
 inline constexpr sms::ui::Rect playOnSelect{1106.0f, 628.0f, 110.0f, 34.0f};
-inline constexpr sms::ui::Rect openEditor{994.0f, 108.0f, 222.0f, 28.0f};
 inline constexpr sms::ui::Rect closeEditor{994.0f, 112.0f, 222.0f, 32.0f};
+inline constexpr sms::ui::Rect openEditor = closeEditor;
 inline constexpr sms::ui::Rect chopWaveform{74.0f, 170.0f, 862.0f, 228.0f};
 inline constexpr sms::ui::Rect chopZoom{46.0f, 170.0f, 16.0f, 228.0f};
 inline constexpr sms::ui::Rect chopScroll{74.0f, 412.0f, 862.0f, 12.0f};
@@ -61,8 +80,7 @@ inline constexpr sms::ui::Rect chopNext{1152.0f, 542.0f, 64.0f, 52.0f};
 {
     return bounds.x + bounds.width * 0.5f + (pointsRight ? 3.0f : -3.0f);
 }
-inline constexpr sms::ui::Rect playMode{994.0f, 145.0f, 108.0f, 42.0f};
-inline constexpr sms::ui::Rect armMode{1108.0f, 145.0f, 108.0f, 42.0f};
+inline constexpr sms::ui::Rect modeToggle{994.0f, 154.0f, 222.0f, 42.0f};
 inline constexpr sms::ui::Rect sequentialMode{994.0f, 220.0f, 106.0f, 38.0f};
 inline constexpr sms::ui::Rect fixedMode{1108.0f, 220.0f, 108.0f, 38.0f};
 inline constexpr sms::ui::Rect fixedLength{994.0f, 298.0f, 222.0f, 36.0f};
@@ -136,9 +154,8 @@ inline constexpr sms::ui::Rect clearAction{1146.0f, 610.0f, 70.0f, 34.0f};
 [[nodiscard]] constexpr sms::ui::Rect globalMixerKnob(const int index) noexcept
 {
     switch (index) {
-    case 0: return {994.0f, 408.0f, 68.0f, 72.0f}; // Volume
-    case 1: return {1068.0f, 408.0f, 68.0f, 72.0f}; // Pan
-    case 6: return {1142.0f, 408.0f, 68.0f, 72.0f}; // Dirty
+    case 1: return {1013.0f, 408.0f, 68.0f, 72.0f}; // Pan
+    case 6: return {1124.0f, 408.0f, 68.0f, 72.0f}; // Dirty
     case 2: return {994.0f, 494.0f, 68.0f, 72.0f}; // Tune
     case 3: return {1068.0f, 494.0f, 68.0f, 72.0f}; // Lowpass
     case 4: return {1142.0f, 494.0f, 68.0f, 72.0f}; // Highpass

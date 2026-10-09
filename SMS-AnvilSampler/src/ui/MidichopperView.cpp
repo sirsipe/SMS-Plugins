@@ -37,10 +37,8 @@ public:
         sms::ui::dpf::drawScrew(canvas_, 20.0f, uiLayout::canvasHeight - 20.0f);
         sms::ui::dpf::drawScrew(canvas_, uiLayout::canvasWidth - 20.0f,
                                uiLayout::canvasHeight - 20.0f);
-        sms::ui::dpf::drawStereoLedMeter(
-            canvas_, uiLayout::inputMeter, state_.inputLevels[0], state_.inputLevels[1], "IN");
-        sms::ui::dpf::drawStereoLedMeter(
-            canvas_, uiLayout::outputMeter, state_.outputLevels[0], state_.outputLevels[1], "OUT");
+        drawLevelFader(0, uiLayout::inputMeter, state_.inputLevels, state_.monitorGainDb, "IN");
+        drawLevelFader(1, uiLayout::outputMeter, state_.outputLevels, state_.outputGainDb, "OUT");
 
         canvas_.save();
         canvas_.translate(uiLayout::contentOffsetX, 0.0f);
@@ -78,6 +76,59 @@ private:
         return isTarget(state_.hoveredTarget, type, index);
     }
 
+    void drawLevelFader(const int index, const sms::ui::Rect bounds,
+                        const std::array<float, 2>& levels, const float gainDb,
+                        const char* const label)
+    {
+        const auto& colors = sms::ui::dpf::theme();
+        sms::ui::dpf::drawStereoLedMeter(canvas_, bounds, levels[0], levels[1], label, 18.0f);
+        const auto track = uiLayout::levelFaderTrack(bounds);
+        canvas_.beginPath();
+        canvas_.roundedRect(track.x, bounds.y + 2.0f, track.width,
+                            bounds.height - 4.0f, 3.0f);
+        canvas_.fillColor(colors.recessEdge);
+        canvas_.fill();
+        const auto range = plugin::parameterRanges::outputGainDb;
+        for (int tick = 0; tick <= 12; ++tick) {
+            const float y = track.y + track.height * static_cast<float>(tick) / 12.0f;
+            const float cx = bounds.x + bounds.width * 0.5f;
+            canvas_.beginPath();
+            canvas_.moveTo(cx - 9.0f, y);
+            canvas_.lineTo(cx - 5.0f, y);
+            canvas_.moveTo(cx + 5.0f, y);
+            canvas_.lineTo(cx + 9.0f, y);
+            canvas_.strokeColor(colors.contentSecondary.withAlpha(tick == 4 ? 0.95f : 0.45f));
+            canvas_.strokeWidth(tick == 4 ? 1.5f : 1.0f);
+            canvas_.stroke();
+        }
+        const float normalized = std::clamp((gainDb - range.minimum) /
+            (range.maximum - range.minimum), 0.0f, 1.0f);
+        const float capY = track.y + (1.0f - normalized) * track.height;
+        sms::ui::dpf::drawFaderCap(canvas_,
+            {bounds.x + bounds.width * 0.5f - 9.0f, capY - 17.0f, 18.0f, 34.0f},
+            true, colors.controlAccent, hovered(InteractiveType::levelFader, index));
+        const auto valueBounds = uiLayout::levelValueLabel(index);
+        canvas_.fontFace(NANOVG_DEJAVU_SANS_TTF);
+        canvas_.fontSize(9.0f);
+        canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_CENTER |
+                          DGL_NAMESPACE::NanoVG::ALIGN_MIDDLE);
+        char value[24];
+        std::snprintf(value, sizeof(value), "%+.1f dB", gainDb);
+        const bool entering = isTarget(state_.mixerValueEntryTarget,
+                                       InteractiveType::levelValueLabel, index);
+        if (entering || hovered(InteractiveType::levelValueLabel, index)) {
+            canvas_.beginPath();
+            canvas_.roundedRect(valueBounds.x + uiLayout::contentOffsetX, valueBounds.y,
+                                valueBounds.width, valueBounds.height, 2.0f);
+            canvas_.fillColor(colors.controlAccent.withAlpha(0.18f));
+            canvas_.fill();
+        }
+        canvas_.fillColor(entering ? colors.selection : colors.contentPrimary);
+        canvas_.text(bounds.x + bounds.width * 0.5f,
+            valueBounds.y + valueBounds.height * 0.5f,
+            entering ? state_.mixerValueEntryText : value, nullptr);
+    }
+
     void drawViewportControls(const sms::ui::Rect zoom,
                               const sms::ui::Rect scroll)
     {
@@ -96,22 +147,30 @@ private:
         const float centerY = zoom.y + (1.0f - viewport.zoomPosition()) *
             (zoom.height - 12.0f) + 6.0f;
         canvas_.beginPath();
-        canvas_.roundedRect(zoom.x + 2.0f, centerY - 6.0f,
-                            zoom.width - 4.0f, 12.0f, 2.0f);
-        canvas_.fillColor(hovered(InteractiveType::waveformZoom)
-            ? colors.selection : colors.contentSecondary.withAlpha(alpha));
+        canvas_.roundedRect(zoom.x + 6.0f, zoom.y + 3.0f,
+                            4.0f, zoom.height - 6.0f, 2.0f);
+        canvas_.fillColor(colors.recessEdge.withAlpha(alpha));
         canvas_.fill();
+        for (int tick = 0; tick <= 10; ++tick) {
+            const float tickY = zoom.y + 6.0f +
+                (zoom.height - 12.0f) * static_cast<float>(tick) / 10.0f;
+            canvas_.beginPath();
+            canvas_.moveTo(zoom.x + 1.0f, tickY);
+            canvas_.lineTo(zoom.x + 4.0f, tickY);
+            canvas_.moveTo(zoom.x + 12.0f, tickY);
+            canvas_.lineTo(zoom.x + 15.0f, tickY);
+            canvas_.strokeColor(colors.contentSecondary.withAlpha(0.5f * alpha));
+            canvas_.strokeWidth(1.0f);
+            canvas_.stroke();
+        }
+        sms::ui::dpf::drawFaderCap(canvas_,
+            {zoom.x + 1.0f, centerY - 6.0f, zoom.width - 2.0f, 12.0f}, true,
+            colors.selection, hovered(InteractiveType::waveformZoom), viewport.total != 0U);
 
         const auto window = viewport.scrollThumb(scroll);
-        canvas_.beginPath();
-        canvas_.roundedRect(window.x, window.y + 1.0f,
-                            window.width, window.height - 2.0f, 3.0f);
-        canvas_.fillColor(colors.selection.withAlpha(
-            hovered(InteractiveType::waveformScroll) ? 0.36f : 0.20f));
-        canvas_.fill();
-        canvas_.strokeColor(colors.selection.withAlpha(alpha));
-        canvas_.strokeWidth(1.0f);
-        canvas_.stroke();
+        sms::ui::dpf::drawFaderCap(canvas_,
+            {window.x, window.y + 1.0f, window.width, window.height - 2.0f}, false,
+            colors.selection, hovered(InteractiveType::waveformScroll), viewport.total != 0U);
     }
 
     void drawMixerKnob(const sms::ui::Rect bounds, const InteractiveType type,
@@ -222,6 +281,8 @@ private:
 
     void drawGlobalMixer()
     {
+        if (state_.armed)
+            return;
         const auto& colors = sms::ui::dpf::theme();
         canvas_.fontFace(NANOVG_DEJAVU_SANS_TTF);
         canvas_.fontSize(11.0f);
@@ -229,12 +290,10 @@ private:
                           DGL_NAMESPACE::NanoVG::ALIGN_TOP);
         canvas_.fillColor(colors.contentSecondary);
         canvas_.text(994.0f, uiLayout::globalMixerLabelY, "GLOBAL MIXER", nullptr);
-        char volume[24];
         char pan[24];
         char tune[24];
         char low[16];
         char high[16];
-        std::snprintf(volume, sizeof(volume), "%+.1f dB", state_.outputGainDb);
         if (std::abs(state_.globalPan) < 0.005f)
             std::snprintf(pan, sizeof(pan), "CENTER");
         else
@@ -243,9 +302,6 @@ private:
         std::snprintf(tune, sizeof(tune), "%+.2f st", state_.globalTuneSemitones);
         std::snprintf(low, sizeof(low), "%.0f%%", state_.globalLowpass * 100.0f);
         std::snprintf(high, sizeof(high), "%.0f%%", state_.globalHighpass * 100.0f);
-        drawMixerKnob(uiLayout::globalMixerKnob(0), InteractiveType::globalMixerKnob,
-            0, "VOLUME", state_.outputGainDb, plugin::parameterRanges::outputGainDb.minimum,
-            plugin::parameterRanges::outputGainDb.maximum, volume);
         drawMixerKnob(uiLayout::globalMixerKnob(1), InteractiveType::globalMixerKnob,
             1, "PAN", state_.globalPan, plugin::parameterRanges::globalPan.minimum,
             plugin::parameterRanges::globalPan.maximum, pan);
@@ -355,7 +411,7 @@ private:
             canvas_.fill();
         }
 
-        const auto& modeColor = state_.armed ? colors.activityCapture : colors.activityPlayback;
+        const auto& modeColor = state_.armed ? colors.intentDanger : colors.meterGreen;
         sms::ui::dpf::drawLed(canvas_, 1146.0f, 43.0f, modeColor, true);
         canvas_.fontSize(13.0f);
         canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_LEFT |
@@ -922,8 +978,10 @@ private:
             canvas_.text(cell.x + cell.width - 9.0f, cell.y + cell.height * 0.5f,
                          note, nullptr);
         }
-        sms::ui::dpf::drawSegment(canvas_, uiLayout::editorPlayStop,
+        sms::ui::dpf::drawSymbolButton(canvas_, uiLayout::editorPlayStop,
                                   state_.anyPlaybackActive ? "STOP" : "PLAY",
+                                  state_.anyPlaybackActive ? sms::ui::dpf::ControlSymbol::stop
+                                      : sms::ui::dpf::ControlSymbol::play,
                                   state_.anyPlaybackActive, colors.activityPlayback,
                                   hovered(InteractiveType::playStop));
         sms::ui::dpf::drawSegment(canvas_, uiLayout::playOnSelect, "PLAY ON SELECT",
@@ -936,14 +994,13 @@ private:
         const auto& colors = sms::ui::dpf::theme();
         sms::ui::dpf::drawPanel(canvas_, uiLayout::sidePanel);
         sms::ui::dpf::drawSegment(canvas_, uiLayout::openEditor,
-                                  state_.armed ? "PLAY ONLY" : "SAMPLE", false,
+                                  "SAMPLE EDITOR", false,
                                   colors.controlAccent, hovered(InteractiveType::openEditor),
                                   !state_.armed);
         canvas_.fontFace(NANOVG_DEJAVU_SANS_TTF);
-        sms::ui::dpf::drawSegment(canvas_, uiLayout::playMode, "PLAY", !state_.armed,
-                                  colors.activityPlayback, hovered(InteractiveType::playMode));
-        sms::ui::dpf::drawSegment(canvas_, uiLayout::armMode, "ARM", state_.armed,
-                                  colors.activityCapture, hovered(InteractiveType::armMode));
+        sms::ui::dpf::drawSymbolButton(canvas_, uiLayout::modeToggle,
+            "ARM", sms::ui::dpf::ControlSymbol::record,
+            state_.armed, colors.activityCapture, hovered(InteractiveType::modeToggle));
         canvas_.fontSize(11.0f);
         canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_LEFT |
                           DGL_NAMESPACE::NanoVG::ALIGN_TOP);
@@ -1014,8 +1071,10 @@ private:
                 static_cast<float>(state_.maxVoices - 1) /
                 (plugin::parameterRanges::maxVoices.maximum - 1.0f),
                 colors.activityPlayback, hovered(InteractiveType::voiceLimit));
-            sms::ui::dpf::drawSegment(canvas_, uiLayout::mainPlayStop,
+            sms::ui::dpf::drawSymbolButton(canvas_, uiLayout::mainPlayStop,
                 state_.anyPlaybackActive ? "STOP" : "PLAY",
+                state_.anyPlaybackActive ? sms::ui::dpf::ControlSymbol::stop
+                    : sms::ui::dpf::ControlSymbol::play,
                 state_.anyPlaybackActive, colors.activityPlayback,
                 hovered(InteractiveType::playStop));
         }
@@ -1063,7 +1122,7 @@ private:
             status = liveStatus;
         } else if (state_.currentPad >= 0) {
             std::snprintf(liveStatus, sizeof(liveStatus),
-                          "Chopping to Bank %c Pad %02d — press any pad for next slice",
+                          "Chopping to Bank %c Pad %02d — tap Space or MIDI for next slice",
                           'A' + bankForGlobalPad(state_.currentPad),
                           localPadForGlobalPad(state_.currentPad) + 1);
             status = liveStatus;
@@ -1076,7 +1135,7 @@ private:
                 ? (state_.armed ? "Bank full — finalize, undo, or clear to continue"
                                 : "Bank full — right-click a pad to clear or replace it") :
                 (state_.status[0] != '\0' ? state_.status :
-                 (state_.armed ? "Press any pad to start" : "Ready to play"));
+                 (state_.armed ? "Press Space or MIDI to start" : "Ready to play"));
         }
         sms::ui::dpf::drawInsetSurface(canvas_, uiLayout::footer, 7.0f);
         canvas_.fontFace(NANOVG_DEJAVU_SANS_TTF);
@@ -1100,10 +1159,12 @@ private:
                           state_.mixerSettings.gainDecibels,
                           state_.mixerSettings.pan * 100.0f,
                           state_.mixerSettings.tuneSemitones);
+        else if (state_.armed)
+            std::snprintf(details, sizeof(details), "START %02d", state_.startPad + 1);
         else
             std::snprintf(details, sizeof(details),
-                          "START %02d   VOL %+.1f dB   PAN %+.0f   TUNE %+.2f st",
-                          state_.startPad + 1, state_.outputGainDb,
+                          "START %02d   PAN %+.0f   TUNE %+.2f st",
+                          state_.startPad + 1,
                           state_.globalPan * 100.0f, state_.globalTuneSemitones);
         canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_RIGHT |
                           DGL_NAMESPACE::NanoVG::ALIGN_MIDDLE);

@@ -6,6 +6,19 @@ their new effects default to off and slope to 12 dB/octave. New pads and global
 controls default to a 6 dB/octave slope. Global effect
 parameters are appended after the released host parameter IDs.
 
+Monitor Gain (`monitor_gain_db`) is appended after Any Playback Active; all
+existing parameter IDs and symbols stay fixed. It and Global Volume
+(`output_gain`) default to 0 dB and range from -24 to +12 dB. The adapter converts
+each to linear gain per block. Engine gains default to 1; non-finite values
+fall back to 1 and negative values become 0.
+
+Global Volume scales the sum of pad playback and raw Cut Point Editor previews.
+Monitor Gain scales only the gated stereo input. These two paths sum at the
+output; Global Volume, pad/global pan, tuning, and effects do not affect monitor
+input. Off/On/Auto still controls the monitor gate, with Auto enabled while
+armed. Recording and pre-roll store the original input PCM independently of
+both gains. Neither gain changes stored or exported PCM.
+
 At playback, either pad or global Dirty enables the same source conversion.
 It folds stereo to mono, holds source frames at a 26.04 kHz clock, then quantizes
 the held signal to 12 bits before varispeed interpolation. It applies only to

@@ -37,9 +37,11 @@ void newSessionDefaults()
     namespace ranges = midichopper::plugin::parameterRanges;
     check(ranges::maxVoices.defaultValue == 1.0f &&
           ranges::inputMonitor.defaultValue == 2.0f &&
+          ranges::monitorGainDb.defaultValue == 0.0f &&
           ranges::filterSlope.defaultValue == 0.0f,
           "host defaults match the new-session controls");
     check(midichopper::EngineSettings{}.maxVoices == 1U &&
+          midichopper::EngineSettings{}.monitorGain == 1.0f &&
           midichopper::EngineSettings{}.filterSlope == 0.0f &&
           sms::dsp::SampleMixerSettings{}.filterSlope == 0.0f,
           "engine and pad mixer defaults match the host controls");
@@ -87,7 +89,8 @@ void live_peak_meter() {
           kParameterGlobalLowpass == kParameterGlobalTuneSemitones + 1U &&
           kParameterStopAllPlayback == kParameterGlobalDirty + 1U &&
           kParameterAnyPlaybackActive == kParameterStopAllPlayback + 1U &&
-          kParameterAnyPlaybackActive + 1U == kParameterCount,
+          kParameterMonitorGainDb == kParameterAnyPlaybackActive + 1U &&
+          kParameterMonitorGainDb + 1U == kParameterCount,
           "new controls remain appended after released and hidden parameters");
 }
 
@@ -1513,20 +1516,29 @@ void fixed_duration() {
 void disarm_note_off_gain_and_rate_change() {
     midichopper::SamplerEngine e(1000.0, 1.0);
     auto s = e.settings();
-    s.armed = true; s.monitorInput = true; s.gain = 0.5f; e.setSettings(s);
+    s.armed = true; s.monitorInput = true; s.gain = 0.5f; s.monitorGain = 0.25f;
+    e.setSettings(s);
     float input[] = {1, 2, 3, 4}; float left[4]{}; float right[4]{};
     const midichopper::MidiEvent events[] = {
         {0, 60, 127, midichopper::MidiEventType::NoteOn},
         {2, 60, 0, midichopper::MidiEventType::NoteOff},
     };
     e.process(input, input, left, right, 4, events, 2);
-    close(left[1], 1.0f, "output gain applies to monitored input");
+    close(left[1], 0.5f, "monitor gain alone scales input during recording");
     check(e.padMetadata(0).recording, "note-off does not end sequential capture");
 
     s.armed = false; e.setSettings(s);
     e.process(nullptr, nullptr, left, right, 0);
     check(e.padMetadata(0).occupied && e.padMetadata(0).frames == 4,
           "disarming finalizes the open slice");
+    midichopper::PadData captured;
+    check(e.exportPad(0, captured), "export recording with independent gains");
+    for (std::uint32_t frame = 0; frame < captured.frames; ++frame) {
+        close(captured.stereo[frame * 2U], input[frame],
+              "neither gain changes recorded left PCM");
+        close(captured.stereo[frame * 2U + 1U], input[frame],
+              "neither gain changes recorded right PCM");
+    }
 
     sms::dsp::SampleMixerSettings mixer;
     mixer.gainDecibels = -3.0f;
@@ -1542,6 +1554,101 @@ void disarm_note_off_gain_and_rate_change() {
     close(preservedMixer.pan, mixer.pan, "host sample-rate change preserves mixer pan");
     close(preservedMixer.tuneSemitones, mixer.tuneSemitones,
           "host sample-rate change preserves mixer tune");
+}
+
+void independent_monitor_and_playback_gain() {
+    using namespace midichopper::plugin;
+    const auto monitorRange = parameterRange(kParameterMonitorGainDb);
+    check(monitorRange.defaultValue == 0.0f && monitorRange.minimum == -24.0f &&
+          monitorRange.maximum == 12.0f,
+          "monitor gain exposes the playback gain range independently");
+
+    midichopper::SamplerEngine engine(1000.0, 1.0);
+    auto settings = engine.settings();
+    const float inputLeft[] = {0.25f};
+    const float inputRight[] = {-0.5f};
+    float left[1]{}, right[1]{};
+    settings.gain = 0.0f;
+    settings.monitorGain = 0.5f;
+    engine.setSettings(settings);
+    engine.process(inputLeft, inputRight, left, right, 1U);
+    close(left[0], 0.125f, "monitor left remains audible with playback gain zero");
+    close(right[0], -0.25f, "monitor gain preserves stereo input");
+    settings.gain = 2.0f;
+    engine.setSettings(settings);
+    engine.process(inputLeft, inputRight, left, right, 1U);
+    close(left[0], 0.125f, "playback gain changes do not scale monitor input");
+    close(right[0], -0.25f, "playback gain leaves right monitor input unchanged");
+    settings.monitorGain = 2.0f;
+    engine.setSettings(settings);
+    engine.process(inputLeft, inputRight, left, right, 1U);
+    close(left[0], 0.5f, "monitor gain can boost monitor input");
+    close(right[0], -1.0f, "monitor boost keeps stereo input independent");
+
+    midichopper::PadData pad;
+    pad.sampleRate = 1000.0;
+    pad.frames = 16U;
+    for (std::uint32_t frame = 0; frame < pad.frames; ++frame) {
+        pad.stereo.push_back(0.8f);
+        pad.stereo.push_back(-0.4f);
+    }
+    check(engine.importPad(0U, pad), "import stereo pad for independent gain paths");
+    settings.monitorInput = false;
+    settings.monitorGain = 0.0f;
+    settings.gain = 0.5f;
+    engine.setSettings(settings);
+    const midichopper::MidiEvent on{
+        0U, settings.baseNote, 127U, midichopper::MidiEventType::NoteOn};
+    engine.process(inputLeft, inputRight, left, right, 1U, &on, 1U);
+    close(left[0], 0.4f, "playback gain scales left pad with monitor gain zero");
+    close(right[0], -0.2f, "playback gain scales right pad independently");
+    settings.monitorGain = 2.0f;
+    engine.setSettings(settings);
+    engine.process(inputLeft, inputRight, left, right, 1U);
+    close(left[0], 0.4f, "monitor gain changes do not scale pad playback");
+    close(right[0], -0.2f, "monitor gate stays closed despite monitor boost");
+
+    settings.monitorInput = true;
+    settings.monitorGain = 0.25f;
+    engine.setSettings(settings);
+    engine.process(inputLeft, inputRight, left, right, 1U);
+    close(left[0], 0.4625f, "left output sums separately scaled monitor and pad");
+    close(right[0], -0.325f, "right output sums separately scaled monitor and pad");
+    settings.gain = 0.0f;
+    engine.setSettings(settings);
+    engine.process(inputLeft, inputRight, left, right, 1U);
+    close(left[0], 0.0625f, "muting playback leaves only monitored left input");
+    close(right[0], -0.125f, "muting playback leaves only monitored right input");
+    settings.gain = 0.5f;
+    settings.monitorGain = 0.0f;
+    engine.setSettings(settings);
+    engine.process(inputLeft, inputRight, left, right, 1U);
+    close(left[0], 0.4f, "muting monitor leaves only left pad playback");
+    close(right[0], -0.2f, "muting monitor leaves only right pad playback");
+
+    engine.stopAllPlayback();
+    settings.monitorGain = 0.25f;
+    engine.setSettings(settings);
+    engine.startChopPreview(0U, 1U, 0U, 2U);
+    engine.process(inputLeft, inputRight, left, right, 1U);
+    close(left[0], 0.4625f, "raw preview uses playback gain before monitor sum");
+    close(right[0], -0.325f, "raw stereo preview uses its own gain path");
+    settings.gain = 0.0f;
+    engine.setSettings(settings);
+    engine.process(inputLeft, inputRight, left, right, 1U);
+    close(left[0], 0.0625f, "muted raw preview leaves monitored input audible");
+    close(right[0], -0.125f, "muted raw preview leaves right monitor input audible");
+
+    settings.gain = std::numeric_limits<float>::quiet_NaN();
+    settings.monitorGain = std::numeric_limits<float>::infinity();
+    engine.setSettings(settings);
+    close(engine.settings().gain, 1.0f, "non-finite playback gain defaults to unity");
+    close(engine.settings().monitorGain, 1.0f, "non-finite monitor gain defaults to unity");
+    settings.gain = -1.0f;
+    settings.monitorGain = -2.0f;
+    engine.setSettings(settings);
+    close(engine.settings().gain, 0.0f, "negative playback gain sanitizes to zero");
+    close(engine.settings().monitorGain, 0.0f, "negative monitor gain sanitizes to zero");
 }
 
 void input_monitor_modes() {
@@ -1641,6 +1748,7 @@ int main() {
     pad_clipboard_snapshot();
     fixed_duration();
     disarm_note_off_gain_and_rate_change();
+    independent_monitor_and_playback_gain();
     input_monitor_modes();
     unbounded_midi_source_preserves_late_note_off();
     std::cout << "core tests passed\n";

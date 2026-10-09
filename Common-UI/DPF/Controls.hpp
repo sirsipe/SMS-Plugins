@@ -49,6 +49,80 @@ inline void drawSegment(DGL_NAMESPACE::NanoVG& canvas, const ui::Rect bounds,
                 label, active, accent, hovered, enabled);
 }
 
+enum class ControlSymbol { play, stop, record };
+
+inline void drawSymbolButton(DGL_NAMESPACE::NanoVG& canvas, const ui::Rect bounds,
+                             const char* const label, const ControlSymbol symbol,
+                             const bool active, const DGL_NAMESPACE::Color& accent,
+                             const bool hovered = false)
+{
+    const ScopedCanvasState canvasState(canvas);
+    const Theme& colors = theme();
+    drawRaisedControlSurface(canvas, bounds, accent, {active, hovered, false, true});
+    const float centerX = bounds.x + bounds.width * 0.5f;
+    const float centerY = bounds.y + bounds.height * 0.5f;
+    const float iconX = centerX - 23.0f;
+    canvas.beginPath();
+    if (symbol == ControlSymbol::play) {
+        canvas.moveTo(iconX - 5.0f, centerY - 6.0f);
+        canvas.lineTo(iconX + 6.0f, centerY);
+        canvas.lineTo(iconX - 5.0f, centerY + 6.0f);
+        canvas.closePath();
+    } else if (symbol == ControlSymbol::stop) {
+        canvas.rect(iconX - 5.0f, centerY - 5.0f, 10.0f, 10.0f);
+    } else {
+        canvas.circle(iconX, centerY, 5.5f);
+    }
+    canvas.fillColor(symbol == ControlSymbol::record ? colors.intentDanger
+                                                    : colors.faderTop);
+    canvas.fill();
+    canvas.fontFace(NANOVG_DEJAVU_SANS_TTF);
+    canvas.fontSize(11.0f);
+    canvas.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_CENTER |
+                     DGL_NAMESPACE::NanoVG::ALIGN_MIDDLE);
+    canvas.fillColor(colors.contentPrimary);
+    canvas.text(centerX + 10.0f, centerY, label, nullptr);
+}
+
+/** Ivory console cap; its dark index line is perpendicular to travel. */
+inline void drawFaderCap(DGL_NAMESPACE::NanoVG& canvas, const ui::Rect bounds,
+                         const bool verticalTravel, const DGL_NAMESPACE::Color& accent,
+                         const bool hovered = false, const bool enabled = true)
+{
+    const ScopedCanvasState canvasState(canvas);
+    const Theme& colors = theme();
+    const float alpha = enabled ? 1.0f : colors.disabledAlpha;
+    canvas.beginPath();
+    canvas.roundedRect(bounds.x + 1.5f, bounds.y + 2.0f,
+                       bounds.width + 1.0f, bounds.height + 1.0f, 1.5f);
+    canvas.fillColor(colors.shadow.withAlpha(0.65f * alpha));
+    canvas.fill();
+    canvas.beginPath();
+    canvas.roundedRect(bounds.x, bounds.y, bounds.width, bounds.height, 1.0f);
+    canvas.fillPaint(canvas.linearGradient(bounds.x, bounds.y,
+        bounds.x + bounds.width, bounds.y + bounds.height,
+        colors.faderTop.withAlpha(alpha), colors.faderBottom.withAlpha(alpha)));
+    canvas.fill();
+    canvas.strokeColor(hovered ? accent : colors.edgeHighlight.withAlpha(alpha));
+    canvas.strokeWidth(hovered ? 1.5f : 1.0f);
+    canvas.stroke();
+    canvas.beginPath();
+    canvas.rect(bounds.x + 2.0f, bounds.y + 2.0f,
+                bounds.width - 4.0f, bounds.height - 4.0f);
+    canvas.fillColor(colors.faderTop.withAlpha(0.55f * alpha));
+    canvas.fill();
+    const float cx = bounds.x + bounds.width * 0.5f;
+    const float cy = bounds.y + bounds.height * 0.5f;
+    canvas.beginPath();
+    canvas.moveTo(verticalTravel ? bounds.x + 1.0f : cx,
+                  verticalTravel ? cy : bounds.y + 1.0f);
+    canvas.lineTo(verticalTravel ? bounds.x + bounds.width - 1.0f : cx,
+                  verticalTravel ? cy : bounds.y + bounds.height - 1.0f);
+    canvas.strokeColor(colors.recessEdge.withAlpha(alpha));
+    canvas.strokeWidth(1.5f);
+    canvas.stroke();
+}
+
 inline void drawSlider(DGL_NAMESPACE::NanoVG& canvas,
                        const float x, const float y, const float width, const float value,
                        const DGL_NAMESPACE::Color& accent, const bool hovered = false)
@@ -65,40 +139,21 @@ inline void drawSlider(DGL_NAMESPACE::NanoVG& canvas,
     canvas.fillPaint(canvas.linearGradient(x, y, x, y + 6.0f,
         colors.shadow, colors.surfaceRaised));
     canvas.fill();
-    canvas.beginPath();
-    canvas.roundedRect(x, y, width * normalizedValue, 6.0f, 3.0f);
-    canvas.fillColor(accent.withAlpha(0.8f));
-    canvas.fill();
-    const float capX = x + width * normalizedValue;
-    canvas.beginPath();
-    canvas.circle(capX + 1.0f, y + 4.5f, 9.0f);
-    canvas.fillPaint(canvas.radialGradient(capX, y + 3.0f, 2.0f, 10.0f,
-        colors.shadow.withAlpha(0.65f), colors.shadow.withAlpha(0.0f)));
-    canvas.fill();
-    canvas.beginPath();
-    canvas.circle(capX, y + 3.0f, 8.0f);
-    canvas.fillPaint(canvas.linearGradient(capX, y - 5.0f, capX, y + 11.0f,
-        accent.plus(18), accent.minus(48)));
-    canvas.fill();
-    canvas.strokeColor(colors.contentPrimary.withAlpha(0.22f));
-    canvas.strokeWidth(0.8f);
-    canvas.stroke();
-    canvas.beginPath();
-    canvas.circle(capX, y + 3.0f, 5.1f);
-    canvas.strokeColor(colors.edgeHighlight.withAlpha(0.55f));
-    canvas.strokeWidth(1.0f);
-    canvas.stroke();
-    canvas.beginPath();
-    canvas.moveTo(capX - 2.6f, y + 3.0f);
-    canvas.lineTo(capX + 2.6f, y + 3.0f);
-    canvas.strokeColor(colors.recessEdge);
-    canvas.strokeWidth(1.2f);
-    canvas.stroke();
-    if (hovered) {
-        canvas.strokeColor(accent.withAlpha(colors.hoverHaloAlpha));
-        canvas.strokeWidth(3.0f);
+    for (int tick = 0; tick <= 10; ++tick) {
+        const float tickX = x + width * static_cast<float>(tick) / 10.0f;
+        const float length = tick % 5 == 0 ? 4.0f : 2.0f;
+        canvas.beginPath();
+        canvas.moveTo(tickX, y - 2.0f);
+        canvas.lineTo(tickX, y - 2.0f - length);
+        canvas.moveTo(tickX, y + 8.0f);
+        canvas.lineTo(tickX, y + 8.0f + length);
+        canvas.strokeColor(colors.contentSecondary.withAlpha(0.55f));
+        canvas.strokeWidth(1.0f);
         canvas.stroke();
     }
+    const float capX = x + width * normalizedValue;
+    drawFaderCap(canvas, {capX - 7.0f, y - 5.0f, 14.0f, 16.0f}, false,
+                 accent, hovered);
 }
 
 inline void drawKnob(DGL_NAMESPACE::NanoVG& canvas,

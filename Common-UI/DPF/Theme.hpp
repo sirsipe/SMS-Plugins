@@ -55,6 +55,8 @@ struct Theme {
     DGL_NAMESPACE::Color controlBottom{27, 27, 29};
     DGL_NAMESPACE::Color edgeHighlight{151, 143, 132};
     DGL_NAMESPACE::Color shadow{0, 0, 0};
+    DGL_NAMESPACE::Color faderTop{255, 250, 231};
+    DGL_NAMESPACE::Color faderBottom{191, 181, 150};
 
     float panelRadius = 12.0f;
     float controlRadius = 6.0f;

@@ -68,13 +68,16 @@ enum class Zone : std::uint8_t { green, yellow, red };
 class StereoGeometry {
 public:
     explicit constexpr StereoGeometry(
-        const Rect bounds, const std::uint32_t segments = defaultSegmentCount) noexcept
-        : bounds_(bounds), segments_(segments) {}
+        const Rect bounds, const std::uint32_t segments = defaultSegmentCount,
+        const float channelGap = -1.0f) noexcept
+        : bounds_(bounds), segments_(segments), channelGap_(channelGap) {}
 
     [[nodiscard]] constexpr Rect channel(const std::uint32_t channelIndex) const noexcept
     {
         const float padding = std::min(2.0f, bounds_.width * 0.1f);
-        const float gap = std::min(3.0f, bounds_.width * 0.12f);
+        const float gap = channelGap_ < 0.0f ? std::min(3.0f, bounds_.width * 0.12f)
+            : std::clamp(channelGap_, 0.0f,
+                std::max(0.0f, bounds_.width - padding * 2.0f));
         const float width = std::max(
             0.0f, (bounds_.width - padding * 2.0f - gap) * 0.5f);
         return {bounds_.x + padding + (channelIndex == 0U ? 0.0f : width + gap),
@@ -103,6 +106,7 @@ public:
 private:
     Rect bounds_;
     std::uint32_t segments_;
+    float channelGap_;
 };
 
 } // namespace sms::ui::meter

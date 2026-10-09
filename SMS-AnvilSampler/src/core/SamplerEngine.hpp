@@ -57,7 +57,8 @@ struct EngineSettings {
     MidiBankMode midiBankMode = kDefaultMidiBankMode;
     std::uint8_t padsPerBank = static_cast<std::uint8_t>(kPadsPerBank);
     float preRollMilliseconds = 0.0f;
-    float gain = 1.0f;
+    float gain = 1.0f; // Pad playback and raw previews only.
+    float monitorGain = 1.0f;
     float pan = 0.0f;
     float tuneSemitones = 0.0f;
     float lowpass = 0.0f;

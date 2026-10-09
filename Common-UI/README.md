@@ -16,12 +16,13 @@ shared UI and framework-neutral source include paths.
 - `DPF/AnalogMaterials.hpp`: scalable chassis, recessed-panel, rubber-pad,
   physical-control, LED, screw, and powder-coat rendering primitives.
 - `DPF/Controls.hpp`: reusable NanoVG panel, segment, slider, and action
-  primitives.
+  primitives, symbol buttons, and ivory console fader caps with index lines.
 - `Interaction.hpp`, `ContextMenu.hpp`, and `DPF/ContextMenu.hpp`: reusable
   single-target hover identity/transitions, bounded wheel adjustments, menu
   geometry/hit testing, and NanoVG menu rendering.
 - `LevelMeter.hpp` and `DPF/LevelMeter.hpp`: renderer-independent variable-size
-  stereo LED geometry/level mapping and its NanoVG renderer.
+  stereo LED geometry/level mapping and its NanoVG renderer; optional channel
+  spacing leaves room for an overlaid fader.
 - `DPF/WaveformRenderer.hpp`: waveform, region, and ADSR drawing.
 - `PadLayout.hpp`: visible-pad counts, bottom-up index mapping, and grid geometry.
 - `WaveformEditor.hpp`: renderer-independent waveform geometry, hit testing,

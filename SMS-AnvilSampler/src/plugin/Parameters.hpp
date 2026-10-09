@@ -49,6 +49,7 @@ enum Parameter : std::uint32_t {
     kParameterGlobalDirty,
     kParameterStopAllPlayback,
     kParameterAnyPlaybackActive,
+    kParameterMonitorGainDb,
     kParameterCount,
 };
 
@@ -73,6 +74,7 @@ inline constexpr ParameterRange baseMidiNote{
     static_cast<float>(kDefaultBaseMidiNote), 0.0f,
     static_cast<float>(128U - kPadsPerBank)};
 inline constexpr ParameterRange outputGainDb{0.0f, -24.0f, 12.0f};
+inline constexpr ParameterRange monitorGainDb = outputGainDb;
 inline constexpr ParameterRange maxVoices{
     1.0f, 1.0f, static_cast<float>(kPadsPerBank)};
 inline constexpr ParameterRange activeBank{1.0f, 1.0f, static_cast<float>(kBankCount)};
@@ -162,6 +164,7 @@ private:
     case kParameterInputMonitor: return parameterRanges::inputMonitor;
     case kParameterBaseMidiNote: return parameterRanges::baseMidiNote;
     case kParameterOutputGainDb: return parameterRanges::outputGainDb;
+    case kParameterMonitorGainDb: return parameterRanges::monitorGainDb;
     case kParameterMaxVoices: return parameterRanges::maxVoices;
     case kParameterActiveBank: return parameterRanges::activeBank;
     case kParameterPadLayout: return parameterRanges::padLayout;

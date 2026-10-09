@@ -284,7 +284,11 @@ protected:
             break;
         case kParameterOutputGainDb:
             setupParameter(index, parameter, "Global Volume", "output_gain", "dB",
-                           0, "Gain applied to monitored input and pads.");
+                           0, "Gain applied to pad playback and raw previews.");
+            break;
+        case kParameterMonitorGainDb:
+            setupParameter(index, parameter, "Monitor Gain", "monitor_gain_db", "dB",
+                           0, "Gain applied only to monitored input; recorded audio is unchanged.");
             break;
         case kParameterGlobalPan:
             setupParameter(index, parameter, "Global Pan", "global_pan", "",
@@ -1478,6 +1482,7 @@ private:
             clampedParameter(kParameterInputMonitor), settings.armed);
         settings.baseNote = static_cast<std::uint8_t>(clampedParameter(kParameterBaseMidiNote));
         settings.gain = decibelsToGain(clampedParameter(kParameterOutputGainDb));
+        settings.monitorGain = decibelsToGain(clampedParameter(kParameterMonitorGainDb));
         settings.pan = clampedParameter(kParameterGlobalPan);
         settings.tuneSemitones = clampedParameter(kParameterGlobalTuneSemitones);
         settings.lowpass = clampedParameter(kParameterGlobalLowpass);
