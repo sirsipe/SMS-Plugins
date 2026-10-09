@@ -23,6 +23,8 @@ host, or a specific plug-in's state model.
 - `Audio/RealtimeCommandDispatcher.hpp`: serialized control callers hand bounded,
   non-throwing operations to the callback without pausing audio; inactive host
   lifecycle executes commands inline.
+- `Audio/RealtimeLatestMailbox.hpp`: three-slot latest-value control-to-audio
+  publication; serialized writers, one reader, bounded lock-free consumption.
 - `Audio/RealtimeAccessGate.hpp`: lock-free audio-side ownership and handoff
   that lets a control thread access callback-owned state immediately while the
   callback is idle, or at a block boundary while it is running.

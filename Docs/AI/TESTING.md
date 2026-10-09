@@ -1,6 +1,6 @@
 # Testing reference
 
-Run from the repository root after the [build](DEVELOPMENT.md); report checks.
+Run from the repository root after [building](DEVELOPMENT.md).
 
 ## Automated checks
 
@@ -14,6 +14,7 @@ Filter with `ctest --test-dir build --output-on-failure -R NAME`:
 
 | CTest name | Coverage |
 | --- | --- |
+| `preview-mailbox` | Coherent play/stop ranges under concurrent writers, latest-wins, no replay |
 | `pad-workflows` | Control workflow copy-time snapshots, replies, split commit/conflict, invalid actions |
 | `sampler-core` | Capture, banks/layouts, storage, voices, region/ADSR, pad/global mixer sums, filter response and dirty conversion, raw chop preview/repartition, resampling, clipboard, lifecycle, and more than 1,024 MIDI events per block |
 | `sampler-transfer` | Concurrent transfers, exact monitoring/MIDI/recording continuity, retained storage, stale commits, capacity, published host snapshots, dispatcher lifecycle, and audio-thread allocation/destruction |
@@ -22,8 +23,7 @@ Filter with `ctest --test-dir build --output-on-failure -R NAME`:
 | `ui-message-bus` | Bounded VST3 message ordering, independent view cursors, explicit gap reporting on wrap, and large replies |
 | `wav-codec` | WAV formats, validation, file actions, offline render, real-time access gate |
 
-Rebuild affected targets before testing. Run the complete suite before handing off code
-changes. For docs-only changes, run the doc checks and verify
+Rebuild affected targets; run the complete suite before handing off code. For docs-only changes, run the doc checks and verify
 changed commands against CMake/tool help; no audio rebuild is required.
 Test long audio with an optional WAV argument; keep supplied audio out of Git:
 
@@ -41,8 +41,8 @@ LV2_PATH="$PWD/build/bin" \
   lv2info https://github.com/sirsipe/SMS-Plugins/SMS-AnvilSampler
 ```
 
-The URI comes from `src/plugin/DistrhoPluginInfo.h` under `SMS-AnvilSampler`.
-Discovery/metadata does not validate audio.
+`SMS-AnvilSampler/src/plugin/DistrhoPluginInfo.h` defines the URI. Discovery
+does not validate audio.
 
 ## LV2 host integration
 
@@ -101,9 +101,8 @@ Applicable checks:
 
 ## UI interaction tooling
 
-The [Dev Container](../../.devcontainer/devcontainer.json) provides X11 display
-`:1`, TigerVNC, Openbox, noVNC, dummy JACK, software Mesa, `xdotool`, `wmctrl`,
-`xwininfo`, and ImageMagick. Run `desktop-health` to check desktop services,
+The [Dev Container](../../.devcontainer/devcontainer.json) provides display `:1`,
+noVNC, dummy JACK, software Mesa and UI inspection tools. Run `desktop-health` to check desktop services,
 JACK, OpenGL, D-Bus, and portal FileChooser. Run `desktop-health --dialogs` after
 an image rebuild or portal change to exercise Open and Save dialogs. Watch
 automation through noVNC port 6080; avoid VNC mouse input during a sequence.

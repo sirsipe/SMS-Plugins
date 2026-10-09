@@ -1,6 +1,8 @@
 # Cut Point Editor contract
 
-Contract for cut editing, preview, storage, and waveform input.
+`RealtimeLatestMailbox` publishes complete raw-preview commands/ranges. Control
+writers serialize; audio consumes the latest request without locks, allocation,
+or retry. Unread requests are superseded as a whole.
 
 ## Model
 
@@ -11,7 +13,7 @@ host parameters nor saved state.
 The initial center pad is occupied, but arrow navigation may center an empty
 slot; either neighbor may also be empty. One `chop_snapshot_request/data` reply
 carries all three waveforms and generations from a retained baseline.
-`ChopEditorSession` matches the request sequence and retries pending requests.
+`ChopEditorController` owns the workflow; `ChopEditorSession` matches/retries baselines.
 Occupied pads must share a rate. Per-pad PCM has no capture-session identity, so source
 ancestry cannot be verified.
 
@@ -26,8 +28,7 @@ Ctrl-wheel zooms around the pointer; Shift-wheel pans within the source. The
 visible range gets a fresh raw 128-bin summary. Modified wheel input over a
 handle controls the viewport; unmodified wheel still moves the cut. Navigation,
 Apply refresh, and Exit reset the viewport. Zoom never changes source offsets.
-The vertical zoom control and horizontal scroll window use the same viewport
-and trigger the same detail request when dragged.
+Zoom/scroll controls use the same viewport and detail requests.
 
 From entry through Apply/loading, the editor owns MIDI exclusively; all notes
 are silent until its waveform data is ready. Then the three displayed notes
@@ -40,7 +41,7 @@ offsets. Exit also discards them and returns to the main view.
 
 `chop_preview_request` carries the global source pads and inclusive/exclusive
 frame range. The callback traverses existing blocks without allocation or
-locking and bypasses per-pad Start/End, ADSR, and mixer settings. Global gain
+locking and bypasses per-pad Start/End, ADSR, and mixer settings. Playback gain
 applies. Hidden output `chop_preview_position` drives the combined playhead.
 `chop_midi_preview` publishes the current proposed ranges or an exclusive mute
 map while the editor is loading or applying.
@@ -77,7 +78,7 @@ Navigation cancels the plan and opens the neighboring ordinary editor.
 Apply revalidates pad generations, atomically shifts whole pads right, and
 stores both halves. Both reset Start/End/ADSR and inherit source mixer settings;
 shifted pads stay intact. Apply opens the ordinary editor around the halves.
-Cancellation, stale plans, and failures do not mutate.
+Cancellation and failures do not mutate.
 
 ## Validation
 
@@ -102,9 +103,8 @@ Cancellation, stale plans, and failures do not mutate.
 - Right-click an occupied pad with a later empty slot and choose **Split
   Sample...**. Preview both midpoint halves, adjust the split, cancel once, then
   Apply. Confirm MIDI for the target and following pad previews the proposed
-  prefix and virtual suffix, while other notes remain silent. Confirm later pads
-  shift once, settings follow them, the editor exits, and no hidden or next-bank
-  slot changes.
+  prefix/suffix while other notes remain silent. Confirm later pads shift once,
+  settings follow them, the ordinary editor opens, and hidden/next-bank slots stay intact.
 
 ## Limitation
 

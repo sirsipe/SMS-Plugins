@@ -3,6 +3,7 @@
 #include "Audio/WaveformSummary.hpp"
 #include "Audio/RealtimeAccessGate.hpp"
 #include "Audio/RealtimeCommandDispatcher.hpp"
+#include "Audio/RealtimeLatestMailbox.hpp"
 #include "ControlWorker.hpp"
 #include "Audio/WavCodec.hpp"
 #include "ChopEditorProtocol.hpp"
@@ -851,13 +852,7 @@ protected:
             midichopper::plugin::ChopPreviewRequest request;
             if (midichopper::plugin::decodeChopPreviewRequest(
                     value != nullptr ? value : "", request)) {
-                pendingChopPreviewFrame_.store(request.sourceFrame, std::memory_order_relaxed);
-                pendingChopPreviewEndFrame_.store(
-                    request.sourceEndFrame, std::memory_order_relaxed);
-                const std::uint32_t packed = (request.firstPad & 0xffU) |
-                    ((request.padCount & 0xffU) << 8U) |
-                    ((request.play ? 1U : 2U) << 16U);
-                pendingChopPreviewCommand_.store(packed, std::memory_order_release);
+                chopPreviewMailbox_.publish(request);
             }
             return;
         }
@@ -1107,14 +1102,11 @@ private:
             pendingCaptureTarget_.exchange(0U, std::memory_order_acquire);
         if (captureTarget != 0U)
             sampler_.selectCaptureTarget(captureTarget - 1U);
-        const std::uint32_t preview =
-            pendingChopPreviewCommand_.exchange(0U, std::memory_order_acquire);
-        if (preview != 0U) {
-            const auto action = (preview >> 16U) & 0xffU;
-            if (action == 1U) {
-                sampler_.startChopPreview(preview & 0xffU, (preview >> 8U) & 0xffU,
-                    pendingChopPreviewFrame_.load(std::memory_order_relaxed),
-                    pendingChopPreviewEndFrame_.load(std::memory_order_relaxed));
+        midichopper::plugin::ChopPreviewRequest preview;
+        if (chopPreviewMailbox_.tryConsume(preview)) {
+            if (preview.play) {
+                sampler_.startChopPreview(preview.firstPad, preview.padCount,
+                    preview.sourceFrame, preview.sourceEndFrame);
             } else {
                 sampler_.stopChopPreview();
             }
@@ -1275,9 +1267,8 @@ private:
     std::atomic<std::uint32_t> pendingPlayStopPad_{0};
     std::atomic<std::uint64_t> pendingClearPads_{0};
     std::atomic<std::uint32_t> pendingCaptureTarget_{0};
-    std::atomic<std::uint32_t> pendingChopPreviewCommand_{0};
-    std::atomic<std::uint64_t> pendingChopPreviewFrame_{0};
-    std::atomic<std::uint64_t> pendingChopPreviewEndFrame_{0};
+    sms::audio::RealtimeLatestMailbox<midichopper::plugin::ChopPreviewRequest>
+        chopPreviewMailbox_;
     std::atomic<std::uint64_t> pendingChopMidiPreviewSequence_{0};
     std::atomic<std::uint32_t> pendingChopMidiPreviewConfig_{0};
     std::array<std::atomic<std::uint64_t>,

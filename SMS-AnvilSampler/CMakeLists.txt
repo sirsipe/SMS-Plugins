@@ -167,6 +167,14 @@ foreach(anvilsampler_target IN LISTS anvilsampler_targets)
 endforeach()
 
 if(BUILD_TESTING)
+  add_executable(anvilsampler_preview_mailbox_tests tests/preview_mailbox_tests.cpp)
+  target_include_directories(anvilsampler_preview_mailbox_tests PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/../Common-Src"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/plugin")
+  target_link_libraries(anvilsampler_preview_mailbox_tests PRIVATE Threads::Threads)
+  add_test(NAME preview-mailbox COMMAND anvilsampler_preview_mailbox_tests)
+
   add_executable(anvilsampler_pad_workflow_tests
     tests/pad_workflow_tests.cpp
     src/plugin/PadWorkflows.cpp
