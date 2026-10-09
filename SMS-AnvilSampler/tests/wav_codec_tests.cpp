@@ -145,6 +145,43 @@ void rejectedFormats()
          static_cast<std::uint8_t>(nan >> 16U), static_cast<std::uint8_t>(nan >> 24U)})).error ==
               sms::audio::WavError::nonFiniteSample,
           "non-finite float WAV is rejected");
+    for (const float infinite : {std::numeric_limits<float>::infinity(),
+                                 -std::numeric_limits<float>::infinity()}) {
+        const std::uint32_t bits = std::bit_cast<std::uint32_t>(infinite);
+        check(sms::audio::decodeWav(wav(
+            3U, 1U, 32U,
+            {static_cast<std::uint8_t>(bits), static_cast<std::uint8_t>(bits >> 8U),
+             static_cast<std::uint8_t>(bits >> 16U), static_cast<std::uint8_t>(bits >> 24U)})).error ==
+                  sms::audio::WavError::nonFiniteSample,
+              "positive and negative infinite float samples are rejected");
+    }
+
+    const auto smallValid = wav(1U, 1U, 16U, {0x00U, 0x40U});
+    auto badRiff = smallValid;
+    badRiff[0] = 'X';
+    check(sms::audio::decodeWav(badRiff).error == sms::audio::WavError::malformed,
+          "non-RIFF header is rejected");
+    auto badWave = smallValid;
+    badWave[8] = 'X';
+    check(sms::audio::decodeWav(badWave).error == sms::audio::WavError::malformed,
+          "non-WAVE form type is rejected");
+    auto zeroRate = smallValid;
+    setU32(zeroRate, 36U, 0U);
+    check(sms::audio::decodeWav(zeroRate).error == sms::audio::WavError::unsupportedFormat,
+          "zero WAV sample rate is rejected");
+    auto excessiveRate = smallValid;
+    setU32(excessiveRate, 36U, 384001U);
+    check(sms::audio::decodeWav(excessiveRate).error == sms::audio::WavError::unsupportedFormat,
+          "sample rate above the supported limit is rejected");
+    auto badByteRate = smallValid;
+    setU32(badByteRate, 40U, 96001U);
+    check(sms::audio::decodeWav(badByteRate).error == sms::audio::WavError::unsupportedFormat,
+          "inconsistent WAV byte rate is rejected");
+    auto badBlockAlign = smallValid;
+    badBlockAlign[44U] = 1U;
+    badBlockAlign[45U] = 0U;
+    check(sms::audio::decodeWav(badBlockAlign).error == sms::audio::WavError::unsupportedFormat,
+          "inconsistent WAV block alignment is rejected");
 
     auto truncated = wav(1U, 1U, 16U, {0, 0});
     truncated.pop_back();
@@ -158,6 +195,72 @@ void rejectedFormats()
     const auto longSongDecoded = sms::audio::decodeWav(longSong);
     check(longSongDecoded && longSongDecoded.audio.frames == 31U * 48000U,
           "default WAV import accepts a song longer than 30 seconds");
+}
+
+void malformedChunksAndTruncations()
+{
+    const auto valid = wav(1U, 1U, 16U, {0x00U, 0x40U});
+    const auto control = sms::audio::decodeWav(valid);
+    check(control && control.audio.frames == 1U && control.audio.stereo[0] > 0.49f,
+          "small WAV control with an odd unknown chunk decodes");
+
+    for (std::size_t length = 0U; length < valid.size(); ++length) {
+        const std::vector<std::uint8_t> truncated(valid.begin(), valid.begin() + length);
+        check(sms::audio::decodeWav(truncated).error == sms::audio::WavError::malformed,
+              "every byte truncation of a valid WAV is rejected");
+    }
+
+    auto badRiffSize = valid;
+    setU32(badRiffSize, 4U, UINT32_MAX);
+    check(sms::audio::decodeWav(badRiffSize).error == sms::audio::WavError::malformed,
+          "RIFF size extending beyond input is rejected");
+    auto badUnknownSize = valid;
+    setU32(badUnknownSize, 16U, UINT32_MAX);
+    check(sms::audio::decodeWav(badUnknownSize).error == sms::audio::WavError::malformed,
+          "unknown chunk size extending beyond RIFF is rejected");
+    auto badFormatSize = valid;
+    setU32(badFormatSize, 28U, UINT32_MAX);
+    check(sms::audio::decodeWav(badFormatSize).error == sms::audio::WavError::malformed,
+          "format chunk size extending beyond RIFF is rejected");
+    auto badDataSize = valid;
+    setU32(badDataSize, 52U, UINT32_MAX);
+    check(sms::audio::decodeWav(badDataSize).error == sms::audio::WavError::malformed,
+          "sample chunk size extending beyond RIFF is rejected");
+
+    auto missingUnknownPad = valid;
+    missingUnknownPad.erase(missingUnknownPad.begin() + 23);
+    setU32(missingUnknownPad, 4U,
+           static_cast<std::uint32_t>(missingUnknownPad.size() - 8U));
+    check(sms::audio::decodeWav(missingUnknownPad).error == sms::audio::WavError::malformed,
+          "missing odd-sized unknown-chunk pad byte is rejected");
+
+    // Keep all chunk bytes intact while placing data before format. RIFF permits
+    // this ordering, and the parser must still find both required chunks.
+    std::vector<std::uint8_t> reordered(valid.begin(), valid.begin() + 12);
+    reordered.insert(reordered.end(), valid.begin() + 48, valid.end()); // data
+    reordered.insert(reordered.end(), valid.begin() + 24, valid.begin() + 48); // fmt
+    reordered.insert(reordered.end(), valid.begin() + 12, valid.begin() + 24); // JUNK
+    setU32(reordered, 4U, static_cast<std::uint32_t>(reordered.size() - 8U));
+    check(static_cast<bool>(sms::audio::decodeWav(reordered)),
+          "data-before-format ordering and unknown chunks are accepted");
+
+    auto duplicateFormat = valid;
+    duplicateFormat.insert(duplicateFormat.begin() + 48, valid.begin() + 24,
+                           valid.begin() + 48);
+    setU32(duplicateFormat, 4U,
+           static_cast<std::uint32_t>(duplicateFormat.size() - 8U));
+    check(sms::audio::decodeWav(duplicateFormat).error == sms::audio::WavError::malformed,
+          "duplicate format chunks are rejected");
+    auto duplicateData = valid;
+    duplicateData.insert(duplicateData.end(), valid.begin() + 48, valid.end());
+    setU32(duplicateData, 4U,
+           static_cast<std::uint32_t>(duplicateData.size() - 8U));
+    check(sms::audio::decodeWav(duplicateData).error == sms::audio::WavError::malformed,
+          "duplicate data chunks are rejected");
+
+    check(sms::audio::decodeWav(wav(1U, 2U, 16U, {0x00U, 0x40U})).error ==
+              sms::audio::WavError::malformed,
+          "sample payload not aligned to a complete stereo frame is rejected");
 }
 
 void encodeAndRender()
@@ -344,6 +447,7 @@ int main()
 {
     acceptedFormats();
     rejectedFormats();
+    malformedChunksAndTruncations();
     encodeAndRender();
     fileActionsAndProtocol();
     realtimeAccessGate();

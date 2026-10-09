@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <limits>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -82,6 +83,41 @@ void newSessionDefaults()
           midichopper::EngineSettings{}.filterSlope == 0.0f &&
           sms::dsp::SampleMixerSettings{}.filterSlope == 0.0f,
           "engine and pad mixer defaults match the host controls");
+}
+
+void stableParameterIds()
+{
+    using namespace midichopper::plugin;
+    // Literal identities protect saved host automation from accidental insertions
+    // anywhere in the enum. Append new parameters; do not regenerate this fixture.
+    constexpr std::pair<Parameter, std::uint32_t> identities[]{
+        {kParameterMode, 0U}, {kParameterStartPad, 1U}, {kParameterPreRollMs, 2U},
+        {kParameterCaptureMode, 3U}, {kParameterFixedLengthSeconds, 4U},
+        {kParameterPlaybackMode, 5U}, {kParameterInputMonitor, 6U},
+        {kParameterBaseMidiNote, 7U}, {kParameterOutputGainDb, 8U},
+        {kParameterFinalize, 9U}, {kParameterUndo, 10U}, {kParameterClearAll, 11U},
+        {kParameterMaxVoices, 44U}, {kParameterActiveBank, 45U},
+        {kParameterPadLayout, 46U}, {kParameterCurrentCapturePad, 47U},
+        {kParameterMidiBankMode, 48U}, {kParameterPlaybackPadEvent, 49U},
+        {kParameterCaptureTargetPad, 50U}, {kParameterCaptureTargetRequest, 51U},
+        {kParameterInputLevelLeft, 52U}, {kParameterInputLevelRight, 53U},
+        {kParameterOutputLevelLeft, 54U}, {kParameterOutputLevelRight, 55U},
+        {kParameterPadFileResultEvent, 56U}, {kParameterPadClipboardAvailable, 57U},
+        {kParameterPadClipboardResultEvent, 58U}, {kParameterChopPreviewPosition, 59U},
+        {kParameterPlaybackPosition, 60U}, {kParameterGlobalPan, 61U},
+        {kParameterGlobalTuneSemitones, 62U}, {kParameterGlobalLowpass, 63U},
+        {kParameterGlobalHighpass, 64U}, {kParameterGlobalFilterSlope, 65U},
+        {kParameterGlobalDirty, 66U}, {kParameterStopAllPlayback, 67U},
+        {kParameterAnyPlaybackActive, 68U}, {kParameterMonitorGainDb, 69U},
+    };
+    for (const auto& [parameter, expected] : identities)
+        check(static_cast<std::uint32_t>(parameter) == expected,
+              "existing parameter retains its literal host automation ID");
+    check(kParameterPadCount == 16U, "saved pad-output parameter blocks retain 16 entries");
+    for (std::uint32_t pad = 0U; pad < 16U; ++pad)
+        check(kFirstPadStatusParameter + pad == 12U + pad &&
+              kFirstPadActivityParameter + pad == 28U + pad,
+              "each pad status and activity parameter retains its literal ID");
 }
 
 void live_peak_meter() {
@@ -1760,6 +1796,7 @@ void unbounded_midi_source_preserves_late_note_off() {
 
 int main() {
     newSessionDefaults();
+    stableParameterIds();
     live_peak_meter();
     color_effects();
     visible_waveform_range();

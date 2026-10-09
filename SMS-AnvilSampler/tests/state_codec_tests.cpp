@@ -8,11 +8,63 @@
 #include "CaptureActionProtocol.hpp"
 
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <iostream>
 #include <string>
+#include <vector>
 
 namespace {
+
+constexpr char kBase64Alphabet[] =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+std::vector<std::uint8_t> decodeFixture(const std::string& encoded)
+{
+    std::vector<std::uint8_t> bytes;
+    for (std::size_t offset = 0; offset < encoded.size(); offset += 4U) {
+        const auto value = [&](const std::size_t index) -> std::uint32_t {
+            if (encoded[offset + index] == '=') return 0U;
+            for (std::uint32_t candidate = 0; candidate < 64U; ++candidate)
+                if (kBase64Alphabet[candidate] == encoded[offset + index])
+                    return candidate;
+            std::abort();
+        };
+        const std::uint32_t group = (value(0U) << 18U) | (value(1U) << 12U) |
+                                    (value(2U) << 6U) | value(3U);
+        bytes.push_back(static_cast<std::uint8_t>(group >> 16U));
+        if (encoded[offset + 2U] != '=')
+            bytes.push_back(static_cast<std::uint8_t>(group >> 8U));
+        if (encoded[offset + 3U] != '=')
+            bytes.push_back(static_cast<std::uint8_t>(group));
+    }
+    return bytes;
+}
+
+std::string encodeFixture(const std::vector<std::uint8_t>& bytes)
+{
+    std::string encoded;
+    for (std::size_t offset = 0; offset < bytes.size(); offset += 3U) {
+        const std::uint32_t a = bytes[offset];
+        const std::uint32_t b = offset + 1U < bytes.size() ? bytes[offset + 1U] : 0U;
+        const std::uint32_t c = offset + 2U < bytes.size() ? bytes[offset + 2U] : 0U;
+        const std::uint32_t group = (a << 16U) | (b << 8U) | c;
+        encoded.push_back(kBase64Alphabet[(group >> 18U) & 63U]);
+        encoded.push_back(kBase64Alphabet[(group >> 12U) & 63U]);
+        encoded.push_back(offset + 1U < bytes.size()
+            ? kBase64Alphabet[(group >> 6U) & 63U] : '=');
+        encoded.push_back(offset + 2U < bytes.size()
+            ? kBase64Alphabet[group & 63U] : '=');
+    }
+    return encoded;
+}
+
+void setU32(std::vector<std::uint8_t>& bytes, const std::size_t offset,
+            const std::uint32_t value)
+{
+    for (std::size_t byte = 0; byte < 4U; ++byte)
+        bytes[offset + byte] = static_cast<std::uint8_t>(value >> (byte * 8U));
+}
 
 void check(const bool condition, const char* const message)
 {
@@ -109,16 +161,179 @@ void rejectsDamage()
 {
     midichopper::PadData original;
     original.sampleRate = 48000.0;
-    original.frames = 2;
-    original.stereo = {0.1f, -0.1f, 0.2f, -0.2f};
+    original.frames = 1;
+    original.stereo = {0.1f, -0.1f};
     std::string encoded = midichopper::plugin::encodePadState(original, 48000U);
     check(encoded.size() > 8U, "test state has payload");
 
     midichopper::plugin::DecodedPadState decoded;
-    encoded[encoded.size() / 2U] = encoded[encoded.size() / 2U] == 'A' ? 'B' : 'A';
-    check(!midichopper::plugin::decodePadState(encoded.c_str(), decoded), "CRC rejects modified payload");
-    check(!midichopper::plugin::decodePadState("not base64", decoded), "invalid Base64 is rejected");
-    check(!midichopper::plugin::decodePadState(nullptr, decoded), "null state is rejected");
+    decoded.pad.sampleRate = 12345.0;
+    decoded.pad.frames = 1U;
+    decoded.pad.peak = 0.75f;
+    decoded.pad.rms = 0.5f;
+    decoded.pad.stereo = {0.25f, -0.5f};
+    decoded.pad.generation = 91U;
+    decoded.sourceSampleRate = 12345U;
+    const auto rejectedWithoutChange = [&](const char* const input, const char* const message) {
+        check(!midichopper::plugin::decodePadState(input, decoded), message);
+        check(decoded.sourceSampleRate == 12345U && decoded.pad.sampleRate == 12345.0 &&
+              decoded.pad.frames == 1U && decoded.pad.peak == 0.75f &&
+              decoded.pad.rms == 0.5f && decoded.pad.stereo.size() == 2U &&
+              decoded.pad.stereo[0] == 0.25f && decoded.pad.stereo[1] == -0.5f &&
+              decoded.pad.generation == 91U,
+              "failed state decode preserves the complete destination sentinel");
+    };
+    const auto raw = decodeFixture(encoded);
+    check(raw.size() == 28U && encodeFixture(raw) == encoded,
+          "small valid state fixture has independently checked Base64 framing");
+    check(midichopper::plugin::decodePadState(encoded.c_str(), decoded),
+          "valid control state decodes before malformed cases");
+    decoded.pad.sampleRate = 12345.0;
+    decoded.pad.frames = 1U;
+    decoded.pad.peak = 0.75f;
+    decoded.pad.rms = 0.5f;
+    decoded.pad.stereo = {0.25f, -0.5f};
+    decoded.pad.generation = 91U;
+    decoded.sourceSampleRate = 12345U;
+
+    for (std::size_t length = 0U; length < raw.size(); ++length) {
+        const std::vector<std::uint8_t> truncated(raw.begin(), raw.begin() + length);
+        const auto text = encodeFixture(truncated);
+        rejectedWithoutChange(text.c_str(), "every byte truncation of state is rejected");
+    }
+    for (std::size_t length = 0U; length < encoded.size(); ++length) {
+        const auto truncated = encoded.substr(0U, length);
+        rejectedWithoutChange(truncated.c_str(), "every encoded-string truncation of state is rejected");
+    }
+
+    const auto rejectedMutation = [&](const std::size_t offset, const std::uint8_t value,
+                                      const char* const message) {
+        auto damaged = raw;
+        damaged[offset] = value;
+        const auto text = encodeFixture(damaged);
+        rejectedWithoutChange(text.c_str(), message);
+    };
+    rejectedMutation(0U, static_cast<std::uint8_t>('X'), "bad state magic is rejected");
+    rejectedMutation(4U, 2U, "unsupported state version is rejected");
+    rejectedMutation(6U, 1U, "non-stereo state channel count is rejected");
+
+    auto damagedRate = raw;
+    setU32(damagedRate, 8U, 0U);
+    auto text = encodeFixture(damagedRate);
+    rejectedWithoutChange(text.c_str(), "zero state sample rate is rejected");
+    auto damagedFrames = raw;
+    setU32(damagedFrames, 12U, UINT32_MAX);
+    text = encodeFixture(damagedFrames);
+    rejectedWithoutChange(text.c_str(), "state frame count above the limit is rejected");
+    auto damagedLength = raw;
+    setU32(damagedLength, 16U, 7U);
+    text = encodeFixture(damagedLength);
+    rejectedWithoutChange(text.c_str(), "state payload length mismatch is rejected");
+    auto trailingBytes = raw;
+    trailingBytes.push_back(0U);
+    text = encodeFixture(trailingBytes);
+    rejectedWithoutChange(text.c_str(), "state trailing bytes beyond declared payload are rejected");
+    for (std::size_t payloadByte = 24U; payloadByte < raw.size(); ++payloadByte) {
+        auto damagedPayload = raw;
+        damagedPayload[payloadByte] ^= 1U;
+        text = encodeFixture(damagedPayload);
+        rejectedWithoutChange(text.c_str(), "every changed state payload byte is rejected by CRC");
+    }
+    rejectedMutation(20U, static_cast<std::uint8_t>(raw[20U] ^ 1U),
+                     "state checksum mismatch is rejected");
+
+    std::string badPadding = encoded;
+    check(badPadding.size() >= 2U && badPadding[badPadding.size() - 2U] == '=' &&
+          badPadding.back() == '=', "state control fixture has two Base64 padding bytes");
+    badPadding.pop_back();
+    rejectedWithoutChange(badPadding.c_str(), "missing Base64 padding is rejected");
+    rejectedWithoutChange("AAAA====", "excess Base64 padding is rejected");
+    rejectedWithoutChange("AA=A", "misplaced Base64 padding is rejected");
+    rejectedWithoutChange("not base64", "invalid Base64 alphabet is rejected");
+    rejectedWithoutChange(nullptr, "null state is rejected");
+
+    auto invalidToEncode = original;
+    invalidToEncode.frames = UINT32_MAX;
+    check(midichopper::plugin::encodePadState(invalidToEncode, 48000U).empty(),
+          "oversized frame count cannot be encoded");
+    invalidToEncode = original;
+    invalidToEncode.stereo.pop_back();
+    check(midichopper::plugin::encodePadState(invalidToEncode, 48000U).empty(),
+          "stereo sample count mismatch cannot be encoded");
+    check(midichopper::plugin::encodePadState(original, 0U).empty(),
+          "zero source sample rate cannot be encoded");
+}
+
+void playbackAndMixerRejectMalformedFields()
+{
+    const char* const invalidPlayback[] = {
+        "SP1;nan;0;0;0;1;0", "SP1;0;inf;0;0;1;0",
+        "SP1;1e999;0;0;0;1;0", "SP1;0;0;0;0;1",
+        "SP1;0;0;0;0;1;0;0", "SP1;0;0;0;0;1;0junk",
+    };
+    sms::dsp::SamplePlaybackSettings playback;
+    const auto setPlaybackSentinel = [&] {
+        playback = {0.2f, 0.8f, 0.3f, 0.4f, 0.6f, 0.5f};
+    };
+    const auto playbackSentinelPreserved = [&] {
+        check(playback.start == 0.2f && playback.end == 0.8f &&
+              playback.attackSeconds == 0.3f && playback.decaySeconds == 0.4f &&
+              playback.sustainLevel == 0.6f && playback.releaseSeconds == 0.5f,
+              "failed SP1 decode preserves destination settings");
+    };
+    for (const char* const invalid : invalidPlayback) {
+        setPlaybackSentinel();
+        check(!midichopper::plugin::decodePlaybackSettings(invalid, playback),
+              "SP1 rejects non-finite, overflow, missing, extra and trailing fields");
+        playbackSentinelPreserved();
+    }
+    check(midichopper::plugin::decodePlaybackSettings(
+              "SP1;-1;2;31;-1;2;99", playback) && playback.start == 0.0f &&
+          playback.end == 1.0f && playback.attackSeconds == 30.0f &&
+          playback.decaySeconds == 0.0f && playback.sustainLevel == 1.0f &&
+          playback.releaseSeconds == 30.0f,
+          "finite out-of-range SP1 values clamp to playback limits");
+
+    const char* const invalidMx1[] = {
+        "MX1;nan;0;0", "MX1;0;inf;0", "MX1;1e999;0;0",
+        "MX1;0;0", "MX1;0;0;0;1", "MX1;0;0;0junk",
+    };
+    const char* const invalidMx2[] = {
+        "MX2;nan;0;0;0;0;0;0", "MX2;0;inf;0;0;0;0;0",
+        "MX2;1e999;0;0;0;0;0;0", "MX2;0;0;0;0;0;0",
+        "MX2;0;0;0;0;0;0;0;1", "MX2;0;0;0;0;0;0;0junk",
+    };
+    sms::dsp::SampleMixerSettings mixer;
+    const auto setMixerSentinel = [&] {
+        mixer = {-7.0f, 0.25f, 6.0f, 0.2f, 0.3f, 2.0f, 1.0f};
+    };
+    const auto mixerSentinelPreserved = [&] {
+        check(mixer.gainDecibels == -7.0f && mixer.pan == 0.25f &&
+              mixer.tuneSemitones == 6.0f && mixer.lowpass == 0.2f &&
+              mixer.highpass == 0.3f && mixer.filterSlope == 2.0f &&
+              mixer.dirty == 1.0f,
+              "failed MX decode preserves destination settings");
+    };
+    for (const char* const invalid : invalidMx1) {
+        setMixerSentinel();
+        check(!midichopper::plugin::decodeMixerSettings(invalid, mixer),
+              "MX1 rejects non-finite, overflow, missing, extra and trailing fields");
+        mixerSentinelPreserved();
+    }
+    for (const char* const invalid : invalidMx2) {
+        setMixerSentinel();
+        check(!midichopper::plugin::decodeMixerSettings(invalid, mixer),
+              "MX2 rejects non-finite, overflow, missing, extra and trailing fields");
+        mixerSentinelPreserved();
+    }
+    check(midichopper::plugin::decodeMixerSettings(
+              "MX2;-90;2;48;2;-1;8;1.5", mixer) &&
+          mixer.gainDecibels == sms::dsp::kMinimumSampleGainDecibels &&
+          mixer.pan == sms::dsp::kMaximumSamplePan &&
+          mixer.tuneSemitones == sms::dsp::kMaximumTuneSemitones &&
+          mixer.lowpass == 1.0f && mixer.highpass == 0.0f &&
+          mixer.filterSlope == 2.0f && mixer.dirty == 1.0f,
+          "finite out-of-range MX2 values clamp to mixer limits");
 }
 
 void editorStateRoundTrip()
@@ -512,6 +727,7 @@ int main()
     roundTrip();
     longPadStateRoundTrip();
     rejectsDamage();
+    playbackAndMixerRejectMalformedFields();
     editorStateRoundTrip();
     mixerStateRoundTrip();
     editorSnapshotProtocolRoundTrip();

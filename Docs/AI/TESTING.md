@@ -15,17 +15,19 @@ Filter with `ctest --test-dir build --output-on-failure -R NAME`:
 | CTest name | Coverage |
 | --- | --- |
 | `preview-mailbox` | Coherent play/stop ranges under concurrent writers, latest-wins, no replay |
-| `pad-workflows` | Control workflow copy-time snapshots, replies, split commit/conflict, invalid actions |
-| `sampler-core` | Capture, banks/layouts, storage, voices, region/ADSR, pad/global mixer sums, filter response and dirty conversion, raw chop preview/repartition, resampling, clipboard, lifecycle, and more than 1,024 MIDI events per block |
-| `sampler-transfer` | Concurrent transfers, exact monitoring/MIDI/recording continuity, retained storage, stale commits, capacity, published host snapshots, dispatcher lifecycle, and audio-thread allocation/destruction |
-| `state-codec` | Audio, editor-state, MX1/MX2 mixer compatibility, cut commands, and visible waveform request/reply round trips; malformed/corrupt state |
+| `pad-workflows` | Clipboard, collapse, split cancellation/replay/conflict, revision-checked chops; exact PCM/settings and replies |
+| `sampler-core` | Capture, MIDI/banks/layouts, storage/voices, region/ADSR, mixers/filter/Dirty, raw preview/repartition, resampling, clipboard/lifecycle, >1,024 events/block, literal parameter IDs |
+| `buffer-timing` | Stereo playback/capture across fixed/irregular blocks, MIDI offsets/order, pre-roll ring wrap, zero-frame callbacks, resampling/effects |
+| `adsr-envelope` | Exact stage sequences, early note-off, retrigger, zero-duration/live edits, sanitization, automatic-release resume |
+| `sampler-transfer` | Concurrent transfers; exact monitoring/MIDI/recording continuity; retained storage, stale commits, capacity, host snapshots, dispatcher lifecycle, callback allocation/destruction |
+| `state-codec` | Audio/editor/mixer compatibility, cut/waveform protocols; truncation, corrupt headers/payloads, numeric rejection, unchanged destinations |
 | `ui-geometry` | Pad mapping, editor snapshots, waveform/chop geometry, viewport mapping, hit testing, wheel editing, Space press/repeat routing |
 | `ui-message-bus` | Bounded VST3 message ordering, independent view cursors, explicit gap reporting on wrap, and large replies |
-| `wav-codec` | WAV formats, validation, file actions, offline render, real-time access gate |
+| `wav-codec` | WAV formats, chunk/truncation/header/nonfinite validation, file actions, offline render, real-time access gate |
 
-Rebuild affected targets; run the complete suite before handing off code. For docs-only changes, run the doc checks and verify
-changed commands against CMake/tool help; no audio rebuild is required.
-Test long audio with an optional WAV argument; keep supplied audio out of Git:
+Rebuild affected targets; run the full suite for code changes. For docs-only
+changes, check docs and commands against CMake/tool help; no rebuild is required.
+Test long audio with an optional WAV; keep audio out of Git:
 
 ```bash
 ./build/anvilsampler_transfer_tests "/path/to/long-sample.wav"
@@ -46,9 +48,8 @@ does not validate audio.
 
 ## LV2 host integration
 
-Use Carla as the primary manual host because it exercises a more DAW-like UI,
-state, and parameter transport. Test the built bundle rather than an older
-installed copy:
+Use Carla as the primary manual LV2 host for UI, state, and parameter checks.
+Test the built bundle:
 
 ```bash
 LV2_URI='https://github.com/sirsipe/SMS-Plugins/SMS-AnvilSampler'
@@ -60,9 +61,9 @@ Omit `pw-jack` when Carla already uses the desired JACK server. Current
 includes the LV2 control-input change-request feature that SMS-Anvil Sampler uses
 when MIDI activates a bank, but Carla 2.5.10 does not expose it. A future
 reproducible environment should pin a Carla revision or release containing that
-feature and verify it rather than assuming all Carla versions support it.
+feature and verify support.
 
-Keep jalv as a secondary, minimal LV2 audio/MIDI and diagnostics host:
+Use jalv for minimal LV2 audio/MIDI and diagnostics:
 
 ```bash
 LV2_PATH="$PWD/build/bin" pw-jack jalv -s "$LV2_URI"

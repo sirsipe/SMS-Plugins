@@ -190,6 +190,15 @@ if(BUILD_TESTING)
   target_link_libraries(anvilsampler_core_tests PRIVATE anvilsampler_core)
   add_test(NAME sampler-core COMMAND anvilsampler_core_tests)
 
+  add_executable(anvilsampler_buffer_timing_tests tests/buffer_timing_tests.cpp)
+  target_link_libraries(anvilsampler_buffer_timing_tests PRIVATE anvilsampler_core)
+  add_test(NAME buffer-timing COMMAND anvilsampler_buffer_timing_tests)
+
+  add_executable(anvilsampler_adsr_envelope_tests tests/adsr_envelope_tests.cpp)
+  target_include_directories(anvilsampler_adsr_envelope_tests PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/../Common-Src")
+  add_test(NAME adsr-envelope COMMAND anvilsampler_adsr_envelope_tests)
+
   add_executable(anvilsampler_transfer_tests
     tests/transfer_tests.cpp
     ../Common-Src/Audio/WavCodec.cpp)

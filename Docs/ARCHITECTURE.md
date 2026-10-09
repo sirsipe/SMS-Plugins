@@ -86,6 +86,6 @@ Start with the [engine](../SMS-AnvilSampler/src/core/SamplerEngine.hpp),
 [cut editor](../SMS-AnvilSampler/src/ui/ChopEditorController.hpp).
 The [engineering reference](../SMS-AnvilSampler/Docs/ARCHITECTURE.md) describes
 MIDI, capture and state contracts; the [storage contract](AI/PAD-STORAGE.md)
-details ownership. The [quality review](QUALITY-REVIEW.md) evaluates strengths,
-tradeoffs and remaining limits. Public version compatibility is defined in the
+details ownership. The [README](../README.md) links a technical review prompt.
+Public version compatibility is defined in the
 [release procedure](RELEASING.md#public-version-compatibility).
