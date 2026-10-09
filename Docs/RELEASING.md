@@ -40,3 +40,22 @@ fresh build and test run, and publishes separate Linux x86-64 LV2 and VST3
 archives with SHA-256 checksums. It embeds the release tag as the Online Help
 reference, so the menu opens the README from that exact release. Ordinary builds
 default to the current `main` README. No manual upload is needed.
+
+## Public version compatibility
+
+Versions 0.0.x are alpha/beta and carry no backwards compatibility promise.
+The SMS-Midichopper → SMS-Anvil Sampler rename is a pre-release identity change.
+v1.0.0 establishes the public baseline: future releases must load v1.0.0 and
+later supported saved projects and presets with their existing behavior.
+
+Preserve plugin IDs, parameter identities and saved-value meanings. Add
+parameters without reordering released entries; retain decoders for released
+state versions. A new default must not reinterpret an explicitly saved value.
+Keep literal old codec fixtures; do not regenerate them with the current encoder.
+
+At v1.0.0, retain representative Ardour and REAPER projects/presets containing
+sample audio, region/ADSR, mixer values and bank mappings. Before later releases,
+load those fixtures and representative subsequent versions, compare settings
+and playback, and repeat cross-host preset exchange. Product-owner manual
+validation counts; record versions and outcomes in the release issue or PR.
+Codec tests complement these host checks and cannot verify host plugin discovery.

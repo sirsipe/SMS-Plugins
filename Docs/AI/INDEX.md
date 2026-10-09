@@ -1,6 +1,6 @@
 # Task index
 
-Read [AGENTS.md](../../AGENTS.md), then the relevant row. Commands use the repo root.
+Read [AGENTS.md](../../AGENTS.md), then a relevant row. Commands use the repo root.
 
 | Task | Read | Source of truth / starting point |
 | --- | --- | --- |
@@ -22,11 +22,11 @@ Read [AGENTS.md](../../AGENTS.md), then the relevant row. Commands use the repo 
 | User mixing controls | [Mixing guide](../../SMS-AnvilSampler/Docs/MIXING.md) | Pad and global effects |
 | User WAV workflow | [WAV file guide](../../SMS-AnvilSampler/Docs/WAV-FILES.md) | Current formats and Linux requirements |
 | User cut-point workflow | [Adjust cut points](../../SMS-AnvilSampler/Docs/CHOP-EDITOR.md) | Context action, raw preview, Apply/Exit behavior |
-| Project overview | [Project README](../../README.md) | Human entry point |
+| Human overview/review | [README](../../README.md), [Architecture](../ARCHITECTURE.md), [Quality review](../QUALITY-REVIEW.md) | Components, assessment |
 | Contributions, doc maintenance | [Contributing](../../CONTRIBUTING.md) | [Doc checker](../../scripts/check_docs.py) |
 | CI, release preparation | [Releasing](../RELEASING.md) | [Workflows](../../.github/workflows/) |
 | Agent integration | [Development](DEVELOPMENT.md) | [Claude alias](../../CLAUDE.md), [Copilot adapter](../../.github/copilot-instructions.md) |
 
 Index every repository-owned Markdown page except this index.
-Shared source maps and architecture are AI references despite their historical
-paths. Do not read external framework docs until a task requires them.
+Source maps and plugin architecture are AI references. Read framework docs only
+when needed.

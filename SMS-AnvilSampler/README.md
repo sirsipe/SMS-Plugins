@@ -112,7 +112,6 @@ stored with the DAW project as 16-bit stereo state.
 
 - Stereo LED rails around the faders show raw input and final output.
 
-Splitting a sample shifts possible neighbouring following samples to right.
 ![Split Sample view with two proposed slices](Docs/split-sample.png)
 
 
@@ -120,7 +119,7 @@ Splitting a sample shifts possible neighbouring following samples to right.
 
 For development and host/UI testing, see [Contributing](../CONTRIBUTING.md).
 
-Licensed under the [MIT License](LICENSE).
+Licensed under [MIT](LICENSE).
 
 See [Docs/VISION.md](Docs/VISION.md) for product direction and feature scope.
 
@@ -154,3 +153,11 @@ cp -a build/bin/SMS-AnvilSampler.lv2 ~/.lv2/
 mkdir -p ~/.vst3
 cp -a build/bin/SMS-AnvilSampler.vst3 ~/.vst3/
 ```
+
+## Technical Architecture
+
+See [Technical Architecture](../Docs/ARCHITECTURE.md).
+
+## Honest Quality Review
+
+See [Honest Quality Review](../Docs/QUALITY-REVIEW.md).

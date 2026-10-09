@@ -42,6 +42,55 @@ void roundTrip()
               "PCM16 round-trip tolerance");
 }
 
+void legacyStateFixtures()
+{
+    // Fixed output from the tagged v0.0.5 SSP1/SP1 encoder
+    // (SMS-Midichopper-v0.0.5, StateCodec.cpp); do not replace these with
+    // strings produced by the current encoder. Input samples were
+    // {0.5, -0.25, 1, -1} at 48 kHz, quantized to signed PCM16.
+    constexpr char legacyPad[] = "U1NQMQEAAgCAuwAAAgAAAAgAAAAy9vZ8AEAA4P9/AYA=";
+    midichopper::plugin::DecodedPadState decodedPad;
+    check(midichopper::plugin::decodePadState(legacyPad, decodedPad),
+          "released SSP1 audio fixture decodes");
+    check(decodedPad.sourceSampleRate == 48000U && decodedPad.pad.frames == 2U,
+          "released SSP1 fixture retains sample rate and frame count");
+    constexpr float expectedSamples[]{
+        16384.0f / 32767.0f, -8192.0f / 32767.0f, 1.0f, -1.0f};
+    check(decodedPad.pad.stereo.size() == 4U,
+          "released SSP1 fixture restores two stereo frames");
+    for (std::size_t index = 0; index < decodedPad.pad.stereo.size(); ++index)
+        check(std::abs(decodedPad.pad.stereo[index] - expectedSamples[index]) < 1.0e-6f,
+              "released SSP1 PCM16 samples decode exactly within quantization");
+
+    // Fixed SP1 output from the same tagged codec, including its original
+    // decimal formatting; this verifies the historical wire representation.
+    constexpr char legacyPlayback[] =
+        "SP1;0.125;0.875;0.0120000001;0.25;0.625;1.5";
+    sms::dsp::SamplePlaybackSettings playback;
+    check(midichopper::plugin::decodePlaybackSettings(legacyPlayback, playback),
+          "released SP1 playback fixture decodes");
+    check(std::abs(playback.start - 0.125f) < 1.0e-6f &&
+          std::abs(playback.end - 0.875f) < 1.0e-6f &&
+          std::abs(playback.attackSeconds - 0.012f) < 1.0e-6f &&
+          std::abs(playback.decaySeconds - 0.25f) < 1.0e-6f &&
+          std::abs(playback.sustainLevel - 0.625f) < 1.0e-6f &&
+          std::abs(playback.releaseSeconds - 1.5f) < 1.0e-6f,
+          "released SP1 fixture restores each playback and envelope value");
+
+    // MX1 is the three-field format introduced by cc572192; the
+    // fixture is literal so a future encoder change cannot make this check vacuous.
+    constexpr char legacyMixer[] = "MX1;-7.25;0.375;-11.5";
+    sms::dsp::SampleMixerSettings mixer;
+    check(midichopper::plugin::decodeMixerSettings(legacyMixer, mixer),
+          "legacy MX1 mixer fixture decodes");
+    check(std::abs(mixer.gainDecibels + 7.25f) < 1.0e-6f &&
+          std::abs(mixer.pan - 0.375f) < 1.0e-6f &&
+          std::abs(mixer.tuneSemitones + 11.5f) < 1.0e-6f &&
+          mixer.lowpass == 0.0f && mixer.highpass == 0.0f &&
+          mixer.filterSlope == 1.0f && mixer.dirty == 0.0f,
+          "legacy MX1 values restore and newer effects default to bypass");
+}
+
 void longPadStateRoundTrip()
 {
     midichopper::PadData original;
@@ -429,6 +478,7 @@ void captureActionsRejectRestoredOrMalformedState()
 int main()
 {
     using namespace midichopper::plugin;
+    legacyStateFixtures();
     check(decodePadColorIndex("0", 6) == 0 &&
           decodePadColorIndex("4", 6) == 4 &&
           decodePadColorIndex("6", 6) == 6,

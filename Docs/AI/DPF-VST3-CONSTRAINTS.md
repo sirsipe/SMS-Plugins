@@ -38,8 +38,8 @@ hidden `pad_file_result_event` still provides a small completion signal. In
 Carla on Linux at 48 kHz/2048 frames, WAV import displayed its waveform,
 editor settings survived pad switching, and Split Sample opened and applied.
 VST3 restoration ignores empty transient command keys so defaults do not fire
-file, clipboard, chop, or pad-structure actions. A maintainer loaded a VST3
-preset saved in Ardour into REAPER.
+file, clipboard, chop, or pad-structure actions. The maintainer reports successful
+VST3 preset exchange in both directions between Ardour and REAPER.
 
 Durable state is separate. Pad PCM is marked DSP-only Base64 state, while cut
 points and ADSR are normal versioned per-pad state. UI edits reach the DSP and
@@ -50,12 +50,13 @@ VST3 and LV2 import/export/save checks at 48 kHz/2048 frames preserved continuou
 monitoring and an unrelated repeating pad with no zero-output frames or xruns.
 VST3 Copy/Paste, split, and cut Apply also passed UI checks.
 
-Active VST3 preset loading in Carla still produced 22,528 zero-output frames
-(about 0.47 seconds), including loading into an already populated instance with
-monitoring enabled. Engine restoration no longer takes the silence gate or waits
-for callbacks; this result is consistent with host chunk-loading suspension,
-but its source has not been instrumented. Do not promise gap-free host preset
-loading. DAW project restoration and simultaneous views remain untested.
+An earlier Carla chunk-loading check observed about 0.47 seconds of silence
+without identifying a plugin cause. The maintainer reports that
+[issue #18](https://github.com/sirsipe/SMS-Plugins/issues/18) no longer reproduces.
+Treat that observation as historical, not a confirmed current preset defect.
+Codec regression does not exercise DAW project restoration or simultaneous views;
+manual host evidence matters. Public compatibility begins with v1.0.0 under the
+[release policy](../RELEASING.md#public-version-compatibility).
 The pinned VST3 wrapper also sends every state key to a newly opened view,
 without filtering the DSP-only hint; loaded pad PCM may therefore cross that
 initial view path despite the hint. Review this when changing VST3 transport.
