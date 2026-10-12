@@ -16,10 +16,10 @@ I choose **quality over quantity**. Slow and steady. I only build what I'm also 
 
 ## Plugins
 
-- [SMS-Anvil Sampler](SMS-AnvilSampler/README.md) — live stereo chopping sampler
+- [SMS-Anville Sampler](SMS-AnvilleSampler/README.md) — live stereo chopping sampler
   for LV2 and VST3.
 
-![SMS-Anvil Sampler interface](SMS-AnvilSampler/Docs/SMS-AnvilSampler-v0.0.8.png)
+![SMS-Anville Sampler interface](SMS-AnvilleSampler/Docs/SMS-AnvilleSampler-v0.0.8.png)
 
 
 ## Quick Start: AI autopilot in an isolated container
@@ -63,7 +63,7 @@ Requirements: Ubuntu Linux and a ChatGPT plan with Codex access, such as Plus.
 
 6. Try this prompt:
 
-   > Hello! Make the ARM button of SMS-Anvil Sampler red, test it, and show me a
+   > Hello! Make the ARM button of SMS-Anville Sampler red, test it, and show me a
    > picture of how it looks.
 
 7. (*Optional*) - To satisfy your curiosity, follow the agent's virtual screen at

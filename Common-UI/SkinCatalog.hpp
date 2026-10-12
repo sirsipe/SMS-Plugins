@@ -122,7 +122,7 @@ public:
                 if (!home || !*home || !std::filesystem::path(home).is_absolute()) return {};
                 root = std::filesystem::path(home) / ".config";
             }
-            return root / "SMS-AnvilSampler" / "selected-skin";
+            return root / "SMS-AnvilleSampler" / "selected-skin";
         } catch (...) { return {}; }
     }
     [[nodiscard]] static std::string read(const std::filesystem::path& path) noexcept

@@ -18,7 +18,7 @@ shared UI and framework-neutral source include paths.
 - `DPF/Theme.hpp`: semantic colors, fixed pad tint identities, drawing metrics,
   hover opacity, and per-editor drawing scopes with thread-local restoration.
 - `DPF/SkinTheme.hpp`: supported color/metric fields and validated DPF palette
-  overrides. See the [skin guide](../SMS-AnvilSampler/Docs/SKINS.md).
+  overrides. See the [skin guide](../SMS-AnvilleSampler/Docs/SKINS.md).
 - `DPF/AnalogMaterials.hpp`: scalable chassis, recessed-panel, rubber-pad,
   physical-control, LED, screw, and powder-coat rendering primitives.
 - `DPF/Controls.hpp`: reusable NanoVG panel, segment, slider, and action

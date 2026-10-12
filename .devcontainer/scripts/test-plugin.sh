@@ -14,9 +14,9 @@ fi
 repository_root="$(realpath "${1:-$PWD}")"
 build_dir="$repository_root/build"
 artifact_dir="$build_dir/gui-test"
-lv2_uri='https://github.com/sirsipe/SMS-Plugins/SMS-AnvilSampler'
+lv2_uri='https://github.com/sirsipe/SMS-Plugins/SMS-AnvilleSampler'
 
-if [ ! -f "$repository_root/SMS-AnvilSampler/CMakeLists.txt" ]; then
+if [ ! -f "$repository_root/SMS-AnvilleSampler/CMakeLists.txt" ]; then
     echo "Not an SMS-Plugins checkout: $repository_root" >&2
     exit 2
 fi
@@ -30,9 +30,9 @@ desktop-health
 xrandr --output VNC-0 --mode 1920x1080
 
 git -C "$repository_root" submodule update --init --recursive
-cmake -S "$repository_root/SMS-AnvilSampler" -B "$build_dir" -G Ninja \
+cmake -S "$repository_root/SMS-AnvilleSampler" -B "$build_dir" -G Ninja \
     -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
-    -DANVILSAMPLER_BUILD_VST3=ON
+    -DANVILLESAMPLER_BUILD_VST3=ON
 cmake --build "$build_dir" --parallel 2
 ctest --test-dir "$build_dir" --output-on-failure
 LV2_PATH="$build_dir/bin" lv2info "$lv2_uri" >/dev/null
@@ -85,14 +85,14 @@ for launch_attempt in $(seq 1 80); do
             best_score="$score"
         fi
     done < <(DISPLAY="$DISPLAY" xdotool search --onlyvisible \
-        --name '^SMS-Anvil Sampler' 2>/dev/null || true)
+        --name '^SMS-Anville Sampler' 2>/dev/null || true)
 
     [ -z "$plugin_window" ] || break
     sleep 0.25
 done
 
 if [ -z "$plugin_window" ]; then
-    echo "No visible SMS-Anvil Sampler plug-in window. See $carla_log" >&2
+    echo "No visible SMS-Anville Sampler plug-in window. See $carla_log" >&2
     exit 1
 fi
 
@@ -104,7 +104,7 @@ DISPLAY="$DISPLAY" xdotool mousemove --sync --window "$plugin_window" 1145 175
 DISPLAY="$DISPLAY" xdotool click 1
 sleep 0.5
 
-screenshot="$artifact_dir/sms-anvilsampler-$(date -u +%Y%m%dT%H%M%SZ).png"
+screenshot="$artifact_dir/sms-anvillesampler-$(date -u +%Y%m%dT%H%M%SZ).png"
 screenshot-window "$plugin_window" "$screenshot" >/dev/null
 
 printf 'Carla PID: %s\nPlug-in window: %s (%s)\nWindow-only screenshot: %s\n' \

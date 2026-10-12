@@ -1,7 +1,7 @@
 # Deferred Windows and macOS builds
 
 Audience: maintainers or agents resuming cross-platform work. This page records
-research, not current platform support. SMS-Anvil Sampler releases remain Linux
+research, not current platform support. SMS-Anville Sampler releases remain Linux
 x86-64 LV2 and VST3; do not add other release artifacts until their native-host
 checks below pass.
 
@@ -18,12 +18,12 @@ from codec tests.
 
 The pinned VST3 wrapper has two relevant limits: its `updateStateValue()`
 callback is absent, and DPF audio-port topology is compile-time fixed even
-though native VST3 can notify hosts of bus-count changes. Anvil Sampler's VST3
+though native VST3 can notify hosts of bus-count changes. Anville Sampler's VST3
 build uses a local UI message bus for transient replies. See
 [DPF VST3 constraints](DPF-VST3-CONSTRAINTS.md) before changing VST3 state or
 planning multi-output routing.
 
-[Plugin metadata](../../SMS-AnvilSampler/src/plugin/DistrhoPluginInfo.h) already
+[Plugin metadata](../../SMS-AnvilleSampler/src/plugin/DistrhoPluginInfo.h) already
 defines four-character brand `SMSM` and plugin `AnSm` identifiers. With stereo
 input/output and MIDI input, DPF automatically classifies the AU as `aumf`, a
 music effect. DPF's AU wrapper does not support host-driven UI resizing, so the
@@ -42,40 +42,40 @@ default 1344x756 editor and host behavior need explicit testing.
 
 ## Proposed enablement
 
-First add `ANVILSAMPLER_BUILD_LV2` (default `ON`) and
-`ANVILSAMPLER_BUILD_AU` (default `OFF`, rejected unless `APPLE`), build the format
+First add `ANVILLESAMPLER_BUILD_LV2` (default `ON`) and
+`ANVILLESAMPLER_BUILD_AU` (default `OFF`, rejected unless `APPLE`), build the format
 list conditionally, and preserve all existing Linux defaults. Add install rules
 only for enabled bundles.
 
 A prospective native Windows x64 build is:
 
 ```powershell
-cmake -S SMS-AnvilSampler -B build-win `
+cmake -S SMS-AnvilleSampler -B build-win `
   -G "Visual Studio 17 2022" -A x64 `
-  -DANVILSAMPLER_BUILD_LV2=OFF -DANVILSAMPLER_BUILD_VST3=ON `
+  -DANVILLESAMPLER_BUILD_LV2=OFF -DANVILLESAMPLER_BUILD_VST3=ON `
   -DBUILD_TESTING=ON
 cmake --build build-win --config Release --parallel
 ctest --test-dir build-win -C Release --output-on-failure
 ```
 
-Expected output is `build-win/bin/SMS-AnvilSampler.vst3`, including
-`Contents/x86_64-win/SMS-AnvilSampler.vst3`.
+Expected output is `build-win/bin/SMS-AnvilleSampler.vst3`, including
+`Contents/x86_64-win/SMS-AnvilleSampler.vst3`.
 
 A prospective native universal macOS build is:
 
 ```bash
-cmake -S SMS-AnvilSampler -B build-mac -G Ninja \
+cmake -S SMS-AnvilleSampler -B build-mac -G Ninja \
   -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
-  -DANVILSAMPLER_BUILD_LV2=OFF -DANVILSAMPLER_BUILD_VST3=ON \
-  -DANVILSAMPLER_BUILD_AU=ON \
+  -DANVILLESAMPLER_BUILD_LV2=OFF -DANVILLESAMPLER_BUILD_VST3=ON \
+  -DANVILLESAMPLER_BUILD_AU=ON \
   '-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64' \
   -DCMAKE_OSX_DEPLOYMENT_TARGET=<chosen-minimum>
 cmake --build build-mac --parallel
 ctest --test-dir build-mac --output-on-failure
 ```
 
-Expected outputs are `SMS-AnvilSampler.vst3` and
-`SMS-AnvilSampler.component` under `build-mac/bin`. Choose and document the
+Expected outputs are `SMS-AnvilleSampler.vst3` and
+`SMS-AnvilleSampler.component` under `build-mac/bin`. Choose and document the
 minimum macOS version from actual host coverage; do not guess it from the SDK.
 
 ## Acceptance before claiming support

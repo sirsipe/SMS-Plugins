@@ -29,7 +29,7 @@ visible range gets a fresh raw 128-bin summary. Modified wheel input over a
 handle controls the viewport; unmodified wheel still moves the cut. Navigation,
 Apply refresh, and Exit reset the viewport. Zoom never changes source offsets.
 Zoom/scroll controls share these requests; drawing stays visible through the
-[viewport cache](../../SMS-AnvilSampler/Docs/ARCHITECTURE.md#project-state).
+[viewport cache](../../SMS-AnvilleSampler/Docs/ARCHITECTURE.md#project-state).
 
 From entry through Apply/loading, the editor owns MIDI exclusively; all notes
 are silent until its waveform data is ready. Then the three displayed notes

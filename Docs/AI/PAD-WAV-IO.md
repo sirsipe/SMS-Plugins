@@ -52,7 +52,7 @@ rather than creating mislabeled data.
 
 `Common-Src` owns the byte-level codec, offline renderer, and reusable command
 dispatcher, without DPF or dialog policy. `Common-UI` owns menu geometry and
-drawing. Anvil Sampler UI code adapts DPF dialogs; its plug-in adapter owns action
+drawing. Anville Sampler UI code adapts DPF dialogs; its plug-in adapter owns action
 transport, filesystem policy, status delivery, and safe engine access. VST3 queues transient work on an instance worker; LV2 uses its required host
 worker. Both use the same engine snapshot/commit contract. Keep these
 responsibilities narrow rather than creating a file-manager class.
@@ -99,7 +99,7 @@ Windows Save flags and validate `NSSavePanel` on macOS. Do not invoke `zenity`,
 `kdialog`, or similar external fallbacks.
 
 VST3 reports file completion through a hidden output.
-Anvil Sampler's [VST3 UI message bus](DPF-VST3-CONSTRAINTS.md) returns waveform
+Anville Sampler's [VST3 UI message bus](DPF-VST3-CONSTRAINTS.md) returns waveform
 and editor state after import and pad reselection. LV2 uses DPF's callback.
 Test long files and DAW restoration without source files.
 
@@ -113,7 +113,7 @@ project restoration without the source file, and portal-present/absent Linux
 sessions in LV2 and VST3 hosts. Windows/macOS claims require
 [native platform checks](PLATFORM-BUILDS.md).
 
-[WAV guide](../../SMS-AnvilSampler/Docs/WAV-FILES.md) covers the
+[WAV guide](../../SMS-AnvilleSampler/Docs/WAV-FILES.md) covers the
 right-click workflow, encodings, conversion/export semantics, reset behavior,
 duration and project storage, plus Linux requirements and troubleshooting.
 Keep it aligned with this contract and verified behavior.

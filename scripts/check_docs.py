@@ -17,7 +17,7 @@ INDEX = ROOT / "Docs/AI/INDEX.md"
 AI_REFERENCES = {
     "Common-Src/README.md",
     "Common-UI/README.md",
-    "SMS-AnvilSampler/Docs/ARCHITECTURE.md",
+    "SMS-AnvilleSampler/Docs/ARCHITECTURE.md",
 }
 LIMITS = {
     "AGENTS.md": 600,

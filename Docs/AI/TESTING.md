@@ -24,7 +24,7 @@ Filter with `ctest --test-dir build --output-on-failure -R NAME`:
 | `ui-skin` | Bounded/versioned manifests, scalar/UTF-8/printf fallback, confined images, startup snapshots |
 | `ui-skin-catalog` | Discovery, forced precedence, missing choices, atomic preferences and concurrent writes |
 | `ui-skin-theme` | Complete placeholder colors/metrics/images, RGBA mapping, metric bounds, nested/thread scope isolation |
-| `ui-geometry` | Pad mapping, editor snapshots, waveform/chop geometry, viewport mapping, hit testing, wheel editing, Space press/repeat routing |
+| `ui-geometry` | Plugin identity/help URLs, pad mapping, editor snapshots, waveform/chop geometry, viewport mapping, hit testing, wheel editing, Space press/repeat routing |
 | `ui-message-bus` | Bounded VST3 message ordering, independent view cursors, explicit gap reporting on wrap, and large replies |
 | `wav-codec` | WAV formats, chunk/truncation/header/nonfinite validation, file actions, offline render, real-time access gate |
 
@@ -32,7 +32,7 @@ Rebuild affected targets and run all tests for code changes. Docs-only changes
 need command/source checks. Optional long-audio test (keep WAVs out of Git):
 
 ```bash
-./build/anvilsampler_transfer_tests "/path/to/long-sample.wav"
+./build/anvillesampler_transfer_tests "/path/to/long-sample.wav"
 ```
 
 ## LV2 bundle discovery
@@ -41,27 +41,27 @@ Inspect with `lilv-utils`:
 
 ```bash
 LV2_PATH="$PWD/build/bin" \
-  lv2info https://github.com/sirsipe/SMS-Plugins/SMS-AnvilSampler
+  lv2info https://github.com/sirsipe/SMS-Plugins/SMS-AnvilleSampler
 ```
 
-`SMS-AnvilSampler/src/plugin/DistrhoPluginInfo.h` defines the URI. Discovery does not validate audio.
+`SMS-AnvilleSampler/src/plugin/DistrhoPluginInfo.h` defines the URI. Discovery does not validate audio.
 
 ## LV2 host integration
 
 Carla:
 
 ```bash
-LV2_URI='https://github.com/sirsipe/SMS-Plugins/SMS-AnvilSampler'
+LV2_URI='https://github.com/sirsipe/SMS-Plugins/SMS-AnvilleSampler'
 LV2_PATH="$PWD/build/bin" pw-jack carla-single native lv2 "$LV2_URI"
 ```
 
 Omit `pw-jack` if unnecessary. Current
 [Carla main](https://github.com/falkTX/Carla/blob/main/source/backend/plugin/CarlaPluginLV2.cpp)
-includes the LV2 control-input change-request feature that SMS-Anvil Sampler uses
+includes the LV2 control-input change-request feature that SMS-Anville Sampler uses
 when MIDI activates a bank, but Carla 2.5.10 does not expose it. Pin a Carla
 revision with that feature when validating bank updates.
 
-Use jalv for LV2 diagnostics:
+LV2 diagnostics with jalv:
 
 ```bash
 LV2_PATH="$PWD/build/bin" pw-jack jalv -s "$LV2_URI"
@@ -110,7 +110,7 @@ Applicable checks:
 ## UI interaction tooling
 
 The [Dev Container](../../.devcontainer/devcontainer.json) provides display `:1`,
-noVNC, dummy JACK, software Mesa and UI inspection tools. Run `desktop-health` to check desktop services,
+noVNC, dummy JACK, software Mesa and UI inspection tools. `desktop-health` checks desktop services,
 JACK, OpenGL, D-Bus, and portal FileChooser. Run `desktop-health --dialogs` after
 an image rebuild or portal change to exercise Open and Save dialogs. Watch via noVNC port 6080; avoid mouse input during automation.
 
@@ -124,7 +124,7 @@ Inspect plug-in-only screenshots before sharing; exclude private data,
 notifications, and unrelated applications.
 
 For VST3, launch
-`carla-single native vst3 "$PWD/build/bin/SMS-AnvilSampler.vst3"` on this desktop. Import a WAV, open Sample Editor, switch pads and back, and check the
+`carla-single native vst3 "$PWD/build/bin/SMS-AnvilleSampler.vst3"` on this desktop. Import a WAV, open Sample Editor, switch pads and back, and check the
 waveform and settings. Exercise Split Sample or Adjust Cut Points. Then save,
 close, delete the source WAV, reload, and compare audio and editor values.
 

@@ -4,9 +4,9 @@ Audience: an LLM creating a skin, not changing the sampler's implementation.
 
 ## Required inputs and deliverables
 
-Read the [skin guide](../../SMS-AnvilSampler/Docs/SKINS.md) for manifest syntax,
+Read the [skin guide](../../SMS-AnvilleSampler/Docs/SKINS.md) for manifest syntax,
 image dimensions, activation, persistence, and fallback rules. Read
-[placeholder/skin.ini](../../SMS-AnvilSampler/skins/placeholder/skin.ini) for the
+[placeholder/skin.ini](../../SMS-AnvilleSampler/skins/placeholder/skin.ini) for the
 complete color/metric catalog, defaults, and standard label/format keys. If
 either file is inaccessible, request its contents before claiming a complete
 skin. Do not invent undocumented keys or assume CSS, SVG, fonts, scripts, or
@@ -22,7 +22,7 @@ asset paths. Include short installation instructions and a preview if possible.
 
 Create personal experiments under ignored `build/skins/<id>/` or outside the
 checkout. Do not add generated skins, artwork, previews, or archives to Git.
-Only [the placeholder](../../SMS-AnvilSampler/skins/placeholder/) is maintained
+Only [the placeholder](../../SMS-AnvilleSampler/skins/placeholder/) is maintained
 as a repository skin. Keep sampler code and the placeholder unchanged when
 authoring a custom skin.
 
@@ -83,11 +83,11 @@ names are used literally, rather than looked up in `[strings]`.
 
 The template covers standard labels and numeric readouts. For exhaustive
 in-app error translations, also inspect user-facing messages in
-[UI/controller](../../SMS-AnvilSampler/src/ui/MidichopperUI.cpp),
-[cut controller](../../SMS-AnvilSampler/src/ui/ChopEditorController.hpp),
-[workflows](../../SMS-AnvilSampler/src/plugin/PadWorkflows.cpp),
-[file actions](../../SMS-AnvilSampler/src/plugin/PadFileActions.cpp),
-[adapter](../../SMS-AnvilSampler/src/plugin/MidichopperPlugin.cpp), and
+[UI/controller](../../SMS-AnvilleSampler/src/ui/MidichopperUI.cpp),
+[cut controller](../../SMS-AnvilleSampler/src/ui/ChopEditorController.hpp),
+[workflows](../../SMS-AnvilleSampler/src/plugin/PadWorkflows.cpp),
+[file actions](../../SMS-AnvilleSampler/src/plugin/PadFileActions.cpp),
+[adapter](../../SMS-AnvilleSampler/src/plugin/MidichopperPlugin.cpp), and
 [WAV codec](../../Common-Src/Audio/WavCodec.cpp). Never translate protocol keys,
 saved-state names or host parameter identities. OS dialogs and host interfaces
 follow their own language settings.

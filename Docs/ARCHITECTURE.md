@@ -1,7 +1,7 @@
 # Technical Architecture
 
 SMS-Plugins builds native Linux audio plugins. Its current instrument,
-SMS-Anvil Sampler, separates audio processing, host integration, and the user
+SMS-Anville Sampler, separates audio processing, host integration, and the user
 interface. VST3 is the preferred format; DPF supplies the format wrappers.
 
 ## Components
@@ -80,11 +80,11 @@ DPF-specific reusable drawing belongs to `Common-UI`.
 
 ## Reading the implementation
 
-Start with the [engine](../SMS-AnvilSampler/src/core/SamplerEngine.hpp),
-[storage pool](../SMS-AnvilSampler/src/core/SampleStoragePool.hpp),
-[pad workflows](../SMS-AnvilSampler/src/plugin/PadWorkflows.hpp), and
-[cut editor](../SMS-AnvilSampler/src/ui/ChopEditorController.hpp).
-The [engineering reference](../SMS-AnvilSampler/Docs/ARCHITECTURE.md) describes
+Start with the [engine](../SMS-AnvilleSampler/src/core/SamplerEngine.hpp),
+[storage pool](../SMS-AnvilleSampler/src/core/SampleStoragePool.hpp),
+[pad workflows](../SMS-AnvilleSampler/src/plugin/PadWorkflows.hpp), and
+[cut editor](../SMS-AnvilleSampler/src/ui/ChopEditorController.hpp).
+The [engineering reference](../SMS-AnvilleSampler/Docs/ARCHITECTURE.md) describes
 MIDI, capture and state contracts; the [storage contract](AI/PAD-STORAGE.md)
 details ownership. The [README](../README.md) links a technical review prompt.
 Public version compatibility is defined in the
