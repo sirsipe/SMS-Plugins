@@ -7,6 +7,7 @@
 #include "DSP/SampleMixerSettings.hpp"
 #include "DSP/SamplePlaybackSettings.hpp"
 #include "Interaction.hpp"
+#include "EditorAuditionMode.hpp"
 #include "WaveformViewport.hpp"
 
 #include <array>
@@ -53,7 +54,7 @@ struct ViewState {
     bool editorMode = false;
     bool chopEditorMode = false;
     bool chopSplitMode = false;
-    bool playOnSelect = true;
+    EditorAuditionMode auditionMode = EditorAuditionMode::Play;
     bool anyPlaybackActive = false;
     bool hasWaveform = false;
     std::array<float, 2> inputLevels{};

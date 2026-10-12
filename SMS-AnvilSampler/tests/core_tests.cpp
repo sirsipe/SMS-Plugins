@@ -1318,6 +1318,292 @@ void sample_region_and_adsr() {
     close(shaped[6], 0.0f, "ADSR voice becomes idle after release");
 }
 
+midichopper::PadData loop_source(const double rate = 1000.0)
+{
+    midichopper::PadData source;
+    source.sampleRate = rate;
+    source.frames = 8U;
+    source.stereo = {1,-10, 2,-20, 3,-30, 4,-40, 5,-50, 6,-60, 7,-70, 8,-80};
+    return source;
+}
+
+void gated_region_looping()
+{
+    using namespace midichopper;
+    for (const auto mode : {PlaybackMode::Gated, PlaybackMode::OneShot}) {
+        SamplerEngine engine(1000.0, 1.0);
+        auto settings = engine.settings();
+        settings.monitorInput = false;
+        settings.playbackMode = mode;
+        engine.setSettings(settings);
+        check(engine.importPad(0U, loop_source()), "import trimmed stereo loop");
+        sms::dsp::SamplePlaybackSettings region;
+        region.start = 0.25f;
+        region.end = 0.75f;
+        engine.setPadPlaybackSettings(0U, region);
+        const MidiEvent events[] = {
+            {0U, 36U, 127U, MidiEventType::NoteOn},
+            {14U, 36U, 0U, MidiEventType::NoteOff},
+        };
+        std::array<float, 18> left{}, right{};
+        engine.process(nullptr, nullptr, left.data(), right.data(), left.size(), events, 2U);
+        for (std::size_t frame = 0U; frame < left.size(); ++frame) {
+            const bool audible = frame < (mode == PlaybackMode::Gated ? 14U : 4U);
+            const float expected = audible ? 3.0f + static_cast<float>(frame % 4U) : 0.0f;
+            close(left[frame], expected, "Gate repeats exclusive region until exact note-off; OneShot stays finite");
+            close(right[frame], -10.0f * expected, "trimmed loop preserves independent stereo channels");
+        }
+        check(!engine.anyPlaybackActive(), "zero-release note-off leaves no held loop");
+    }
+
+    // Literal sequences exercise fractional seam interpolation and overshoot
+    // larger than the region, including simultaneous source-rate and tune changes.
+    for (const bool fast : {false, true}) {
+        SamplerEngine engine(1000.0, 1.0);
+        auto settings = engine.settings();
+        settings.monitorInput = false;
+        settings.playbackMode = PlaybackMode::Gated;
+        engine.setSettings(settings);
+        check(engine.importPad(0U, loop_source(fast ? 1625.0 : 1500.0)),
+              "import resampled loop");
+        sms::dsp::SamplePlaybackSettings region;
+        region.start = 0.25f;
+        region.end = 0.75f;
+        engine.setPadPlaybackSettings(0U, region);
+        sms::dsp::SampleMixerSettings mixer;
+        mixer.tuneSemitones = fast ? 24.0f : -12.0f;
+        engine.setPadMixerSettings(0U, mixer);
+        const std::array<float, 8> expected = fast
+            ? std::array<float, 8>{3, 5.5f, 4, 4.5f, 5, 3.5f, 6, 4.5f}
+            : std::array<float, 8>{3, 3.75f, 4.5f, 5.25f, 6, 3.75f, 3.5f, 4.25f};
+        const MidiEvent on{0U, 36U, 127U, MidiEventType::NoteOn};
+        std::array<float, 8> left{}, right{};
+        engine.process(nullptr, nullptr, left.data(), right.data(), left.size(), &on, 1U);
+        for (std::size_t frame = 0U; frame < left.size(); ++frame) {
+            close(left[frame], expected[frame], "loop retains fractional and multi-region overshoot");
+            close(right[frame], -10.0f * expected[frame], "loop interpolates final sample toward trimmed Start");
+        }
+        check(engine.anyPlaybackActive(), "fast tune never exhausts a held loop");
+    }
+}
+
+void gated_loop_release_and_edits()
+{
+    using namespace midichopper;
+    for (const bool retrigger : {false, true}) {
+        SamplerEngine engine(1000.0, 1.0);
+        auto settings = engine.settings();
+        settings.monitorInput = false;
+        settings.playbackMode = PlaybackMode::Gated;
+        engine.setSettings(settings);
+        check(engine.importPad(0U, loop_source()), "import release loop");
+        sms::dsp::SamplePlaybackSettings region;
+        region.start = 0.25f;
+        region.end = 0.75f;
+        region.releaseSeconds = 0.008f; // longer than two turns; no one-shot cap
+        engine.setPadPlaybackSettings(0U, region);
+        const MidiEvent events[] = {
+            {0U, 36U, 127U, MidiEventType::NoteOn},
+            {7U, 36U, 0U, MidiEventType::NoteOff},
+            {11U, 36U, 127U, MidiEventType::NoteOn},
+        };
+        std::array<float, 18> left{}, right{};
+        engine.process(nullptr, nullptr, left.data(), right.data(), left.size(), events,
+                       retrigger ? 3U : 2U);
+        for (std::size_t frame = 0U; frame < left.size(); ++frame) {
+            const bool restarted = retrigger && frame >= 11U;
+            const auto phase = restarted ? frame - 11U : frame;
+            const float gain = restarted || frame < 7U ? 1.0f
+                : frame < 15U ? static_cast<float>(15U - frame) / 8.0f : 0.0f;
+            const float expected = (3.0f + static_cast<float>(phase % 4U)) * gain;
+            close(left[frame], expected, "Gate release crosses seams and retrigger resets cursor/envelope");
+            close(right[frame], -10.0f * expected, "Gate release maintains stereo across multiple turns");
+        }
+        check(engine.anyPlaybackActive() == retrigger, "release finishes only after its full ADSR duration");
+    }
+
+    SamplerEngine engine(1000.0, 1.0);
+    auto settings = engine.settings();
+    settings.monitorInput = false;
+    settings.playbackMode = PlaybackMode::Gated;
+    engine.setSettings(settings);
+    check(engine.importPad(0U, loop_source()), "import live End loop");
+    sms::dsp::SamplePlaybackSettings region;
+    region.start = 0.25f;
+    region.end = 0.75f;
+    engine.setPadPlaybackSettings(0U, region);
+    const MidiEvent on{0U, 36U, 127U, MidiEventType::NoteOn};
+    float left[6]{}, right[6]{};
+    engine.process(nullptr, nullptr, left, right, 3U, &on, 1U); // cursor is source frame 5
+    region.end = 0.5f; // new exclusive End 4, region length 2
+    engine.setPadPlaybackSettings(0U, region);
+    engine.process(nullptr, nullptr, left, right, 6U);
+    for (std::size_t frame = 0U; frame < 6U; ++frame) {
+        const float expected = frame % 2U == 0U ? 4.0f : 3.0f;
+        close(left[frame], expected, "moving End behind a loop cursor wraps its overshoot");
+        close(right[frame], -10.0f * expected, "edited End keeps loop stereo intact");
+    }
+    check(engine.anyPlaybackActive(), "shrinking End preserves a held loop");
+}
+
+void independent_pad_audition()
+{
+    using namespace midichopper;
+    for (const auto mode : {PlaybackMode::Gated, PlaybackMode::OneShot})
+        for (const bool loop : {false, true}) {
+            SamplerEngine engine(1000.0, 1.0);
+            auto settings = engine.settings();
+            settings.monitorInput = false;
+            settings.playbackMode = mode;
+            engine.setSettings(settings);
+            check(engine.importPad(0U, loop_source()), "import editor audition");
+            sms::dsp::SamplePlaybackSettings region;
+            region.start = 0.25f;
+            region.end = 0.75f;
+            region.attackSeconds = 0.002f;
+            region.sustainLevel = 0.5f;
+            region.releaseSeconds = loop ? 0.008f : 0.0f;
+            engine.setPadPlaybackSettings(0U, region);
+            sms::dsp::SampleMixerSettings mixer;
+            mixer.gainDecibels = -6.0205999f;
+            mixer.pan = 0.5f;
+            engine.setPadMixerSettings(0U, mixer);
+            engine.togglePlayback(0U, loop);
+            const MidiEvent off{1U, 36U, 0U, MidiEventType::NoteOff};
+            std::array<float, 10> left{}, right{};
+            engine.process(nullptr, nullptr, left.data(), right.data(), left.size(), &off, 1U);
+            for (std::size_t frame = 0U; frame < left.size(); ++frame) {
+                const float envelope = frame == 0U ? 0.0f : 0.5f;
+                const float sample = loop || frame < 4U ? 3.0f + static_cast<float>(frame % 4U) : 0.0f;
+                close(left[frame], sample * envelope * 0.25f, "audition Play/Loop honours region, ADSR and pan/gain");
+                close(right[frame], -10.0f * sample * envelope * 0.5f,
+                      "audition is independent of Gate mode and MIDI note-off");
+            }
+            check(engine.anyPlaybackActive() == loop, "only Loop audition survives its region End");
+            if (loop) {
+                settings.playbackMode = mode == PlaybackMode::Gated ? PlaybackMode::OneShot : PlaybackMode::Gated;
+                engine.setSettings(settings);
+                engine.process(nullptr, nullptr, left.data(), right.data(), left.size());
+                check(engine.anyPlaybackActive(), "changing global playback mode keeps an editor loop running");
+            }
+            engine.stopPadAudition();
+            engine.process(nullptr, nullptr, left.data(), right.data(), left.size());
+            check(!engine.anyPlaybackActive() && left[0] == 0.0f && right[0] == 0.0f,
+                  "audition Stop hard-cuts its voice");
+        }
+}
+
+void pad_audition_lifecycle()
+{
+    using namespace midichopper;
+    SamplerEngine engine(1000.0, 1.0);
+    auto settings = engine.settings();
+    settings.monitorInput = false;
+    settings.playbackMode = PlaybackMode::Gated;
+    settings.maxVoices = 2U;
+    engine.setSettings(settings);
+    for (std::uint32_t pad = 0U; pad < 3U; ++pad)
+        check(engine.importPad(pad, loop_source()), "import audition lifecycle pads");
+    float left[2]{}, right[2]{};
+    const MidiEvent on{0U, 36U, 127U, MidiEventType::NoteOn};
+    engine.process(nullptr, nullptr, left, right, 1U, &on, 1U);
+    engine.auditionPad(1U, true);
+    engine.auditionPad(2U, true);
+    check(engine.padMetadata(0U).active && !engine.padMetadata(1U).active &&
+          engine.padMetadata(2U).active, "new audition replaces previous audition and preserves unrelated MIDI");
+    engine.auditionPad(3U, true);
+    check(engine.padMetadata(0U).active && !engine.padMetadata(2U).active,
+          "auditioning an empty pad cuts the previous audition");
+    engine.auditionPad(1U, true);
+    engine.stopPadAudition();
+    check(engine.padMetadata(0U).active && !engine.padMetadata(1U).active,
+          "audition Stop preserves an unrelated MIDI loop");
+    engine.auditionPad(1U, true);
+    const MidiEvent replace{0U, 37U, 127U, MidiEventType::NoteOn};
+    engine.process(nullptr, nullptr, left, right, 1U, &replace, 1U);
+    engine.stopPadAudition();
+    check(engine.padMetadata(1U).active, "MIDI retrigger revokes audition ownership of its pad");
+    engine.stopAllPlayback();
+    engine.auditionPad(1U, true);
+    settings.maxVoices = 1U;
+    engine.setSettings(settings);
+    const MidiEvent steal{0U, 38U, 127U, MidiEventType::NoteOn};
+    engine.process(nullptr, nullptr, left, right, 1U, &steal, 1U);
+    engine.stopPadAudition();
+    check(!engine.padMetadata(1U).active && engine.padMetadata(2U).active,
+          "voice stealing revokes audition ownership without stopping the MIDI replacement");
+    engine.stopAllPlayback();
+    check(!engine.anyPlaybackActive(), "Stop All cuts loops and clears audition ownership");
+    engine.auditionPad(1U, true);
+    settings.armed = true;
+    engine.setSettings(settings);
+    check(!engine.anyPlaybackActive(), "Arm cuts active audition loops");
+    engine.auditionPad(1U, true);
+    check(!engine.anyPlaybackActive(), "editor audition cannot start while armed");
+}
+
+void arm_stops_gate_without_interrupting_capture()
+{
+    using namespace midichopper;
+    SamplerEngine engine(1000.0, 1.0);
+    auto settings = engine.settings();
+    settings.monitorInput = false;
+    settings.playbackMode = PlaybackMode::Gated;
+    engine.setSettings(settings);
+    check(engine.importPad(0U, loop_source()), "import Gate source before Arm");
+    sms::dsp::SamplePlaybackSettings playback;
+    playback.releaseSeconds = 0.008f;
+    engine.setPadPlaybackSettings(0U, playback);
+    const MidiEvent on{0U, 36U, 127U, MidiEventType::NoteOn};
+    std::array<float, 16> left{}, right{};
+    engine.process(nullptr, nullptr, left.data(), right.data(), 1U, &on, 1U);
+    check(engine.anyPlaybackActive(), "held Gate voice starts before Arm");
+    settings.armed = true;
+    engine.setSettings(settings);
+    check(!engine.anyPlaybackActive() && !engine.padMetadata(0U).active,
+          "entering Arm immediately hard-cuts Gate voices without a release tail");
+    const MidiEvent captureEvents[] = {
+        {0U, 37U, 127U, MidiEventType::NoteOn},
+        {2U, 36U, 0U, MidiEventType::NoteOff}, // release the former performance note
+    };
+    const float inputLeft[]{0.125f, 0.25f, 0.375f, 0.5f};
+    const float inputRight[]{-0.25f, -0.375f, -0.5f, -0.625f};
+    engine.process(inputLeft, inputRight, left.data(), right.data(), 4U, captureEvents, 2U);
+    check(engine.padMetadata(1U).recording && !engine.anyPlaybackActive(),
+          "performance note-off during Arm leaves sequential capture running");
+    settings.armed = false;
+    engine.setSettings(settings);
+    engine.process(nullptr, nullptr, left.data(), right.data(), left.size());
+    for (std::size_t frame = 0U; frame < left.size(); ++frame)
+        check(left[frame] == 0.0f && right[frame] == 0.0f,
+              "Gate voice released during Arm cannot resume after disarming");
+    PadData captured;
+    check(engine.exportPad(1U, captured) && captured.frames == 4U,
+          "disarm finalizes every captured frame despite the performance note-off");
+    for (std::size_t frame = 0U; frame < 4U; ++frame) {
+        close(captured.stereo[frame * 2U], inputLeft[frame], "Arm transition preserves captured left PCM");
+        close(captured.stereo[frame * 2U + 1U], inputRight[frame], "Arm transition preserves captured right PCM");
+    }
+
+    SamplerEngine oneShot(1000.0, 1.0);
+    settings.armed = false;
+    settings.playbackMode = PlaybackMode::OneShot;
+    oneShot.setSettings(settings);
+    check(oneShot.importPad(0U, loop_source()), "import OneShot source before Arm");
+    oneShot.process(nullptr, nullptr, left.data(), right.data(), 1U, &on, 1U);
+    settings.armed = true;
+    oneShot.setSettings(settings);
+    check(oneShot.anyPlaybackActive(), "Arm preserves existing finite OneShot performance playback");
+    const MidiEvent off{0U, 36U, 0U, MidiEventType::NoteOff};
+    oneShot.process(nullptr, nullptr, left.data(), right.data(), left.size(), &off, 1U);
+    for (std::size_t frame = 0U; frame < left.size(); ++frame) {
+        const float expected = frame < 7U ? static_cast<float>(frame + 2U) : 0.0f;
+        close(left[frame], expected, "OneShot continues to its natural End while armed");
+        close(right[frame], -10.0f * expected, "OneShot Arm transition preserves stereo");
+    }
+    check(!oneShot.anyPlaybackActive(), "OneShot still finishes while armed");
+}
+
 void sample_mixer_and_varispeed() {
     midichopper::SamplerEngine engine(1000.0, 1.0);
     auto engineSettings = engine.settings();
@@ -1817,6 +2103,11 @@ int main() {
     maximum_voice_limit();
     stop_all_playback();
     sample_region_and_adsr();
+    gated_region_looping();
+    gated_loop_release_and_edits();
+    independent_pad_audition();
+    pad_audition_lifecycle();
+    arm_stops_gate_without_interrupting_capture();
     sample_mixer_and_varispeed();
     live_sample_editor_updates();
     pad_replacement_hardening();

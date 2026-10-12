@@ -138,7 +138,7 @@ Audio renderPlayback(const double rate, const PlaybackMode mode, const bool effe
             engine.setPadMixerSettings(pad, mixer);
         }
     }
-    const std::array<MidiEvent, 19> events{{
+    const std::array<MidiEvent, 22> events{{
         {0U, 36U, 127U, MidiEventType::NoteOn},
         {63U, 37U, 81U, MidiEventType::NoteOn},
         {64U, 38U, 100U, MidiEventType::NoteOn}, // steals the oldest of three voices
@@ -157,7 +157,10 @@ Audio renderPlayback(const double rate, const PlaybackMode mode, const bool effe
         {2048U, 38U, 127U, MidiEventType::NoteOn},
         {3600U, 36U, 127U, MidiEventType::NoteOn},
         {3900U, 36U, 0U, MidiEventType::NoteOff},
-        {4095U, 127U, 127U, MidiEventType::NoteOn} // outside the configured pad range
+        {4095U, 127U, 127U, MidiEventType::NoteOn}, // outside the configured pad range
+        {4096U, 36U, 0U, MidiEventType::NoteOff},
+        {4096U, 37U, 0U, MidiEventType::NoteOff},
+        {4096U, 38U, 0U, MidiEventType::NoteOff}
     }};
     auto output = processTimeline(engine, nullptr, events, partition, emptyCallbacks);
     check(std::any_of(output.left.begin(), output.left.end(), [](float value) {
@@ -178,6 +181,60 @@ void playbackPartitions()
                 for (const auto& partition : kPartitions)
                     compare(renderPlayback(rate, mode, effects, partition, true), expected);
             }
+}
+
+void loopingPlaybackPartitions()
+{
+    const std::array<MidiEvent, 4> events{{
+        {63U, 36U, 127U, MidiEventType::NoteOn},
+        {4103U, 36U, 0U, MidiEventType::NoteOff},
+        {4140U, 36U, 127U, MidiEventType::NoteOn}, // retrigger during nonzero release
+        {7801U, 36U, 0U, MidiEventType::NoteOff},
+    }};
+    // A 0.75-source-frame step repeats every 16 output frames, including
+    // interpolation from the final trimmed sample back to Start.
+    constexpr std::array<float, 16> cycle{
+        3, 3.75f, 4.5f, 5.25f, 6, 3.75f, 3.5f, 4.25f,
+        5, 5.75f, 4.5f, 3.25f, 4, 4.75f, 5.5f, 5.25f};
+    for (const std::uint32_t releaseFrames : {0U, 96U}) {
+        Audio expected;
+        for (std::uint32_t frame = 63U; frame < kFrames; ++frame) {
+            const auto start = frame < 4140U ? 63U : 4140U;
+            const auto stop = frame < 4140U ? 4103U : 7801U;
+            const float gain = frame < stop ? 1.0f
+                : frame < stop + releaseFrames
+                    ? static_cast<float>(stop + releaseFrames - frame) / releaseFrames
+                    : 0.0f;
+            expected.left[frame] = cycle[(frame - start) % cycle.size()] * gain / 8.0f;
+            expected.right[frame] = -expected.left[frame] * 0.5f;
+        }
+        for (const auto& partition : kPartitions) {
+            SamplerEngine engine(48000.0, 0.1);
+            auto settings = engine.settings();
+            settings.monitorInput = false;
+            settings.playbackMode = PlaybackMode::Gated;
+            engine.setSettings(settings);
+            PadData source;
+            source.sampleRate = 72000.0;
+            source.frames = 8U;
+            for (std::uint32_t frame = 0U; frame < source.frames; ++frame) {
+                source.stereo.push_back(static_cast<float>(frame + 1U) / 8.0f);
+                source.stereo.push_back(-static_cast<float>(frame + 1U) / 16.0f);
+            }
+            check(engine.importPad(0U, source), "import multiple-turn partition loop");
+            sms::dsp::SamplePlaybackSettings playback;
+            playback.start = 0.25f;
+            playback.end = 0.75f;
+            playback.releaseSeconds = static_cast<float>(releaseFrames) / 48000.0f;
+            engine.setPadPlaybackSettings(0U, playback);
+            sms::dsp::SampleMixerSettings mixer;
+            mixer.tuneSemitones = -12.0f;
+            engine.setPadMixerSettings(0U, mixer);
+            compare(processTimeline(engine, nullptr, events, partition, true), expected);
+            check(!engine.anyPlaybackActive(),
+                  "offset note-off completes looping release under every callback partition");
+        }
+    }
 }
 
 struct Capture {
@@ -329,6 +386,7 @@ int main()
     eventOrdering();
     playbackOffsets();
     playbackPartitions();
+    loopingPlaybackPartitions();
     capturePartitions();
     std::cout << "Buffer timing tests passed\n";
 }

@@ -6,16 +6,17 @@ _A live stereo chopping sampler for Linux._
 
 ![SMS-Anvil Sampler interface](Docs/SMS-AnvilSampler-v0.0.8.png)
 
-**VST3 is the preferred version.** Its GUI loads faster than LV2, and it has been generally human-tested the most. LV2 is mostly AI-tested, and CLAP (if even made available) has NOT been tested.
+**VST3 is preferred:** faster GUI loading and more human testing. LV2 is mostly
+AI-tested; CLAP is untested.
 
-Tested in **REAPER**, **Ardour**, and **Carla**.
+Tested: **REAPER**, **Ardour**, **Carla**.
 
 - Control with any MIDI controller.
 - Record input and quickly chop input to pads, or load samples to pads.
-- Basic waveform editing and splitting.
+- Waveform editing and splitting.
 - Pad/global mixer/FX: Gain, Pan, Dirty, Tune (Varispeed), and Lowpass/Highpass with 6/12/24 dB slopes; separate monitor and playback levels.
 - Sample specific amplitude envelope; Attack, Decay, Sustain, Release.
-- Layout options to match physical gear (2x4, 3x4, 4x4 pads), with 4 banks in shared/unique mode; and possibility to assign colors for pads.
+- Layouts: 2x4, 3x4, or 4x4 pads; four shared/unique MIDI banks; pad colors.
 - VST3 presets store samples/settings across supported DAWs: Ardour presets also
   load in REAPER and vice versa. Carla does not support them.
 
@@ -23,7 +24,7 @@ Tested in **REAPER**, **Ardour**, and **Carla**.
 
 ## Basic Usage
 
-1. Insert **SMS-Anvil Sampler** on a stereo REAPER track receiving audio and MIDI; or on MIDI-track in Ardour, with stereo input sidechain. Stereo input is necessary only if chopping live audio into its pads.
+1. Insert **SMS-Anvil Sampler** on a stereo REAPER track receiving audio and MIDI; or on MIDI-track in Ardour, with stereo input sidechain. Stereo input is needed for live capture.
 
 2. Press **ARM** (red record circle) to arm; release it for PLAY.
    The header light/text is red when ARMED and green in PLAY.
@@ -40,7 +41,6 @@ Tested in **REAPER**, **Ardour**, and **Carla**.
 
 ![ARM capture view](Docs/arm-view.png)
 
-Right click on a PAD reveals context menu with various operations.
 ![Context menu](Docs/context-menu.png)
 
 
@@ -49,21 +49,28 @@ guide from the matching tag in official releases, or from `main` in development
 builds. **Report Issue** opens the project's issues page.
 
 Select **All Banks** (unique notes, default) for gapless notes or **Selected Bank**
-(shared notes) for playing a sample with "bank A notes", based on currently active bank. All Banks limits the base note to 64.
+(shared notes) to reuse controller notes in the active bank. All Banks limits
+the base note to 64.
 
-Layouts show 16, 12, or 8 pads; for best experience, choose what fits best with your physical controller. Changing the layout is non-destructive for existing samples.
+Choose a layout matching your controller. Layout changes preserve samples.
 
 ![Hamburger menu](Docs/hamburger-menu.png)
 
 **SAMPLE EDITOR** opens waveform, ADSR, and pad mixing; **MAIN VIEW** returns. See the
-[mixing guide](Docs/MIXING.md). **Play on Select** auditions selections. **Play/Stop** plays the selected occupied pad when idle or immediately cuts all
-playing samples. In Sample Editor it plays the open sample.
+[mixing guide](Docs/MIXING.md). The selection button cycles through **Play on
+Select**, **Loop on Select**, and Off (unpressed **Play on Select**). Play auditions
+the selected sample once; Loop repeats its Start/End region after the mouse is
+released. These editor modes work independently of the main playback mode.
+Changing selection replaces the audition; turning it off or leaving the editor
+stops it. **Play/Stop** plays the selected occupied pad when idle or immediately cuts all
+playing samples. With Loop on Select enabled, editor Play/Stop and Space also start a loop.
 The button shows a play triangle or stop square. ARM hides the global mixer.
 The edge faders remain visible: **IN** controls monitoring, **OUT** controls
 samples/previews.
 
-Over the waveform, **Ctrl + wheel** zooms and **Shift + wheel** scrolls; or drag the left vertical zoom control or the horizontal window box below the
-waveform. The box shows the visible range. Changing pads resets the view.
+**Ctrl + wheel** zooms the waveform; **Shift + wheel** scrolls. The left zoom
+control and window box below provide drag alternatives. Changing pads resets
+the view.
 
 ![Sample Editor with a shaped amplitude envelope](Docs/sample-editor.png)
 
@@ -87,13 +94,18 @@ Right-click a middle pad for **Adjust cut points**. See the
 
 Customize images, colors, and labels with [skins](Docs/SKINS.md).
 
-## Other good-to-know
-- Total sample memory is approx 8 minutes.
+## Other controls
+
+- Sample memory: about eight minutes.
 
 - Monitor cycles through Off, On, and Auto; Auto is On when ARMed and Off otherwise.
 
 - Max Voices limits simultaneous pads. At the limit, a new trigger stops the
 oldest voice; set it to one for monophonic playback.
+
+- **Gate** loops a pad's Start/End region while its MIDI note or mouse press is
+held. Release starts the pad's ADSR release; the region continues looping until
+the fade ends. ARM stops Gate loops. **One Shot** ignores note-off.
 
 - Pre-roll moves boundaries slightly earlier to compensate for late taps. Fixed
 mode records one fixed-length slice per note-on.
@@ -109,8 +121,7 @@ and 6 dB/octave filter slopes.
 
 - See [WAV files](Docs/WAV-FILES.md) for supported import formats and Linux requirements.
 
-- Samples from all four banks are
-stored with the DAW project as 16-bit stereo state.
+- DAW projects store all banks as 16-bit stereo state.
 
 - Stereo LED rails around the faders show raw input and final output.
 
@@ -119,7 +130,7 @@ stored with the DAW project as 16-bit stereo state.
 
 ## Vision, Contributions, License
 
-For development and host/UI testing, see [Contributing](../CONTRIBUTING.md).
+Development/testing: [Contributing](../CONTRIBUTING.md).
 
 Licensed under [MIT](LICENSE).
 

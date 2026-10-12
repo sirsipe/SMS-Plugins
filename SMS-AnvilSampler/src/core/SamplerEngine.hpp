@@ -237,7 +237,10 @@ public:
     void stopAllPlayback() noexcept;
     [[nodiscard]] bool anyPlaybackActive() const noexcept;
     /** UI transport action: cut active voices, otherwise audition this pad. */
-    void togglePlayback(std::uint32_t selectedPad) noexcept;
+    void togglePlayback(std::uint32_t selectedPad, bool loop = false) noexcept;
+    /** Audio-owner editor audition, independent of the performance playback mode. */
+    void auditionPad(std::uint32_t pad, bool loop) noexcept;
+    void stopPadAudition() noexcept;
     [[nodiscard]] sms::dsp::SamplePlaybackSettings padPlaybackSettings(std::uint32_t pad) const noexcept;
     void setPadPlaybackSettings(std::uint32_t pad,
                                 const sms::dsp::SamplePlaybackSettings& settings);
@@ -303,6 +306,8 @@ private:
         const sms::dsp::SamplePlaybackSettings& settings) noexcept;
     void setPadMixerSettingsDirect(std::uint32_t pad,
         const sms::dsp::SampleMixerSettings& settings) noexcept;
+    enum class VoiceMode : std::uint8_t { OneShot, Gated, Loop };
+    std::uint32_t auditionPad_ = kPadCount;
     struct Pad {
         Storage* storage = nullptr;
         std::atomic<Storage*> publishedStorage{nullptr};
@@ -314,6 +319,7 @@ private:
         bool recording = false;
         bool held = false;
         bool playing = false;
+        VoiceMode voiceMode = VoiceMode::OneShot;
         std::uint64_t voiceOrder = 0;
         double playPosition = 0.0;
         double playStep = 1.0;
@@ -393,7 +399,8 @@ private:
     void finishRecord(std::uint32_t pad, std::uint32_t trimFrames = 0) noexcept;
     void handleEvent(const MidiEvent& event) noexcept;
     void writeRecordFrame(std::uint32_t frame, float left, float right) noexcept;
-    void startVoice(std::uint32_t pad, std::uint8_t velocity) noexcept;
+    void startVoice(std::uint32_t pad, std::uint8_t velocity,
+                    VoiceMode mode = VoiceMode::OneShot) noexcept;
     void stopVoice(std::uint32_t pad) noexcept;
     void hardStopVoice(std::uint32_t pad) noexcept;
     void refreshActiveVoiceSettings(std::uint32_t pad) noexcept;

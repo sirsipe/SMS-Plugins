@@ -36,6 +36,7 @@
 #include "ChopEditorController.hpp"
 #include "EditorSnapshotSession.hpp"
 #include "PlaybackIndicator.hpp"
+#include "PlaybackRequest.hpp"
 #include "MixerValueEntry.hpp"
 #include "WaveformDetailSession.hpp"
 #include "ChopEditorProtocol.hpp"
@@ -250,7 +251,7 @@ public:
           fPadContextClearArmed(false),
           fPadContextPointerCaptured(false),
           fEditorMode(false),
-          fPlayOnSelect(true),
+          fEditorAuditionMode(midichopper::ui::EditorAuditionMode::Play),
           fDragTarget(WaveformEditTarget::none),
           fMixerDragIndex(-1),
           fGlobalMixerDragIndex(-1),
@@ -278,6 +279,7 @@ public:
 
     ~MidichopperUI() override
     {
+        stopEditorAudition();
         if (!fChopEditor.active())
             return;
 #if DISTRHO_PLUGIN_WANT_DIRECT_ACCESS
@@ -376,7 +378,11 @@ protected:
         }
         if (index == kParameterPlaybackPosition)
         {
-            fPlaybackIndicator.acceptHostPosition(value, std::chrono::steady_clock::now());
+            const int pad = std::isfinite(value) && value > 0.0f
+                ? static_cast<int>(std::floor(value)) - 1 : -1;
+            const bool loop = fEditorAuditionPad == pad && pad >= 0
+                ? fEditorAuditionLoop : fPlaybackMode >= 0.5f;
+            fPlaybackIndicator.acceptHostPosition(value, std::chrono::steady_clock::now(), loop);
             if (fEditorMode)
                 requestRepaint();
             return;
@@ -441,6 +447,7 @@ protected:
                 fPendingSplitCount = 0;
                 fPadStructureBusy = false;
             }
+            stopEditorAudition();
             fArm = armed;
             fStatus[0] = '\0';
             fSelectedPad = -1;
@@ -465,6 +472,8 @@ protected:
             break;
         case kParameterPlaybackMode:
             changed = fPlaybackMode != value;
+            if (changed)
+                stopEditorAudition();
             fPlaybackMode = value;
             break;
         case kParameterInputMonitor:
@@ -579,6 +588,7 @@ protected:
             if (!changed)
                 break;
             closePadContextMenu();
+            stopEditorAudition();
             fLayout = layout;
             if (fStartPad >= visiblePadCount())
                 fStartPad = 0;
@@ -620,7 +630,7 @@ protected:
             fLastPlayedPad = static_cast<int>(pad);
             fBank = bankForGlobalPad(fLastPlayedPad);
             if (fEditorMode)
-                selectEditorPad(fLastPlayedPad);
+                selectEditorPad(fLastPlayedPad, false);
             else {
                 if (fSelectedPad != fLastPlayedPad) {
                     fEditorSettings = {};
@@ -925,7 +935,7 @@ protected:
             std::span<const sms::ui::ContextMenuItemView>{colorMenuItems},
             fHover.target(),
             fMixerValueEntry.target(), fMixerValueEntry.text(),
-            fEditorMode, fChopEditor.active(), fChopEditor.split(), fPlayOnSelect,
+            fEditorMode, fChopEditor.active(), fChopEditor.split(), fEditorAuditionMode,
             fAnyPlaybackActive, fHasWaveform,
             fInputLevels, fOutputLevels, fPadState, fPadStatus, fPadColors,
             fEditorSettings, fMixerSettings, fWaveform, fPlaybackIndicator.position(),
@@ -1226,6 +1236,7 @@ protected:
                         clicked, midichopper::ui::InteractiveType::closeEditor))
                 {
                     releasePressedPad();
+                    stopEditorAudition();
                     fEditorMode = false;
                     fDragTarget = WaveformEditTarget::none;
                     fMixerDragIndex = -1;
@@ -1241,13 +1252,15 @@ protected:
                 if (midichopper::ui::isTarget(
                         clicked, midichopper::ui::InteractiveType::pad)) {
                     selectEditorPad(globalPad(clicked.index));
-                    if (fPlayOnSelect)
-                        pressPlaybackPad(clicked.index);
+                    auditionSelectedEditorPad();
                     return true;
                 }
                 if (midichopper::ui::isTarget(
                         clicked, midichopper::ui::InteractiveType::playOnSelect)) {
-                    fPlayOnSelect = !fPlayOnSelect;
+                    stopEditorAudition();
+                    fEditorAuditionMode = midichopper::ui::nextEditorAuditionMode(fEditorAuditionMode);
+                    if (fEditorAuditionMode == midichopper::ui::EditorAuditionMode::Loop)
+                        auditionSelectedEditorPad();
                     requestRepaint();
                     return true;
                 }
@@ -2051,7 +2064,9 @@ private:
     PendingFileDialog fActiveFileAction = PendingFileDialog::none;
     int fActiveFilePad = -1;
     bool fEditorMode;
-    bool fPlayOnSelect;
+    midichopper::ui::EditorAuditionMode fEditorAuditionMode;
+    int fEditorAuditionPad = -1;
+    bool fEditorAuditionLoop = false;
     WaveformEditTarget fDragTarget;
     int fMixerDragIndex;
     float fMixerDragStartY = 0.0f;
@@ -2836,35 +2851,82 @@ private:
 #endif
     }
 
-    void togglePlayStop()
+    bool selectedPadOccupied() const noexcept
     {
-        // The DSP decides whether to stop or play from its actual voice state.
-        // VST3 hosts do not always deliver UI writes to hidden trigger parameters.
-        const bool selected = hasSelectedPad() &&
-            bankForGlobalPad(fSelectedPad) == fBank &&
+        return hasSelectedPad() && bankForGlobalPad(fSelectedPad) == fBank &&
             localPadForGlobalPad(fSelectedPad) < visiblePadCount() &&
             fPadState[static_cast<std::size_t>(localPadForGlobalPad(fSelectedPad))] != '0' &&
             fPadState[static_cast<std::size_t>(localPadForGlobalPad(fSelectedPad))] != '.';
-        char request[4];
-        std::snprintf(request, sizeof(request), "%d", selected ? fSelectedPad + 1 : 0);
+    }
+
+    void sendPlaybackRequest(const midichopper::plugin::PlaybackAction action,
+                             const int pad = -1)
+    {
 #if DISTRHO_PLUGIN_WANT_STATE
-        setState("play_stop_request", request);
+        const auto request = std::to_string(midichopper::plugin::encodePlaybackRequest(
+            {action, pad >= 0 ? static_cast<std::uint32_t>(pad) : midichopper::kPadCount}));
+        setState("play_stop_request", request.c_str());
+#else
+        static_cast<void>(action);
+        static_cast<void>(pad);
 #endif
+    }
+
+    void stopEditorAudition()
+    {
+        if (fEditorAuditionPad < 0)
+            return;
+        sendPlaybackRequest(midichopper::plugin::PlaybackAction::StopAudition);
+        if (fPlaybackIndicator.pad() == fEditorAuditionPad)
+            stopLocalPlayhead(false);
+        fEditorAuditionPad = -1;
+    }
+
+    void auditionSelectedEditorPad()
+    {
+        if (fEditorAuditionMode == midichopper::ui::EditorAuditionMode::Off ||
+            !selectedPadOccupied())
+            return;
         releasePressedPad();
+        const bool loop = fEditorAuditionMode == midichopper::ui::EditorAuditionMode::Loop;
+        sendPlaybackRequest(loop ? midichopper::plugin::PlaybackAction::Loop
+                                 : midichopper::plugin::PlaybackAction::Play, fSelectedPad);
+        fEditorAuditionPad = fSelectedPad;
+        fEditorAuditionLoop = loop;
+        fAnyPlaybackActive = true;
+        startLocalPlayhead(fSelectedPad, loop);
+        requestRepaint();
+    }
+
+    void togglePlayStop()
+    {
+        // The DSP decides whether to stop or play from its actual voice state.
+        const bool selected = selectedPadOccupied();
+        const bool loop = fEditorMode &&
+            fEditorAuditionMode == midichopper::ui::EditorAuditionMode::Loop;
+        sendPlaybackRequest(loop ? midichopper::plugin::PlaybackAction::ToggleLoop
+                                 : midichopper::plugin::PlaybackAction::Toggle,
+                            selected ? fSelectedPad : -1);
+        releasePressedPad();
+        fEditorAuditionPad = -1;
         if (fAnyPlaybackActive) {
             fAnyPlaybackActive = false;
             stopLocalPlayhead(false);
         } else if (selected) {
             fAnyPlaybackActive = true;
-            startLocalPlayhead(fSelectedPad);
+            fEditorAuditionPad = fSelectedPad;
+            fEditorAuditionLoop = loop;
+            startLocalPlayhead(fSelectedPad, loop);
         }
         requestRepaint();
     }
 
-    void startLocalPlayhead(const int pad)
+    void startLocalPlayhead(const int pad, const std::optional<bool> loop = std::nullopt)
     {
+        const bool shouldLoop = loop.value_or(fEditorAuditionPad == pad
+            ? fEditorAuditionLoop : fPlaybackMode >= 0.5f);
         if (fPlaybackIndicator.start(pad, fEditorSettingsPad, fEditorSettings,
-                                     std::chrono::steady_clock::now()) && fEditorMode)
+                                     std::chrono::steady_clock::now(), shouldLoop) && fEditorMode)
             requestRepaint();
     }
 
@@ -2971,6 +3033,7 @@ private:
 
     void selectChopPad(const int pad) override
     {
+        stopEditorAudition();
         fEditorMode = false;
         fEditorSnapshot.complete();
         fSelectedPad = pad;
@@ -3006,12 +3069,14 @@ private:
         requestWaveform();
     }
 
-    void selectEditorPad(const int pad)
+    void selectEditorPad(const int pad, const bool stopAudition = true)
     {
         const int selectedPad = clampPad(static_cast<float>(pad));
         if (!midichopper::ui::editorPadSelectionChanged(fSelectedPad, selectedPad))
             return;
 
+        if (stopAudition)
+            stopEditorAudition();
         fSelectedPad = selectedPad;
         requestWaveform();
         requestRepaint();
@@ -3056,6 +3121,7 @@ private:
             setLocalStatus("Apply or Exit before changing layout");
             return;
         }
+        stopEditorAudition();
         fLayout = selectedLayout;
         if (fStartPad >= visiblePadCount()) {
             fStartPad = 0;

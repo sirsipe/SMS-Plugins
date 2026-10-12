@@ -28,9 +28,8 @@ Filter with `ctest --test-dir build --output-on-failure -R NAME`:
 | `ui-message-bus` | Bounded VST3 message ordering, independent view cursors, explicit gap reporting on wrap, and large replies |
 | `wav-codec` | WAV formats, chunk/truncation/header/nonfinite validation, file actions, offline render, real-time access gate |
 
-Rebuild affected targets; run the full suite for code changes. For docs-only
-changes, check docs and commands against CMake/tool help; no rebuild is required.
-Test long audio with an optional WAV; keep audio out of Git:
+Rebuild affected targets and run all tests for code changes. Docs-only changes
+need command/source checks. Optional long-audio test (keep WAVs out of Git):
 
 ```bash
 ./build/anvilsampler_transfer_tests "/path/to/long-sample.wav"
@@ -72,9 +71,7 @@ LV2_PATH="$PWD/build/bin" pw-jack jalv -s "$LV2_URI"
 Jalv and Carla 2.5.10 load the UI and route MIDI, but cannot validate
 DSP-requested `active_bank` UI updates.
 
-Connect stereo source → plugin inputs, MIDI source → plugin event input, and
-plugin outputs → a recorder or monitoring destination using your JACK graph
-tool. Verify audio/MIDI flow.
+Connect stereo/MIDI inputs and recorded outputs through JACK. Verify audio/MIDI flow.
 
 Applicable checks:
 
@@ -82,8 +79,12 @@ Applicable checks:
   pads; FINALIZE keeps the open slice. UNDO discards the open/last slice;
   confirmed CLEAR empties all banks. Repeat in VST3/LV2. Check transitions/fixed mode
   when affected, and compare recorded output for timing/pre-roll changes.
-- Playback: return to PLAY; verify expected notes/banks, one-shot/gated behavior,
-  voice limits, and stereo output.
+- Playback: return to PLAY; verify expected notes/banks, voice limits, and stereo
+  output. Hold a Gate pad beyond several Start/End turns; release and check its
+  ADSR fade (zero Release stops immediately). One Shot still ends once. In Sample
+  Editor cycle Play on Select → Loop on Select → Off; check pressed labels,
+  sustained loops after mouse release, replacement on selection, and stopping
+  on Off/Exit. Play/Stop and Space loop only in editor Loop mode.
 - Skins: verify forced `skin` hides the selector. With named `skins` entries,
   switch Default/custom in LV2/VST3; check images/text/colors and reopening
   across formats. Test scrolling, deleted skins, config-write failure, and resizing.
@@ -116,16 +117,14 @@ ignored `build/gui-test/`. It sets VNC to 1920x1080. Use `--keep-open` for furth
 interaction. `screenshot-window WINDOW_ID OUTPUT.png` captures one window; resolve it again
 after relaunch/resize.
 
-Capture only the plug-in window, never the full desktop. Inspect every artifact
-before sharing or committing it, and exclude usernames, home paths, machine
-names, unrelated applications, notifications, accounts, and other private data.
-Repository screenshots should contain only intentional product UI.
+Capture only the plug-in window. Inspect artifacts before sharing; exclude
+private data, notifications, and unrelated applications. Repository screenshots
+contain only intentional product UI.
 
 For the VST3 UI, launch
 `carla-single native vst3 "$PWD/build/bin/SMS-AnvilSampler.vst3"` on this desktop. Import a WAV, open Sample Editor, switch pads and back, and check the
 waveform and settings. Exercise Split Sample or Adjust Cut Points. Then save,
 close, delete the source WAV, reload, and compare audio and editor values.
 
-Report host/frontend, audio rate/buffer, steps, results, failures and unavailable
-integration checks. CI runs CTest and `lv2info`; manual host/UI evidence remains
-necessary. A launch or metadata check alone does not validate audio/UI behavior.
+Report host, rate/buffer, steps, results, and unavailable checks. CI runs CTest
+and `lv2info`; host audio/UI evidence remains necessary.

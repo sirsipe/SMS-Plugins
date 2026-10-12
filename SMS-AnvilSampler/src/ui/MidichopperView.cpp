@@ -1040,8 +1040,8 @@ private:
                                       : sms::ui::dpf::ControlSymbol::play,
                                   state_.anyPlaybackActive, colors.activityPlayback,
                                   hovered(InteractiveType::playStop));
-        sms::ui::dpf::drawSegment(canvas_, uiLayout::playOnSelect, "PLAY ON SELECT",
-                                  state_.playOnSelect, colors.activityPlayback,
+        sms::ui::dpf::drawSegment(canvas_, uiLayout::playOnSelect, editorAuditionLabel(state_.auditionMode),
+                                  editorAuditionPressed(state_.auditionMode), colors.activityPlayback,
                                   hovered(InteractiveType::playOnSelect));
     }
 

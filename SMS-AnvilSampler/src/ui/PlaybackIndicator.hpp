@@ -21,9 +21,13 @@ public:
     [[nodiscard]] float position() const noexcept { return fPosition; }
     [[nodiscard]] int pad() const noexcept { return fPad; }
 
-    void acceptHostPosition(const float value, const Time now) noexcept
+    void acceptHostPosition(const float value, const Time now, const bool loop = false) noexcept
     {
         if (std::isfinite(value) && value > 0.0f) {
+            const int pad = static_cast<int>(std::floor(value)) - 1;
+            if (pad != fPad)
+                fLoopStart = -1.0f;
+            fLoop = loop;
             fPosition = value;
             fPad = static_cast<int>(std::floor(value)) - 1;
             fFraction = value - std::floor(value);
@@ -40,14 +44,16 @@ public:
 
     [[nodiscard]] bool start(const int pad, const int settingsPad,
                             const sms::dsp::SamplePlaybackSettings& settings,
-                            const Time now) noexcept
+                            const Time now, const bool loop = false) noexcept
     {
         if (pad < 0 || pad >= static_cast<int>(kPadCount) ||
             (fActive && fPad == pad && now - fStarted < std::chrono::milliseconds(150)))
             return false;
+        fLoop = loop;
         fPad = pad;
         fAwaitingSettings = settingsPad != pad;
         fFraction = fAwaitingSettings ? 0.0f : sms::dsp::sanitize(settings).start;
+        fLoopStart = fAwaitingSettings ? -1.0f : fFraction;
         fActive = true;
         fTick = fStarted = now;
         fClearDeadline = {};
@@ -75,7 +81,8 @@ public:
     {
         if (!fAwaitingSettings || fPad != pad)
             return;
-        fFraction = settings.start;
+        fFraction = sms::dsp::sanitize(settings).start;
+        fLoopStart = fFraction;
         updatePosition();
         fAwaitingSettings = false;
         fTick = now;
@@ -106,11 +113,24 @@ public:
         const auto mixer = sms::dsp::sanitize(mixerSettings);
         const double tuneRatio = std::exp2(
             static_cast<double>(mixer.tuneSemitones + globalTune) / 12.0);
-        fFraction = sms::ui::waveform::advancePlaybackFraction(
-            fFraction, elapsed, waveform.frames, waveform.sampleRate,
-            tuneRatio, playback.end);
+        if (fLoop) {
+            // Like the voice, retain Start until retrigger while following live End edits.
+            if (fLoopStart < 0.0f)
+                fLoopStart = playback.start;
+            const double end = std::max(static_cast<double>(playback.end),
+                static_cast<double>(fLoopStart) + 1.0 / waveform.frames);
+            const double length = end - fLoopStart;
+            const double advanced = static_cast<double>(fFraction) - fLoopStart +
+                elapsed * waveform.sampleRate * tuneRatio / static_cast<double>(waveform.frames);
+            fFraction = static_cast<float>(fLoopStart +
+                std::fmod(std::max(0.0, advanced), length));
+        } else {
+            fFraction = sms::ui::waveform::advancePlaybackFraction(
+                fFraction, elapsed, waveform.frames, waveform.sampleRate,
+                tuneRatio, playback.end);
+        }
         updatePosition();
-        if (fFraction >= playback.end - 1.0e-6f)
+        if (!fLoop && fFraction >= playback.end - 1.0e-6f)
             stop(true, now);
         return true;
     }
@@ -120,9 +140,11 @@ private:
 
     float fPosition = 0.0f;
     bool fActive = false;
+    bool fLoop = false;
     bool fAwaitingSettings = false;
     int fPad = -1;
     float fFraction = 0.0f;
+    float fLoopStart = -1.0f;
     Time fTick{};
     Time fStarted{};
     Time fClearDeadline{};

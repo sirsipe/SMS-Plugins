@@ -10,6 +10,7 @@
 #include "DSP/PeakMeter.hpp"
 #include "EditorSnapshotProtocol.hpp"
 #include "PadWorkflows.hpp"
+#include "PlaybackRequest.hpp"
 #include "StateKeys.hpp"
 #include "PadClipboardProtocol.hpp"
 #include "PadColorState.hpp"
@@ -709,13 +710,11 @@ protected:
         if (std::strcmp(key, kChopSnapshotDataKey) == 0)
             return;
         if (std::strcmp(key, kPlayStopRequestKey) == 0) {
-            if (value != nullptr) {
-                char* end = nullptr;
-                const unsigned long selected = std::strtoul(value, &end, 10);
-                if (end != value && *end == '\0' && selected <= midichopper::kPadCount)
-                    pendingPlayStopPad_.store(static_cast<std::uint32_t>(selected + 1U),
-                                              std::memory_order_release);
-            }
+            midichopper::plugin::PlaybackRequest request;
+            if (value != nullptr && midichopper::plugin::decodePlaybackRequest(value, request))
+                pendingPlaybackRequest_.store(
+                    midichopper::plugin::encodePlaybackRequest(request) + 1U,
+                    std::memory_order_release);
             return;
         }
         for (std::uint32_t pad = 0; pad < midichopper::kPadCount; ++pad) {
@@ -1085,11 +1084,20 @@ private:
         if ((commands & 0x2U) != 0U) sampler_.undoLastSlice();
         if ((commands & 0x4U) != 0U) sampler_.clearAllPads();
         if ((commands & 0x8U) != 0U) sampler_.stopAllPlayback();
-        const std::uint32_t playStop =
-            pendingPlayStopPad_.exchange(0U, std::memory_order_acquire);
-        if (playStop != 0U)
-            sampler_.togglePlayback(playStop > 1U
-                ? playStop - 2U : midichopper::kPadCount);
+        const std::uint32_t pendingPlayback =
+            pendingPlaybackRequest_.exchange(0U, std::memory_order_acquire);
+        midichopper::plugin::PlaybackRequest playback;
+        if (pendingPlayback != 0U &&
+            midichopper::plugin::decodePlaybackRequest(pendingPlayback - 1U, playback)) {
+            using midichopper::plugin::PlaybackAction;
+            switch (playback.action) {
+            case PlaybackAction::Toggle: sampler_.togglePlayback(playback.pad); break;
+            case PlaybackAction::ToggleLoop: sampler_.togglePlayback(playback.pad, true); break;
+            case PlaybackAction::Play: sampler_.auditionPad(playback.pad, false); break;
+            case PlaybackAction::Loop: sampler_.auditionPad(playback.pad, true); break;
+            case PlaybackAction::StopAudition: sampler_.stopPadAudition(); break;
+            }
+        }
         const std::uint64_t clearPads =
             pendingClearPads_.exchange(0U, std::memory_order_acquire);
         if (clearPads != 0U) {
@@ -1264,7 +1272,7 @@ private:
     std::array<std::atomic<float>, midichopper::plugin::kParameterCount> parameters_{};
     std::array<std::atomic<int>, midichopper::kPadCount> padColors_{};
     std::atomic<std::uint32_t> pendingCommands_{0};
-    std::atomic<std::uint32_t> pendingPlayStopPad_{0};
+    std::atomic<std::uint32_t> pendingPlaybackRequest_{0};
     std::atomic<std::uint64_t> pendingClearPads_{0};
     std::atomic<std::uint32_t> pendingCaptureTarget_{0};
     sms::audio::RealtimeLatestMailbox<midichopper::plugin::ChopPreviewRequest>

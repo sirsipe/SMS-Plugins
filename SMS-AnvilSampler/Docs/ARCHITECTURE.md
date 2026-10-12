@@ -14,9 +14,8 @@
 - `Common-Src` provides framework-neutral DSP, codecs, audio handoff, geometry.
   `Common-UI` provides shared controls, pads, waveform editing and DPF rendering.
 
-The UI discovers skins at startup and owns its selected palette. Menu switches
-replace images at the next GL draw; shared controls use per-instance scopes.
-The per-user preference stays outside DSP/project state. See [Skins](SKINS.md).
+Skins use per-instance scopes; selection stays outside DSP/project state.
+See [Skins](SKINS.md) for discovery and image replacement.
 
 ## MIDI mapping
 
@@ -26,8 +25,11 @@ changes regroup slots without changing notes.
 Playback note-on advances a hidden output encoding the global pad index in
 alternating halves of its range. Both views follow bank, MIDI labels, and last-played selection.
 An appended hidden output reports whether any pad or raw preview is active.
-The UI sends `play_stop_request`; the DSP auditions the selected pad when idle
-or hard-cuts every voice at the next block. An appended Stop All trigger also supports host control.
+Transient `play_stop_request` toggles audition/Stop All at block boundaries.
+`PlaybackRequest.hpp` preserves legacy integers and adds Play, Loop, looping
+toggle, and Stop Audition through one atomic command. UI-local Play/Loop/Off
+replaces previous auditions within the voice limit. MIDI retrigger takes ownership;
+Stop Audition cannot cut its replacement. Stop All also supports host control.
 All Banks limits the effective base note to 64 so every layout remains within
 MIDI notes 0–127. UI notes and labels use the engine mapping. Selected Bank reuses one range,
 with `active_bank` choosing its target, and retains the released fixed 16-slot
@@ -51,10 +53,9 @@ duration after each note-on.
 
 ## Real-time behavior
 
-Audio processing uses preallocated sample blocks plus pre-roll storage. The pool
-supports 64 pad slots; cleared blocks can be reused by any bank. A pad can use
-the entire free pool, so a long song can be split across pads. The pool holds
-about eight minutes of stereo audio at the host rate. `process()` pulls
+The preallocated stereo pool supports 64 pads and about eight minutes at the
+host rate. Any pad can use all free blocks; clearing returns them to every bank.
+`process()` pulls
 sample-offset MIDI without a fixed event cap or allocation, locking, I/O, or
 exceptions. Each pad is one voice, with a global limit of
 1–16 simultaneous voices and deterministic oldest-voice stealing.
@@ -64,13 +65,18 @@ Playback uses linear interpolation for source-rate conversion and semitone
 varispeed. Per-pad region/ADSR and mixer settings are non-destructive; global
 volume/pan/tune combine during playback. Active voices refresh mixer,
 ADSR, and End atomics per block; Start remains fixed until retrigger.
+Triggers latch playback mode. Gate loops Start/End through note-off and ADSR
+release. Arm cuts Gate voices. Editor Loop repeats until stopped; Play auditions once.
+Loop boundaries preserve fractional overshoot and interpolate toward Start
+without resetting ADSR or filters. Only one-shot voices schedule an automatic
+end fade and cap Release to half the region duration. End edits wrap within the
+new range.
 The filter and Dirty processing contract is in [Mixing](../../Docs/AI/MIXING.md).
 
-Pad transfers retain immutable audio and commit prepared descriptors at block
-boundaries while monitoring and unrelated voices continue. Host reads use
-published revisions without waiting. See the
-[storage handoff contract](../../Docs/AI/PAD-STORAGE.md) for ownership, reserve
-memory, conflicts, lifecycle, and regression coverage.
+Pad transfers commit retained immutable audio at block boundaries; unrelated
+audio continues and host reads never wait. See
+[storage handoff](../../Docs/AI/PAD-STORAGE.md) for ownership, reserve, conflicts,
+lifecycle, and tests.
 
 Collapse Gap moves descriptors/settings without copying PCM. Split and cut edits
 stage affected PCM and validate generations before atomic commit. Recording,
@@ -92,11 +98,10 @@ rechopping preserves mixer settings on non-empty results and clears settings
 when a pad becomes empty. The UI retains its snapshot until a matching sequenced reply carries waveform
 and settings together, ignoring stale same-pad replies and retrying failures. DSP
 returns a 128-bin min/max summary through DPF state in LV2 or the bounded
-direct-access bus in VST3. Ctrl-wheel zoom requests a new 128-bin summary of
-the visible frame range, across up to three adjacent pads; Shift-wheel pans.
-Request sequence and range reject stale detail replies. The control worker scans retained immutable sample storage outside the callback.
-UI-local zoom resets on pad/editor changes. Waveform work stays outside
-the audio callback.
+direct-access bus in VST3. Zoom/pan requests range- and sequence-checked
+summaries from retained storage
+on the control worker. UI-local zoom resets on pad/editor changes. See
+[editor detail](../../Docs/AI/CHOP-EDITOR.md).
 
 `pad_color_01..64` saves slot palette indices. Zero/unavailable indices mean no
 tint; colors stay with slots through sample edits and moves.

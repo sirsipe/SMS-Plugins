@@ -6,6 +6,7 @@
 #include "EditorSnapshotSession.hpp"
 #include "MixerValueEntry.hpp"
 #include "PlaybackIndicator.hpp"
+#include "EditorAuditionMode.hpp"
 #include "WaveformDetailSession.hpp"
 #include "DSP/SamplePlaybackSettings.hpp"
 #include "Interaction.hpp"
@@ -1417,6 +1418,23 @@ void waveformDetailSession()
           "hidden editors cancel detail retries");
 }
 
+void editorAuditionModes()
+{
+    using namespace midichopper::ui;
+    auto mode = EditorAuditionMode::Play;
+    check(editorAuditionPressed(mode) && std::string_view(editorAuditionLabel(mode)) == "PLAY ON SELECT",
+          "the default finite Play mode displays a pressed Play On Select button");
+    mode = nextEditorAuditionMode(mode);
+    check(mode == EditorAuditionMode::Loop && editorAuditionPressed(mode) &&
+          std::string_view(editorAuditionLabel(mode)) == "LOOP ON SELECT",
+          "the second state is pressed Loop On Select");
+    mode = nextEditorAuditionMode(mode);
+    check(mode == EditorAuditionMode::Off && !editorAuditionPressed(mode) &&
+          std::string_view(editorAuditionLabel(mode)) == "PLAY ON SELECT" &&
+          nextEditorAuditionMode(mode) == EditorAuditionMode::Play,
+          "Off is unpressed and cycles back to finite Play");
+}
+
 void playbackIndicator()
 {
     using namespace std::chrono_literals;
@@ -1459,6 +1477,29 @@ void playbackIndicator()
     indicator.stop(false, now + 3s);
     check(indicator.pad() == -1 && indicator.position() == 0.0f,
           "explicit Stop clears the indicator immediately");
+    check(indicator.start(7, 7, playback, now + 4s, true) &&
+          indicator.update(now + 4750ms, 7, true, waveform, playback, mixer, 0.0f) &&
+          std::abs(indicator.position() - 8.5f) < 1.0e-5f,
+          "looping playheads retain overshoot when wrapping the edited region");
+    check(indicator.update(now + 6500ms, 7, true, waveform, playback, mixer, 0.0f) &&
+          std::abs(indicator.position() - 8.25f) < 1.0e-5f,
+          "looping estimation remains active across several complete cycles");
+    indicator.acceptHostPosition(8.6f, now + 7s, true);
+    check(indicator.position() == 8.6f &&
+          indicator.update(now + 7300ms, 7, true, waveform, playback, mixer, 0.0f) &&
+          std::abs(indicator.position() - 8.4f) < 1.0e-5f,
+          "authoritative host position corrections continue wrapping gated or looped voices");
+    auto editedPlayback = playback;
+    editedPlayback.start = 0.5f;
+    editedPlayback.end = 0.7f;
+    check(indicator.update(now + 7750ms, 7, true, waveform, editedPlayback, mixer, 0.0f) &&
+          std::abs(indicator.position() - 8.4f) < 1.0e-5f,
+          "loop estimation retains voice Start until retrigger and follows live End edits");
+    indicator.acceptHostPosition(0.0f, now + 8s, true);
+    check(indicator.position() == 0.0f &&
+          !indicator.update(now + 9s, 7, true, waveform, playback, mixer, 0.0f),
+          "host Stop immediately overrides an estimated loop");
+
 }
 
 void mixerValueEntry()
@@ -1506,6 +1547,7 @@ int main()
     chopEditorWorkflow();
     splitEditorWorkflow();
     waveformDetailSession();
+    editorAuditionModes();
     playbackIndicator();
     mixerValueEntry();
     wheelAdjustment();

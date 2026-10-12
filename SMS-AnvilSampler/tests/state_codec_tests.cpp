@@ -6,6 +6,7 @@
 #include "PadStructureProtocol.hpp"
 #include "PadColorState.hpp"
 #include "CaptureActionProtocol.hpp"
+#include "PlaybackRequest.hpp"
 
 #include <cmath>
 #include <cstdint>
@@ -675,6 +676,40 @@ void padStructureProtocolRoundTrip()
           "malformed pad structure messages are rejected");
 }
 
+void playbackRequests()
+{
+    using namespace midichopper::plugin;
+    PlaybackRequest decoded;
+    for (std::uint32_t value = 0U; value <= 64U; ++value) {
+        check(decodePlaybackRequest(std::to_string(value), decoded) &&
+              decoded.action == PlaybackAction::Toggle &&
+              decoded.pad == (value == 0U ? midichopper::kPadCount : value - 1U) &&
+              encodePlaybackRequest(decoded) == value,
+              "every legacy play/stop payload preserves its pad and sentinel");
+    }
+    for (const auto action : {PlaybackAction::ToggleLoop, PlaybackAction::Play,
+                              PlaybackAction::Loop}) {
+        for (std::uint32_t pad = 0U; pad < midichopper::kPadCount; ++pad) {
+            const PlaybackRequest request{action, pad};
+            check(decodePlaybackRequest(encodePlaybackRequest(request), decoded) &&
+                  decoded.action == action && decoded.pad == pad,
+                  "new transient playback actions round-trip every pad");
+        }
+    }
+    check(decodePlaybackRequest("65", decoded) && decoded.action == PlaybackAction::ToggleLoop &&
+          decoded.pad == midichopper::kPadCount &&
+          decodePlaybackRequest("260", decoded) && decoded.action == PlaybackAction::StopAudition &&
+          decoded.pad == midichopper::kPadCount,
+          "toggle-loop and audition-stop retain their no-pad sentinel");
+    for (const auto value : {"", " ", "+1", "-1", " 1", "1 ", "1x", "1\n", "0x1",
+                             "130", "195", "261", "324", "325", "4294967296"}) {
+        decoded = {PlaybackAction::Loop, 7U};
+        check(!decodePlaybackRequest(value, decoded) && decoded.action == PlaybackAction::Loop &&
+              decoded.pad == 7U,
+              "malformed, overflowing, and invalid action/pad payloads leave commands unchanged");
+    }
+}
+
 void captureActionsRejectRestoredOrMalformedState()
 {
     using midichopper::plugin::captureActionRequestMask;
@@ -733,6 +768,7 @@ int main()
     editorSnapshotProtocolRoundTrip();
     chopProtocolRoundTrip();
     padStructureProtocolRoundTrip();
+    playbackRequests();
     captureActionsRejectRestoredOrMalformedState();
     std::cout << "state codec tests passed\n";
 }
