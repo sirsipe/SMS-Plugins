@@ -61,6 +61,8 @@ enum class InteractiveType : int {
     finalizeAction,
     undoAction,
     clearAction,
+    menuSkins,
+    skinItem,
 };
 
 class PadPressTracker {
@@ -351,6 +353,10 @@ struct InteractionContext {
     bool chopEditorMode = false;
     bool chopSplitMode = false;
     bool menuOpen = false;
+    bool skinsAvailable = false;
+    bool skinMenuOpen = false;
+    sms::ui::ContextMenuGeometry skinMenu;
+    int skinMenuItemCount = 0;
     bool padContextMenuOpen = false;
     bool padColorMenuOpen = false;
     bool armed = false;
@@ -397,6 +403,16 @@ interactiveTargetAt(const sms::ui::Point point, const InteractionContext& contex
         return target(InteractiveType::menuButton);
 
     if (context.menuOpen) {
+        if (context.skinMenuOpen) {
+            const int row = context.skinMenu.hit(point);
+            if (row >= 0 && row < context.skinMenuItemCount)
+                return target(InteractiveType::skinItem, row);
+            // The submenu's padding must also block controls beneath it.
+            if (context.skinMenu.bounds().contains(point))
+                return sms::ui::kNoInteractiveTarget;
+        }
+        if (context.skinsAvailable && uiLayout::skinMenuButton.contains(point))
+            return target(InteractiveType::menuSkins);
         if (!context.captureActive) {
             for (int index = 0; index < static_cast<int>(kPadLayoutCount); ++index) {
                 if (uiLayout::menuOption(index).contains(point))

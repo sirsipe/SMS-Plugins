@@ -62,16 +62,16 @@ inline void drawStereoLedMeter(DGL_NAMESPACE::NanoVG& canvas, const ui::Rect bou
     canvas.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_CENTER |
                      DGL_NAMESPACE::NanoVG::ALIGN_BOTTOM);
     canvas.fillColor(colors.contentSecondary);
-    canvas.text(bounds.x + bounds.width * 0.5f, bounds.y - 7.0f, label, nullptr);
+    canvas.text(bounds.x + bounds.width * 0.5f, bounds.y - 7.0f, themeText(label), nullptr);
     canvas.fontSize(9.0f);
     canvas.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_CENTER |
                      DGL_NAMESPACE::NanoVG::ALIGN_TOP);
     const auto leftColumn = geometry.channel(0U);
     const auto rightColumn = geometry.channel(1U);
     canvas.text(leftColumn.x + leftColumn.width * 0.5f,
-                bounds.y + bounds.height + 5.0f, "L", nullptr);
+                bounds.y + bounds.height + 5.0f, themeText("L"), nullptr);
     canvas.text(rightColumn.x + rightColumn.width * 0.5f,
-                bounds.y + bounds.height + 5.0f, "R", nullptr);
+                bounds.y + bounds.height + 5.0f, themeText("R"), nullptr);
 }
 
 } // namespace sms::ui::dpf

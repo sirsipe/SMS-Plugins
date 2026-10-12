@@ -1,7 +1,5 @@
 # SMS-Anvil Sampler architecture
 
-Layers:
-
 - `src/core`: `SamplerEngine` orchestrates capture, voices, pad publication,
   and logical capacity. `SampleStoragePool` owns PCM, capture reserve, block
   maps, immutable imports, resampling, and bounded reclamation.
@@ -16,30 +14,32 @@ Layers:
 - `Common-Src` provides framework-neutral DSP, codecs, audio handoff, geometry.
   `Common-UI` provides shared controls, pads, waveform editing and DPF rendering.
 
+The UI discovers skins at startup and owns its selected palette. Menu switches
+replace images at the next GL draw; shared controls use per-instance scopes.
+The per-user preference stays outside DSP/project state. See [Skins](SKINS.md).
+
 ## MIDI mapping
 
 Saved `midi_bank_mode` selects two mappings. All Banks maps four gapless pages
 from the base note. Note-on updates the active bank; note-off does not. Layout
 changes regroup slots without changing notes.
-Every successful playback note-on also advances a hidden output event that
-encodes the global pad index in alternating halves of its range. Both UI views
-follow it to keep bank, MIDI labels, and last-played selection current.
+Playback note-on advances a hidden output encoding the global pad index in
+alternating halves of its range. Both views follow bank, MIDI labels, and last-played selection.
 An appended hidden output reports whether any pad or raw preview is active.
-The UI sends `play_stop_request` through state transport; the DSP decides from
-its voice state whether to audition the selected pad or hard-cut every voice at
-the next audio block. An appended Stop All trigger also supports host control.
+The UI sends `play_stop_request`; the DSP auditions the selected pad when idle
+or hard-cuts every voice at the next block. An appended Stop All trigger also supports host control.
 All Banks limits the effective base note to 64 so every layout remains within
 MIDI notes 0–127. UI notes and labels use the engine mapping. Selected Bank reuses one range,
 with `active_bank` choosing its target, and retains the released fixed 16-slot
 bank organization.
 
-Keyboard routing, focus, repeat suppression and blocked overlays follow the
+Keyboard focus/repeat/overlay routing follows the
 [plugin guide](../README.md#general-controls) and `MidichopperInteraction.hpp`.
 
 ## Capture model
 
-Arming chooses the first empty visible pad, or the first when full; idle
-selection overrides it. A hidden output reports the target. The first
+Arm targets the first empty visible pad (first pad when full); idle selection
+overrides it. A hidden output reports the target. The first
 Sequential note-on begins capture; later note-ons publish sample-accurate
 boundaries and advance through Bank D. Selected Bank skips hidden slots;
 All Banks uses contiguous pages. Note-off does not affect capture. Disarming or
@@ -61,8 +61,8 @@ exceptions. Each pad is one voice, with a global limit of
 Saved `input_monitor` values are Off=0, On=1, Auto=2. The adapter resolves Auto
 against Arm before passing the engine's boolean monitor gate each block.
 Playback uses linear interpolation for source-rate conversion and semitone
-varispeed. Each pad has non-destructive region/ADSR and mixer settings; global
-volume, pan, and tune combine during playback. Active voices refresh mixer,
+varispeed. Per-pad region/ADSR and mixer settings are non-destructive; global
+volume/pan/tune combine during playback. Active voices refresh mixer,
 ADSR, and End atomics per block; Start remains fixed until retrigger.
 The filter and Dirty processing contract is in [Mixing](../../Docs/AI/MIXING.md).
 
@@ -108,7 +108,6 @@ output signals completion where wrapper state callbacks cannot return status
 to the UI. The VST3 bus carries no PCM. DPF's VST3 initial state transfer does
 not filter DSP-only state keys and may send Base64 pad PCM to a newly opened UI.
 
-## Build and validation
+## Validation
 
-See [development](../../Docs/AI/DEVELOPMENT.md) and
-[testing](../../Docs/AI/TESTING.md).
+[Build](../../Docs/AI/DEVELOPMENT.md); [test](../../Docs/AI/TESTING.md).

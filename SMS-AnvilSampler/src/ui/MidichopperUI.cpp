@@ -42,7 +42,9 @@
 #include "Configuration.hpp"
 #include "ContextMenu.hpp"
 #include "DPF/NanoUI.hpp"
-#include "DPF/Theme.hpp"
+#include "DPF/SkinTheme.hpp"
+#include "SkinCatalog.hpp"
+#include "DistrhoPluginUtils.hpp"
 #include "DSP/SampleMixerSettings.hpp"
 #include "DSP/SamplePlaybackSettings.hpp"
 #include "LevelMeter.hpp"
@@ -76,6 +78,7 @@
 #include <cstring>
 #include <string>
 #include <string_view>
+#include <optional>
 
 #if defined(__linux__)
 # include <cerrno>
@@ -216,6 +219,12 @@ public:
                  midichopper::ui::layout::canvasHeight,
                  midichopper::ui::layout::minimumWidth,
                  midichopper::ui::layout::minimumHeight),
+          fSkinCatalog(sms::ui::SkinCatalog::discover(skinDirectory())),
+          fSkinPreferencePath(sms::ui::SkinPreference::configPath()),
+          fSelectedSkin(fSkinCatalog.selectedIndex(
+              sms::ui::SkinPreference::read(fSkinPreferencePath))),
+          fSkin(fSkinCatalog.load(fSelectedSkin)),
+          fTheme(sms::ui::dpf::skinTheme(fSkin)),
           fArm(false),
           fRecordMode(0.0f),
           fFixedLength(parameterRanges::fixedLengthSeconds.defaultValue),
@@ -825,6 +834,16 @@ protected:
 
     void onNanoDisplay() override
     {
+        // Texture deletion/creation needs this editor's current GL context.
+        if (fPendingSkin) {
+            fLogo.reset();
+            fBackground.reset();
+            fSkin = std::move(*fPendingSkin);
+            fPendingSkin.reset();
+            fTheme = sms::ui::dpf::skinTheme(fSkin);
+            fSkinImagesLoaded = false;
+        }
+        const sms::ui::dpf::ThemeScope themeScope(fTheme, fSkin);
         // Any full redraw presents the latest levels, even when another control
         // caused it, so do not schedule a redundant meter-only frame.
         fMeterRepaintPending = false;
@@ -839,17 +858,28 @@ protected:
         fill();
 
         beginLogicalDisplay();
-        if (!fLogo.isValid())
-            fLogo = createImageFromMemory(anvilsampler_artwork::anvilData,
-                                          anvilsampler_artwork::anvilDataSize,
-                                          DGL_NAMESPACE::NanoVG::IMAGE_GENERATE_MIPMAPS);
+        // One attempt per editor. Missing/invalid assets retain built-in art.
+        // NanoVG images require the current GL context, so defer to first draw.
+        if (!fSkinImagesLoaded) {
+            fSkinImagesLoaded = true;
+            const auto flags = DGL_NAMESPACE::NanoVG::IMAGE_GENERATE_MIPMAPS;
+            const auto& logoPath = fSkin.imagePath("logo");
+            if (!logoPath.empty())
+                fLogo.emplace(createImageFromFile(logoPath.c_str(), flags));
+            if (!fLogo || !fLogo->isValid())
+                fLogo.emplace(createImageFromMemory(anvilsampler_artwork::anvilData,
+                                              anvilsampler_artwork::anvilDataSize, flags));
+            const auto& backgroundPath = fSkin.imagePath("background");
+            if (!backgroundPath.empty())
+                fBackground.emplace(createImageFromFile(backgroundPath.c_str(), flags));
+        }
         char collapseLabel[48];
         const int collapsingPads = collapseShiftCount();
         if (collapsingPads == 0) {
-            std::snprintf(collapseLabel, sizeof(collapseLabel), "COLLAPSE GAP");
+            std::snprintf(collapseLabel, sizeof(collapseLabel), "%s", fSkin.text("COLLAPSE GAP"));
         } else {
-            std::snprintf(collapseLabel, sizeof(collapseLabel), "COLLAPSE GAP (%d %s)",
-                          collapsingPads, collapsingPads == 1 ? "PAD" : "PADS");
+            std::snprintf(collapseLabel, sizeof(collapseLabel), "%s (%d %s)", fSkin.text("COLLAPSE GAP"),
+                          collapsingPads, fSkin.text(collapsingPads == 1 ? "PAD" : "PADS"));
         }
         std::array<sms::ui::ContextMenuItemView, kPadMenuEntries.size()>
             contextMenuItems{};
@@ -874,6 +904,15 @@ protected:
                 sms::ui::ContextMenuItemKind::action,
                 selectedColor == static_cast<int>(index + 1U),
                 static_cast<int>(index)};
+        std::array<sms::ui::ContextMenuItemView, 18> skinMenuItems{};
+        const int skinRows = uiLayout::skinMenuVisibleCount(static_cast<int>(fSkinCatalog.entries.size()));
+        for (int row = 0; row < skinRows; ++row) {
+            const auto index = static_cast<std::size_t>(uiLayout::skinMenuEntry(row, fSkinMenuOffset));
+            skinMenuItems[static_cast<std::size_t>(row)] = {
+                fSkinCatalog.entries[index].name.c_str(), true, false,
+                sms::ui::ContextMenuItemKind::action, index == fSelectedSkin,
+                -1, false, index == 0U};
+        }
         const midichopper::ui::ViewState view{
             fArm, fRecordMode, fFixedLength, fPlaybackMode, fMonitor,
             fStartPad, fPreRoll, fBaseNote, fMidiBankMode, fGain, fMonitorGain, fGlobalPan, fGlobalTune,
@@ -900,7 +939,11 @@ protected:
             fChopEditor.canNavigate(-1, globalPad(0), visiblePadCount()),
             fChopEditor.canNavigate(1, globalPad(0), visiblePadCount()), fStatus,
             fWaveformDetail.viewport(), fWaveformDetail.detail(),
-            &fLogo,
+            fLogo ? &*fLogo : nullptr, fBackground ? &*fBackground : nullptr,
+            fSkinCatalog.selectable(), fMenuOpen && fSkinMenuOpen, fSkinMenu,
+            std::span<const sms::ui::ContextMenuItemView>{skinMenuItems.data(),
+                static_cast<std::size_t>(skinRows)}, fSkinMenuOffset,
+            static_cast<int>(fSkinCatalog.entries.size()),
         };
         midichopper::ui::draw(*this, view);
         endLogicalDisplay();
@@ -933,6 +976,15 @@ protected:
 
         if (ev.button == DGL_NAMESPACE::kMouseButtonRight)
         {
+            if (fMenuOpen) {
+                if (ev.press) {
+                    fMenuOpen = false;
+                    fSkinMenuOpen = false;
+                    (void)fHover.clear();
+                    requestRepaint();
+                }
+                return true;
+            }
             if (!ev.press)
                 return fPadContextMenuOpen;
             fMixerValueEntry.cancel();
@@ -1032,11 +1084,23 @@ protected:
                     clicked, midichopper::ui::InteractiveType::menuButton))
             {
                 fMenuOpen = !fMenuOpen;
+                fSkinMenuOpen = false;
                 requestRepaint();
                 return true;
             }
             if (fMenuOpen)
             {
+                if (midichopper::ui::isTarget(clicked, midichopper::ui::InteractiveType::menuSkins)) {
+                    openSkinMenu();
+                    requestRepaint();
+                    return true;
+                }
+                if (midichopper::ui::isTarget(clicked, midichopper::ui::InteractiveType::skinItem)) {
+                    selectSkin(static_cast<std::size_t>(uiLayout::skinMenuEntry(
+                        clicked.index, fSkinMenuOffset)));
+                    return true;
+                }
+                fSkinMenuOpen = false;
                 if (midichopper::ui::isTarget(
                         clicked, midichopper::ui::InteractiveType::menuLayout)) {
                     fMenuOpen = false;
@@ -1527,6 +1591,17 @@ protected:
             return true;
         }
         const auto hovered = resolveInteractiveTarget(x, y);
+        if (fMenuOpen) {
+            if (midichopper::ui::isTarget(hovered, midichopper::ui::InteractiveType::menuSkins)) {
+                if (!fSkinMenuOpen) openSkinMenu();
+            } else if (fSkinMenuOpen && (midichopper::ui::isTarget(hovered,
+                           midichopper::ui::InteractiveType::menuLayout) ||
+                       midichopper::ui::isTarget(hovered, midichopper::ui::InteractiveType::menuMidiBankMode) ||
+                       midichopper::ui::isTarget(hovered, midichopper::ui::InteractiveType::menuLink))) {
+                fSkinMenuOpen = false;
+                requestRepaint();
+            }
+        }
         if (fPadContextMenuOpen) {
             if (midichopper::ui::isTarget(
                     hovered, midichopper::ui::InteractiveType::padContextItem,
@@ -1569,6 +1644,14 @@ protected:
         }
         if (delta == 0.0f || !std::isfinite(delta))
             return false;
+
+        if (fMenuOpen && fSkinMenuOpen && fSkinMenu.bounds().contains({x, y})) {
+            const int maximum = uiLayout::skinMenuMaxOffset(static_cast<int>(fSkinCatalog.entries.size()));
+            fSkinMenuOffset = std::clamp(fSkinMenuOffset + (delta < 0.0f ? 1 : -1), 0, maximum);
+            (void)fHover.clear();
+            requestRepaint();
+            return true;
+        }
 
         if (midichopper::ui::isTarget(hovered, midichopper::ui::InteractiveType::levelFader) ||
             midichopper::ui::isTarget(hovered, midichopper::ui::InteractiveType::levelValueLabel)) {
@@ -1808,6 +1891,13 @@ protected:
             requestRepaint();
             return true;
         }
+        if (fMenuOpen) {
+            if (fSkinMenuOpen) fSkinMenuOpen = false;
+            else fMenuOpen = false;
+            (void)fHover.clear();
+            requestRepaint();
+            return true;
+        }
         if (fChopEditor.active() && !fChopEditor.applying()) {
             fChopEditor.cancel();
             return true;
@@ -1886,7 +1976,24 @@ protected:
 #endif
 
 private:
-    DGL_NAMESPACE::NanoImage fLogo;
+    std::filesystem::path skinDirectory() const
+    {
+        return sms::ui::Skin::directoryForPlugin(getBundlePath(), getBinaryFilename(),
+                                                "SMS-AnvilSampler.skin");
+    }
+
+    const sms::ui::SkinCatalog fSkinCatalog;
+    const std::filesystem::path fSkinPreferencePath;
+    std::size_t fSelectedSkin = 0;
+    sms::ui::Skin fSkin;
+    sms::ui::dpf::Theme fTheme;
+    std::optional<sms::ui::Skin> fPendingSkin;
+    std::optional<DGL_NAMESPACE::NanoImage> fLogo;
+    std::optional<DGL_NAMESPACE::NanoImage> fBackground;
+    bool fSkinMenuOpen = false;
+    int fSkinMenuOffset = 0;
+    sms::ui::ContextMenuGeometry fSkinMenu;
+    bool fSkinImagesLoaded = false;
     bool fArm;
     float fRecordMode;
     float fFixedLength;
@@ -1994,6 +2101,35 @@ private:
     midichopper::ui::PlaybackIndicator fPlaybackIndicator;
     char fStatus[160];
 
+    void openSkinMenu()
+    {
+        if (!fSkinCatalog.selectable()) return;
+        const int count = static_cast<int>(fSkinCatalog.entries.size());
+        fSkinMenuOffset = std::clamp(static_cast<int>(fSelectedSkin) - 1, 0,
+                                    uiLayout::skinMenuMaxOffset(count));
+        fSkinMenu = uiLayout::skinMenuGeometry(count);
+        fSkinMenuOpen = true;
+        requestRepaint();
+    }
+
+    void selectSkin(const std::size_t index)
+    {
+        if (!fSkinCatalog.selectable() || index >= fSkinCatalog.entries.size()) return;
+        auto skin = fSkinCatalog.load(index);
+        if (index != 0U && !skin.valid()) {
+            setLocalStatus("Could not load skin; reopen the editor to refresh the list");
+            return;
+        }
+        fSelectedSkin = index;
+        fPendingSkin = std::move(skin);
+        fSkinMenuOpen = false;
+        fMenuOpen = false;
+        (void)fHover.clear();
+        if (!sms::ui::SkinPreference::write(fSkinPreferencePath, fSkinCatalog.entries[index].id))
+            setLocalStatus("Skin changed, but the preference could not be saved");
+        requestRepaint();
+    }
+
     [[nodiscard]] sms::ui::InteractiveTarget
     resolveInteractiveTarget(const float x, const float y) const noexcept
     {
@@ -2008,6 +2144,11 @@ private:
         context.chopEditorMode = fChopEditor.active();
         context.chopSplitMode = fChopEditor.split();
         context.menuOpen = fMenuOpen;
+        context.skinsAvailable = fSkinCatalog.selectable();
+        context.skinMenuOpen = fMenuOpen && fSkinMenuOpen;
+        context.skinMenu = fSkinMenu;
+        context.skinMenuItemCount = uiLayout::skinMenuVisibleCount(
+            static_cast<int>(fSkinCatalog.entries.size()));
         context.padContextMenuOpen = fPadContextMenuOpen;
         context.padColorMenuOpen = fPadColorMenuOpen;
         context.armed = fArm;
@@ -2449,7 +2590,7 @@ private:
         std::snprintf(defaultName, sizeof(defaultName), "anvilsampler-pad-%02d.wav",
                       localPadForGlobalPad(fPadContextTarget) + 1);
         options.defaultName = saving ? defaultName : nullptr;
-        options.title = saving ? "Export pad as WAV" : "Import WAV into pad";
+        options.title = fSkin.text(saving ? "Export pad as WAV" : "Import WAV into pad");
 
         fPendingFileDialog = action;
         fPendingFilePad = fPadContextTarget;
@@ -3252,7 +3393,7 @@ private:
             if (std::strcmp(key, kPadColorStateKeys[pad].c_str()) != 0)
                 continue;
             fPadColors[pad] = midichopper::plugin::decodePadColorIndex(
-                value, static_cast<int>(sms::ui::dpf::theme().padColors.size()));
+                value, static_cast<int>(sms::ui::dpf::Theme::padColorCount));
             return true;
         }
         return false;

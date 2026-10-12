@@ -5,3 +5,7 @@
 **/compile_commands.json
 *.swp
 *~
+
+# Only the maintained placeholder belongs in source control.
+/SMS-AnvilSampler/skins/*
+!/SMS-AnvilSampler/skins/placeholder/

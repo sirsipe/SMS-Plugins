@@ -11,8 +11,14 @@ Consumers can link the header-only `sms_common_ui` CMake target to inherit the
 shared UI and framework-neutral source include paths.
 
 - `DPF/NanoUI.hpp`: logical-canvas scaling and repaint lifecycle.
-- `DPF/Theme.hpp`: semantic colors, configurable pad tint palette, drawing
-  metrics, and hover opacity.
+- `Skin.hpp`: bounded versioned INI snapshots, UTF-8 text/checked-format lookup, and confined
+  image paths; framework-neutral and used only outside audio processing.
+- `SkinCatalog.hpp`: named collection discovery, forced-folder precedence, and
+  atomic per-user preferences; IDs stay separate from translated display text.
+- `DPF/Theme.hpp`: semantic colors, fixed pad tint identities, drawing metrics,
+  hover opacity, and per-editor drawing scopes with thread-local restoration.
+- `DPF/SkinTheme.hpp`: supported color/metric fields and validated DPF palette
+  overrides. See the [skin guide](../SMS-AnvilSampler/Docs/SKINS.md).
 - `DPF/AnalogMaterials.hpp`: scalable chassis, recessed-panel, rubber-pad,
   physical-control, LED, screw, and powder-coat rendering primitives.
 - `DPF/Controls.hpp`: reusable NanoVG panel, segment, slider, and action

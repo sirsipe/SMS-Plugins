@@ -1,6 +1,7 @@
 #pragma once
 
 #include "DistrhoUI.hpp"
+#include "Skin.hpp"
 
 #include <array>
 
@@ -70,10 +71,46 @@ struct Theme {
     float hoverHaloAlpha = 0.50f;
 };
 
+// A drawing scope selects one editor's immutable palette. Restore it even if
+// hosts draw nested UIs; thread-local state keeps concurrent editors independent.
+inline thread_local const Theme* activeTheme = nullptr;
+inline thread_local const sms::ui::Skin* activeSkin = nullptr;
+
+class ThemeScope {
+public:
+    ThemeScope(const Theme& colors, const sms::ui::Skin& skin) noexcept
+        : previousTheme_(activeTheme), previousSkin_(activeSkin)
+    {
+        activeTheme = &colors;
+        activeSkin = &skin;
+    }
+    ~ThemeScope()
+    {
+        activeTheme = previousTheme_;
+        activeSkin = previousSkin_;
+    }
+    ThemeScope(const ThemeScope&) = delete;
+    ThemeScope& operator=(const ThemeScope&) = delete;
+private:
+    const Theme* previousTheme_;
+    const sms::ui::Skin* previousSkin_;
+};
+
 inline const Theme& theme() noexcept
 {
     static const Theme sharedTheme;
-    return sharedTheme;
+    return activeTheme != nullptr ? *activeTheme : sharedTheme;
+}
+
+inline const char* themeText(const char* label) noexcept
+{
+    return activeSkin != nullptr ? activeSkin->text(label) : label;
+}
+
+// Only byte-identical printf conversions may cross the skin boundary.
+inline const char* themeFormat(const char* pattern) noexcept
+{
+    return activeSkin != nullptr ? activeSkin->format(pattern) : pattern;
 }
 
 } // namespace sms::ui::dpf

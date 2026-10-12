@@ -75,9 +75,15 @@ inline void drawContextMenu(DGL_NAMESPACE::NanoVG& canvas,
         canvas.fillColor(item.enabled
             ? (hovered ? accent : colors.contentPrimary)
             : colors.contentSecondary.withAlpha(0.45f));
+        canvas.save();
+        const float labelX = bounds.x + (item.paletteIndex >= 0 ? 29.0f : 11.0f);
+        canvas.intersectScissor(labelX, bounds.y,
+            std::max(0.0f, bounds.width - (labelX - bounds.x) -
+                (item.hasSubmenu ? 24.0f : 8.0f)), bounds.height);
         canvas.text(bounds.x + (item.paletteIndex >= 0 ? 29.0f : 11.0f),
                     bounds.y + bounds.height * 0.5f,
-                    item.label, nullptr);
+                    item.translateLabel ? themeText(item.label) : item.label, nullptr);
+        canvas.restore();
     }
 }
 

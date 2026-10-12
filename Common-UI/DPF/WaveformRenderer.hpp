@@ -64,7 +64,7 @@ inline void drawCutHandle(DGL_NAMESPACE::NanoVG& canvas, const float x, const fl
     canvas.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_CENTER |
                      DGL_NAMESPACE::NanoVG::ALIGN_MIDDLE);
     canvas.fillColor(colors.canvas);
-    canvas.text(x, y + 15.0f, label, nullptr);
+    canvas.text(x, y + 15.0f, themeText(label), nullptr);
 }
 
 inline void drawWaveformViewportLabel(DGL_NAMESPACE::NanoVG& canvas,
@@ -76,7 +76,7 @@ inline void drawWaveformViewportLabel(DGL_NAMESPACE::NanoVG& canvas,
         return;
     const ScopedCanvasState canvasState(canvas);
     char label[80];
-    std::snprintf(label, sizeof(label), "ZOOM x%.1f   %.2f-%.2f s",
+    std::snprintf(label, sizeof(label), sms::ui::dpf::themeFormat("ZOOM x%.1f   %.2f-%.2f s"),
         static_cast<double>(viewport.total) / (viewport.end - viewport.start),
         viewport.start / sampleRate, viewport.end / sampleRate);
     canvas.fontFace(NANOVG_DEJAVU_SANS_TTF);
@@ -84,7 +84,7 @@ inline void drawWaveformViewportLabel(DGL_NAMESPACE::NanoVG& canvas,
     canvas.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_LEFT |
                      DGL_NAMESPACE::NanoVG::ALIGN_TOP);
     canvas.fillColor(theme().contentSecondary);
-    canvas.text(bounds.x + 10.0f, bounds.y + 34.0f, label, nullptr);
+    canvas.text(bounds.x + 10.0f, bounds.y + 34.0f, themeText(label), nullptr);
 }
 
 inline void drawWaveformEditor(DGL_NAMESPACE::NanoVG& canvas, const ui::Rect bounds,
@@ -144,9 +144,9 @@ inline void drawWaveformEditor(DGL_NAMESPACE::NanoVG& canvas, const ui::Rect bou
         }
         char scaleLabel[32];
         if (scale > 1.05f)
-            std::snprintf(scaleLabel, sizeof(scaleLabel), "AMPLITUDE  x%.1f", scale);
+            std::snprintf(scaleLabel, sizeof(scaleLabel), sms::ui::dpf::themeFormat("AMPLITUDE  x%.1f"), scale);
         else
-            std::snprintf(scaleLabel, sizeof(scaleLabel), "AMPLITUDE  1:1");
+            std::snprintf(scaleLabel, sizeof(scaleLabel), sms::ui::dpf::themeFormat("AMPLITUDE  1:1"));
         canvas.fontSize(9.0f);
         canvas.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_RIGHT |
                          DGL_NAMESPACE::NanoVG::ALIGN_TOP);
@@ -158,7 +158,7 @@ inline void drawWaveformEditor(DGL_NAMESPACE::NanoVG& canvas, const ui::Rect bou
                          DGL_NAMESPACE::NanoVG::ALIGN_MIDDLE);
         canvas.fillColor(colors.contentSecondary);
         canvas.text(bounds.x + bounds.width * 0.5f, bounds.y + bounds.height * 0.5f,
-                    hasWaveform ? "LOADING DETAIL..." : "EMPTY PAD", nullptr);
+                    themeText(hasWaveform ? "LOADING DETAIL..." : "EMPTY PAD"), nullptr);
     }
 
     const float startX = bounds.x + bounds.width * static_cast<float>(
@@ -262,12 +262,12 @@ inline void drawEnvelopeGraph(DGL_NAMESPACE::NanoVG& canvas, const ui::Rect boun
     canvas.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_CENTER |
                      DGL_NAMESPACE::NanoVG::ALIGN_BOTTOM);
     canvas.fillColor(colors.contentSecondary.withAlpha(0.8f));
-    canvas.text(graph.left + attackWidth * 0.5f, bounds.y + bounds.height - 2.0f, "A", nullptr);
-    canvas.text(graph.attackX + decayWidth * 0.5f, bounds.y + bounds.height - 2.0f, "D", nullptr);
-    canvas.text(graph.decayX + sustainWidth * 0.5f, bounds.y + bounds.height - 2.0f, "S", nullptr);
-    canvas.text(graph.releaseX + releaseWidth * 0.5f, bounds.y + bounds.height - 2.0f, "R", nullptr);
+    canvas.text(graph.left + attackWidth * 0.5f, bounds.y + bounds.height - 2.0f, themeText("A"), nullptr);
+    canvas.text(graph.attackX + decayWidth * 0.5f, bounds.y + bounds.height - 2.0f, themeText("D"), nullptr);
+    canvas.text(graph.decayX + sustainWidth * 0.5f, bounds.y + bounds.height - 2.0f, themeText("S"), nullptr);
+    canvas.text(graph.releaseX + releaseWidth * 0.5f, bounds.y + bounds.height - 2.0f, themeText("R"), nullptr);
     char duration[24];
-    std::snprintf(duration, sizeof(duration), "%.2f s", graph.durationSeconds);
+    std::snprintf(duration, sizeof(duration), sms::ui::dpf::themeFormat("%.2f s"), graph.durationSeconds);
     canvas.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_RIGHT |
                      DGL_NAMESPACE::NanoVG::ALIGN_TOP);
     canvas.fillColor(colors.contentSecondary.withAlpha(0.65f));
@@ -286,16 +286,16 @@ inline void drawEnvelopeSlider(DGL_NAMESPACE::NanoVG& canvas, const ui::Rect bou
     canvas.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_LEFT |
                      DGL_NAMESPACE::NanoVG::ALIGN_TOP);
     canvas.fillColor(colors.contentSecondary);
-    canvas.text(bounds.x, bounds.y, label, nullptr);
+    canvas.text(bounds.x, bounds.y, themeText(label), nullptr);
     char display[24];
     if (sustain)
-        std::snprintf(display, sizeof(display), "%d%%",
+        std::snprintf(display, sizeof(display), sms::ui::dpf::themeFormat("%d%%"),
                       static_cast<int>(std::lround(value * 100.0f)));
     else if (value < 1.0f)
-        std::snprintf(display, sizeof(display), "%d ms",
+        std::snprintf(display, sizeof(display), sms::ui::dpf::themeFormat("%d ms"),
                       static_cast<int>(std::lround(value * 1000.0f)));
     else
-        std::snprintf(display, sizeof(display), "%.2f s", value);
+        std::snprintf(display, sizeof(display), sms::ui::dpf::themeFormat("%.2f s"), value);
     canvas.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_RIGHT |
                      DGL_NAMESPACE::NanoVG::ALIGN_TOP);
     canvas.fillColor(colors.contentPrimary);

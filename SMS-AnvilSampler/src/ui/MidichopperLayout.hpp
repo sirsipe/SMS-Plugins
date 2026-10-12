@@ -1,6 +1,7 @@
 #pragma once
 
 #include "UI/Geometry.hpp"
+#include "ContextMenu.hpp"
 
 namespace midichopper::ui::layout {
 
@@ -39,6 +40,37 @@ inline constexpr sms::ui::Rect mainPanel{24.0f, 96.0f, 934.0f, 596.0f};
 inline constexpr sms::ui::Rect sidePanel{974.0f, 96.0f, 266.0f, 596.0f};
 inline constexpr sms::ui::Rect menuButton{1208.0f, 25.0f, 32.0f, 32.0f};
 inline constexpr sms::ui::Rect menuPanel{1048.0f, 68.0f, 192.0f, 330.0f};
+inline constexpr sms::ui::Rect skinMenuButton{1060.0f, 405.0f, 168.0f, 28.0f};
+
+[[nodiscard]] constexpr sms::ui::Rect menuPanelBounds(const bool hasSkins) noexcept
+{
+    auto bounds = menuPanel;
+    if (hasSkins) bounds.height += 48.0f;
+    return bounds;
+}
+
+// Pin Default at row zero; scroll the remaining choices inside the canvas.
+[[nodiscard]] constexpr int skinMenuVisibleCount(const int total) noexcept
+{
+    return std::clamp(total, 0, 18);
+}
+
+[[nodiscard]] constexpr int skinMenuMaxOffset(const int total) noexcept
+{
+    return std::max(total - skinMenuVisibleCount(total), 0);
+}
+
+[[nodiscard]] constexpr int skinMenuEntry(const int row, const int offset) noexcept
+{
+    return row <= 0 ? row : row + offset;
+}
+
+[[nodiscard]] inline sms::ui::ContextMenuGeometry skinMenuGeometry(const int total) noexcept
+{
+    return {{menuPanel.x - 240.0f + 2.0f, skinMenuButton.y - 5.0f},
+            skinMenuVisibleCount(total), contentBounds, 240.0f};
+}
+
 inline constexpr sms::ui::Rect footer{24.0f, 706.0f, 1216.0f, 32.0f};
 inline constexpr sms::ui::Rect mainPadBounds{46.0f, 196.0f, 890.0f, 470.0f};
 inline constexpr sms::ui::Rect overviewWaveform{46.0f, 176.0f, 890.0f, 10.0f};

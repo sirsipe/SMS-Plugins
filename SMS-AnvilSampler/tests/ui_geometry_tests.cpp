@@ -206,6 +206,124 @@ sms::ui::Point center(const sms::ui::Rect bounds)
     return {bounds.x + bounds.width * 0.5f, bounds.y + bounds.height * 0.5f};
 }
 
+void skinMenuGeometryAndTargets()
+{
+    namespace layout = midichopper::ui::layout;
+    namespace interaction = midichopper::ui;
+    using interaction::InteractiveType;
+    const auto inside = [](const sms::ui::Rect outer, const sms::ui::Rect inner) {
+        return inner.x >= outer.x && inner.y >= outer.y &&
+            inner.x + inner.width <= outer.x + outer.width &&
+            inner.y + inner.height <= outer.y + outer.height;
+    };
+    const auto basePanel = layout::menuPanelBounds(false);
+    const auto skinPanel = layout::menuPanelBounds(true);
+    check(basePanel.height == layout::menuPanel.height &&
+          skinPanel.height > basePanel.height &&
+          inside(layout::contentBounds, skinPanel) &&
+          inside(skinPanel, layout::skinMenuButton) &&
+          inside(skinPanel, layout::menuLinkOption(0)) &&
+          inside(skinPanel, layout::menuLinkOption(1)) &&
+          layout::skinMenuButton.y > layout::menuLinkOption(1).y +
+              layout::menuLinkOption(1).height,
+          "skin selector extends the menu without overlapping its browser links");
+    check(layout::skinMenuVisibleCount(-1) == 0 &&
+          layout::skinMenuVisibleCount(0) == 0 &&
+          layout::skinMenuMaxOffset(0) == 0,
+          "empty skin choices have no visible rows or scrolling");
+    for (const int total : {2, 18, 19, 129}) {
+        const int visible = layout::skinMenuVisibleCount(total);
+        const int maxOffset = layout::skinMenuMaxOffset(total);
+        const auto menu = layout::skinMenuGeometry(total);
+        check(visible == std::min(total, 18) && maxOffset == total - visible &&
+              inside(layout::contentBounds, menu.bounds()) &&
+              menu.bounds().x < layout::menuPanel.x,
+              "skin popup stays bounded to the left for short and long catalogs");
+        for (int row = 0; row < visible; ++row) {
+            check(inside(layout::contentBounds, menu.item(row)) &&
+                  inside(menu.bounds(), menu.item(row)) &&
+                  menu.hit(center(menu.item(row))) == row,
+                  "every visible skin row fits and resolves its row identity");
+            check(layout::skinMenuEntry(row, 0) == row &&
+                  layout::skinMenuEntry(row, maxOffset) ==
+                      (row == 0 ? 0 : row + maxOffset),
+                  "scrolling retains Default and maps the remaining rows");
+        }
+        check(layout::skinMenuEntry(visible - 1, maxOffset) == total - 1,
+              "maximum skin scroll offset reaches the final catalog choice");
+    }
+
+    for (int view = 0; view < 4; ++view) {
+        interaction::InteractionContext context;
+        context.editorMode = view == 1;
+        context.chopEditorMode = view == 2;
+        context.armed = view == 3;
+        context.skinMenu = layout::skinMenuGeometry(19);
+        context.skinMenuItemCount = layout::skinMenuVisibleCount(19);
+        const auto selector = center(layout::skinMenuButton);
+        for (const bool menuOpen : {false, true}) {
+            for (const bool available : {false, true}) {
+                context.menuOpen = menuOpen;
+                context.skinsAvailable = available;
+                check(interaction::isTarget(
+                          interaction::interactiveTargetAt(selector, context),
+                          InteractiveType::menuSkins) == (menuOpen && available),
+                      "skin selector requires an open menu and available skins in every view");
+            }
+        }
+        context.menuOpen = true;
+        context.skinsAvailable = true;
+        context.skinMenuOpen = true;
+        for (int row = 0; row < context.skinMenuItemCount; ++row) {
+            check(interaction::isTarget(interaction::interactiveTargetAt(
+                      center(context.skinMenu.item(row)), context),
+                      InteractiveType::skinItem, row),
+                  "skin submenu rows take priority over all underlying views");
+        }
+        check(interaction::isTarget(interaction::interactiveTargetAt(
+                  center(layout::menuButton), context), InteractiveType::menuButton),
+              "hamburger remains available to close the full skin menu");
+
+        // Place an overlay across a parent option to exercise overlapping targets
+        // and padding independently of the current popup placement.
+        const auto option = layout::menuOption(1);
+        context.skinMenu = {{option.x, option.y}, 2, layout::contentBounds};
+        context.skinMenuItemCount = 2;
+        check(interaction::isTarget(interaction::interactiveTargetAt(
+                  center(context.skinMenu.item(0)), context), InteractiveType::skinItem, 0),
+              "skin entries win when overlapping a parent menu option");
+        const sms::ui::Point padding{option.x + 1.0f, option.y + 1.0f};
+        check(option.contains(padding) && context.skinMenu.bounds().contains(padding) &&
+              context.skinMenu.hit(padding) == -1 &&
+              !interaction::interactiveTargetAt(padding, context).valid(),
+              "skin submenu padding blocks parent menu fallthrough");
+        context.skinMenuOpen = false;
+        check(interaction::isTarget(interaction::interactiveTargetAt(padding, context),
+                  InteractiveType::menuLayout, 1),
+              "a hidden skin submenu leaves its parent option clickable");
+        context.menuOpen = false;
+        context.skinMenuOpen = true;
+        check(interaction::isTarget(interaction::interactiveTargetAt(
+                  center(layout::levelFader(0)), context), InteractiveType::levelFader, 0),
+              "stale submenu state cannot capture controls while the parent menu is hidden");
+    }
+
+    interaction::InteractionContext context;
+    const sms::ui::BankedPadLayout pads(0);
+    const auto pad = pads.grid(layout::mainPadBounds, 10.0f).cell(pads.visualIndex(0));
+    context.skinMenu = {{pad.x, pad.y}, 2, layout::contentBounds};
+    context.skinMenuItemCount = 2;
+    context.skinMenuOpen = true;
+    const auto point = center(context.skinMenu.item(0));
+    check(interaction::isTarget(interaction::interactiveTargetAt(point, context),
+              InteractiveType::pad, 0),
+          "a hidden skin menu does not capture the underlying pad");
+    context.menuOpen = true;
+    check(interaction::isTarget(interaction::interactiveTargetAt(point, context),
+              InteractiveType::skinItem, 0),
+          "an open skin submenu captures the underlying pad");
+}
+
 void spaceKeyTracking()
 {
     using midichopper::ui::SpaceAction;
@@ -1380,6 +1498,7 @@ int main()
     wideCanvasGeometry();
     hamburgerMenuGeometry();
     contextMenuGeometry();
+    skinMenuGeometryAndTargets();
     interactionTargets();
     spaceKeyTracking();
     padPressTracking();

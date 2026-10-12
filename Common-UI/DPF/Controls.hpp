@@ -37,7 +37,7 @@ inline void drawSegment(DGL_NAMESPACE::NanoVG& canvas,
         ? (hovered ? accent
                    : (active ? colors.controlActiveContent : colors.contentSecondary))
         : colors.contentSecondary.withAlpha(colors.disabledAlpha));
-    canvas.text(x + width * 0.5f, y + height * 0.5f, label, nullptr);
+    canvas.text(x + width * 0.5f, y + height * 0.5f, themeText(label), nullptr);
 }
 
 inline void drawSegment(DGL_NAMESPACE::NanoVG& canvas, const ui::Rect bounds,
@@ -81,7 +81,7 @@ inline void drawSymbolButton(DGL_NAMESPACE::NanoVG& canvas, const ui::Rect bound
     canvas.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_CENTER |
                      DGL_NAMESPACE::NanoVG::ALIGN_MIDDLE);
     canvas.fillColor(colors.contentPrimary);
-    canvas.text(centerX + 10.0f, centerY, label, nullptr);
+    canvas.text(centerX + 10.0f, centerY, themeText(label), nullptr);
 }
 
 /** Ivory console cap; its dark index line is perpendicular to travel. */
@@ -238,7 +238,7 @@ inline void drawAction(DGL_NAMESPACE::NanoVG& canvas,
     canvas.fillColor(hovered ? accent
                              : (active ? colors.controlActiveContent
                                        : colors.contentSecondary));
-    canvas.text(x + width * 0.5f, y + height * 0.5f, label, nullptr);
+    canvas.text(x + width * 0.5f, y + height * 0.5f, themeText(label), nullptr);
 }
 
 inline void drawAction(DGL_NAMESPACE::NanoVG& canvas, const ui::Rect bounds,

@@ -1,6 +1,6 @@
 # Task index
 
-Read [AGENTS.md](../../AGENTS.md), then a relevant row. Commands use the repo root.
+Read [AGENTS.md](../../AGENTS.md), then the relevant row.
 
 | Task | Read | Source of truth / starting point |
 | --- | --- | --- |
@@ -18,6 +18,7 @@ Read [AGENTS.md](../../AGENTS.md), then a relevant row. Commands use the repo ro
 | Pad storage and transfer concurrency | [Storage handoff](PAD-STORAGE.md) | [Engine](../../SMS-AnvilSampler/src/core/SamplerEngine.hpp) |
 | Pad WAV import/export | [WAV I/O design](PAD-WAV-IO.md) | Formats, real-time boundary, dialogs, support notes |
 | VST3 state and outputs | [DPF VST3 constraints](DPF-VST3-CONSTRAINTS.md) | UI synchronization and fixed/dynamic bus boundaries |
+| Skins and artwork | [Skin guide](../../SMS-AnvilSampler/Docs/SKINS.md), [Authoring](SKINS.md) | [Catalog](../../Common-UI/SkinCatalog.hpp), [Theme adapter](../../Common-UI/DPF/SkinTheme.hpp) |
 | User-visible behavior | [Plugin guide](../../SMS-AnvilSampler/README.md) | Verify against affected source/tests |
 | User mixing controls | [Mixing guide](../../SMS-AnvilSampler/Docs/MIXING.md) | Pad and global effects |
 | User WAV workflow | [WAV file guide](../../SMS-AnvilSampler/Docs/WAV-FILES.md) | Current formats and Linux requirements |
@@ -28,5 +29,4 @@ Read [AGENTS.md](../../AGENTS.md), then a relevant row. Commands use the repo ro
 | Agent integration | [Development](DEVELOPMENT.md) | [Claude alias](../../CLAUDE.md), [Copilot adapter](../../.github/copilot-instructions.md) |
 
 Index every repository-owned Markdown page except this index.
-Source maps and plugin architecture are AI references. Read framework docs only
-when needed.
+Source maps and plugin architecture are AI references.

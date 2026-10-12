@@ -166,7 +166,43 @@ foreach(anvilsampler_target IN LISTS anvilsampler_targets)
     ANVILSAMPLER_HELP_REF="${ANVILSAMPLER_HELP_REF}")
 endforeach()
 
+# Ship an inactive, editable example. Never overwrite the user's active skin.
+set(anvilsampler_skin_template "${CMAKE_CURRENT_SOURCE_DIR}/skins/placeholder")
+add_custom_target(anvilsampler_skin_templates ALL
+  COMMAND "${CMAKE_COMMAND}" -E copy_directory "${anvilsampler_skin_template}"
+    "${PROJECT_BINARY_DIR}/bin/SMS-AnvilSampler.lv2/skin-template"
+  VERBATIM)
+if(ANVILSAMPLER_BUILD_VST3)
+  add_custom_command(TARGET anvilsampler_skin_templates POST_BUILD
+    COMMAND "${CMAKE_COMMAND}" -E copy_directory "${anvilsampler_skin_template}"
+      "${PROJECT_BINARY_DIR}/bin/SMS-AnvilSampler.vst3/skin-template"
+    VERBATIM)
+endif()
+if(ANVILSAMPLER_BUILD_CLAP)
+  add_custom_command(TARGET anvilsampler_skin_templates POST_BUILD
+    COMMAND "${CMAKE_COMMAND}" -E copy_directory "${anvilsampler_skin_template}"
+      "${PROJECT_BINARY_DIR}/bin/SMS-AnvilSampler.skin-template"
+    VERBATIM)
+endif()
+
 if(BUILD_TESTING)
+  add_executable(anvilsampler_skin_catalog_tests tests/skin_catalog_tests.cpp)
+  target_link_libraries(anvilsampler_skin_catalog_tests PRIVATE sms_common_ui Threads::Threads)
+  add_test(NAME ui-skin-catalog COMMAND anvilsampler_skin_catalog_tests)
+
+  add_executable(anvilsampler_skin_tests tests/skin_tests.cpp)
+  target_link_libraries(anvilsampler_skin_tests PRIVATE sms_common_ui)
+  add_test(NAME ui-skin COMMAND anvilsampler_skin_tests)
+
+  add_executable(anvilsampler_skin_theme_tests tests/skin_theme_tests.cpp)
+  target_include_directories(anvilsampler_skin_theme_tests PRIVATE
+    "${SMS_DPF_ROOT}/distrho" "${CMAKE_CURRENT_SOURCE_DIR}/src/plugin")
+  target_compile_definitions(anvilsampler_skin_theme_tests PRIVATE
+    HAVE_DGL DGL_USE_FILE_BROWSER
+    ANVILSAMPLER_SKIN_TEMPLATE_DIR="${anvilsampler_skin_template}")
+  target_link_libraries(anvilsampler_skin_theme_tests PRIVATE sms_common_ui dgl-opengl Threads::Threads)
+  add_test(NAME ui-skin-theme COMMAND anvilsampler_skin_theme_tests)
+
   add_executable(anvilsampler_preview_mailbox_tests tests/preview_mailbox_tests.cpp)
   target_include_directories(anvilsampler_preview_mailbox_tests PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/../Common-Src"

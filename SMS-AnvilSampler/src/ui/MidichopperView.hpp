@@ -81,6 +81,13 @@ struct ViewState {
     sms::ui::waveform::Viewport waveformViewport;
     const sms::audio::WaveformSummary* waveformDetail = nullptr;
     const DGL_NAMESPACE::NanoImage* logo = nullptr;
+    const DGL_NAMESPACE::NanoImage* background = nullptr;
+    bool skinsAvailable = false;
+    bool skinMenuOpen = false;
+    sms::ui::ContextMenuGeometry skinMenu;
+    std::span<const sms::ui::ContextMenuItemView> skinMenuItems;
+    int skinMenuOffset = 0;
+    int skinMenuTotal = 0;
 };
 
 void draw(DGL_NAMESPACE::NanoVG& canvas, const ViewState& state);

@@ -85,6 +85,8 @@ Right-click a middle pad for **Adjust cut points**. See the
   The plug-in consumes Space when delivered; a DAW that intercepts keyboard
   shortcuts first may require its option to send keys to the plug-in.
 
+Customize images, colors, and labels with [skins](Docs/SKINS.md).
+
 ## Other good-to-know
 - Total sample memory is approx 8 minutes.
 

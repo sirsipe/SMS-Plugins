@@ -21,6 +21,7 @@ struct ContextMenuItemView {
     bool selected = false;
     int paletteIndex = -1;
     bool hasSubmenu = false;
+    bool translateLabel = true;
 };
 
 /** Framework-neutral placement and hit testing for a single-column menu. */

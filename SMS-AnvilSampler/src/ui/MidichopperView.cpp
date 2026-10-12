@@ -32,6 +32,15 @@ public:
         sms::ui::dpf::drawChassis(canvas_, {0.0f, 0.0f,
             static_cast<float>(uiLayout::canvasWidth),
             static_cast<float>(uiLayout::canvasHeight)});
+        if (state_.background != nullptr && state_.background->isValid()) {
+            canvas_.beginPath();
+            canvas_.roundedRect(0.0f, 0.0f, uiLayout::canvasWidth,
+                                uiLayout::canvasHeight, 18.0f);
+            canvas_.fillPaint(canvas_.imagePattern(0.0f, 0.0f,
+                uiLayout::canvasWidth, uiLayout::canvasHeight,
+                0.0f, *state_.background, 1.0f));
+            canvas_.fill();
+        }
         sms::ui::dpf::drawScrew(canvas_, 20.0f, 20.0f);
         sms::ui::dpf::drawScrew(canvas_, uiLayout::canvasWidth - 20.0f, 20.0f);
         sms::ui::dpf::drawScrew(canvas_, 20.0f, uiLayout::canvasHeight - 20.0f);
@@ -71,6 +80,17 @@ public:
     }
 
 private:
+    void text(float x, float y, const char* label, const char* end)
+    {
+        canvas_.text(x, y, sms::ui::dpf::themeText(label), end);
+    }
+
+    void measureText(float x, float y, const char* label, const char* end,
+                    DGL_NAMESPACE::Rectangle<float>& bounds)
+    {
+        canvas_.textBounds(x, y, sms::ui::dpf::themeText(label), end, bounds);
+    }
+
     [[nodiscard]] bool hovered(const InteractiveType type, const int index = -1) const noexcept
     {
         return isTarget(state_.hoveredTarget, type, index);
@@ -113,7 +133,7 @@ private:
         canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_CENTER |
                           DGL_NAMESPACE::NanoVG::ALIGN_MIDDLE);
         char value[24];
-        std::snprintf(value, sizeof(value), "%+.1f dB", gainDb);
+        std::snprintf(value, sizeof(value), sms::ui::dpf::themeFormat("%+.1f dB"), gainDb);
         const bool entering = isTarget(state_.mixerValueEntryTarget,
                                        InteractiveType::levelValueLabel, index);
         if (entering || hovered(InteractiveType::levelValueLabel, index)) {
@@ -124,7 +144,7 @@ private:
             canvas_.fill();
         }
         canvas_.fillColor(entering ? colors.selection : colors.contentPrimary);
-        canvas_.text(bounds.x + bounds.width * 0.5f,
+        text(bounds.x + bounds.width * 0.5f,
             valueBounds.y + valueBounds.height * 0.5f,
             entering ? state_.mixerValueEntryText : value, nullptr);
     }
@@ -183,7 +203,7 @@ private:
         canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_CENTER |
                           DGL_NAMESPACE::NanoVG::ALIGN_TOP);
         canvas_.fillColor(colors.contentSecondary);
-        canvas_.text(bounds.x + bounds.width * 0.5f, bounds.y, label, nullptr);
+        text(bounds.x + bounds.width * 0.5f, bounds.y, label, nullptr);
         const auto valueType = type == InteractiveType::mixerKnob
             ? InteractiveType::mixerValueLabel : InteractiveType::globalMixerValueLabel;
         const bool editing = isTarget(state_.mixerValueEntryTarget, valueType, index);
@@ -200,13 +220,13 @@ private:
             canvas_.stroke();
         }
         char entry[32];
-        std::snprintf(entry, sizeof(entry), "%s%s",
+        std::snprintf(entry, sizeof(entry), sms::ui::dpf::themeFormat("%s%s"),
                       editing ? state_.mixerValueEntryText : display,
                       editing ? "_" : "");
         canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_CENTER |
                           DGL_NAMESPACE::NanoVG::ALIGN_TOP);
         canvas_.fillColor(colors.contentPrimary);
-        canvas_.text(bounds.x + bounds.width * 0.5f, bounds.y + 56.0f, entry, nullptr);
+        text(bounds.x + bounds.width * 0.5f, bounds.y + 56.0f, entry, nullptr);
         const float normalized = bipolarKnobPosition(value, minimum, maximum);
         sms::ui::dpf::drawKnob(canvas_, bounds.x + bounds.width * 0.5f,
             bounds.y + 31.0f, 16.0f, normalized, colors.controlAccent,
@@ -224,7 +244,7 @@ private:
         canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_CENTER |
                           DGL_NAMESPACE::NanoVG::ALIGN_TOP);
         canvas_.fillColor(colors.contentSecondary);
-        canvas_.text(centerX, bounds.y, "DIRTY", nullptr);
+        text(centerX, bounds.y, "DIRTY", nullptr);
         canvas_.beginPath();
         canvas_.roundedRect(centerX - 23.0f, slotY, 46.0f, 23.0f, 11.0f);
         canvas_.fillPaint(canvas_.linearGradient(centerX, slotY, centerX,
@@ -244,7 +264,7 @@ private:
         canvas_.strokeWidth(1.3f);
         canvas_.stroke();
         canvas_.fillColor(enabled ? colors.controlAccent : colors.contentSecondary);
-        canvas_.text(centerX, bounds.y + 56.0f, enabled ? "ON" : "OFF", nullptr);
+        text(centerX, bounds.y + 56.0f, enabled ? "ON" : "OFF", nullptr);
     }
 
     void drawSlopeSlider(const sms::ui::Rect bounds, const InteractiveType type,
@@ -258,13 +278,13 @@ private:
         canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_CENTER |
                           DGL_NAMESPACE::NanoVG::ALIGN_TOP);
         canvas_.fillColor(colors.contentSecondary);
-        canvas_.text(bounds.x + bounds.width * 0.5f, bounds.y + 2.0f, "SLOPE", nullptr);
+        text(bounds.x + bounds.width * 0.5f, bounds.y + 2.0f, "SLOPE", nullptr);
         char value[20];
-        std::snprintf(value, sizeof(value), "%d dB", index == 0 ? 6 : index == 1 ? 12 : 24);
+        std::snprintf(value, sizeof(value), sms::ui::dpf::themeFormat("%d dB"), index == 0 ? 6 : index == 1 ? 12 : 24);
         canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_RIGHT |
                           DGL_NAMESPACE::NanoVG::ALIGN_TOP);
         canvas_.fillColor(colors.contentPrimary);
-        canvas_.text(track.x + track.width, bounds.y + 5.0f, value, nullptr);
+        text(track.x + track.width, bounds.y + 5.0f, value, nullptr);
         sms::ui::dpf::drawSlider(canvas_, track.x, track.y, track.width,
             static_cast<float>(index) * 0.5f, colors.controlAccent,
             hovered(type, 5));
@@ -289,19 +309,19 @@ private:
         canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_LEFT |
                           DGL_NAMESPACE::NanoVG::ALIGN_TOP);
         canvas_.fillColor(colors.contentSecondary);
-        canvas_.text(994.0f, uiLayout::globalMixerLabelY, "GLOBAL MIXER", nullptr);
+        text(994.0f, uiLayout::globalMixerLabelY, "GLOBAL MIXER", nullptr);
         char pan[24];
         char tune[24];
         char low[16];
         char high[16];
         if (std::abs(state_.globalPan) < 0.005f)
-            std::snprintf(pan, sizeof(pan), "CENTER");
+            std::snprintf(pan, sizeof(pan), sms::ui::dpf::themeFormat("%s"), sms::ui::dpf::themeText("CENTER"));
         else
-            std::snprintf(pan, sizeof(pan), "%c%d", state_.globalPan < 0.0f ? 'L' : 'R',
+            std::snprintf(pan, sizeof(pan), sms::ui::dpf::themeFormat("%c%d"), state_.globalPan < 0.0f ? 'L' : 'R',
                 static_cast<int>(std::lround(std::abs(state_.globalPan) * 100.0f)));
-        std::snprintf(tune, sizeof(tune), "%+.2f st", state_.globalTuneSemitones);
-        std::snprintf(low, sizeof(low), "%.0f%%", state_.globalLowpass * 100.0f);
-        std::snprintf(high, sizeof(high), "%.0f%%", state_.globalHighpass * 100.0f);
+        std::snprintf(tune, sizeof(tune), sms::ui::dpf::themeFormat("%+.2f st"), state_.globalTuneSemitones);
+        std::snprintf(low, sizeof(low), sms::ui::dpf::themeFormat("%.0f%%"), state_.globalLowpass * 100.0f);
+        std::snprintf(high, sizeof(high), sms::ui::dpf::themeFormat("%.0f%%"), state_.globalHighpass * 100.0f);
         drawMixerKnob(uiLayout::globalMixerKnob(1), InteractiveType::globalMixerKnob,
             1, "PAN", state_.globalPan, plugin::parameterRanges::globalPan.minimum,
             plugin::parameterRanges::globalPan.maximum, pan);
@@ -384,18 +404,18 @@ private:
         canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_LEFT |
                           DGL_NAMESPACE::NanoVG::ALIGN_TOP);
         canvas_.fillColor(colors.contentPrimary);
-        canvas_.text(32.0f, 26.0f, "SMS-ANVIL SAMPLER", nullptr);
-        canvas_.textBounds(32.0f, 26.0f, "SMS-ANVIL SAMPLER", nullptr, textBounds);
+        text(32.0f, 26.0f, "SMS-ANVIL SAMPLER", nullptr);
+        measureText(32.0f, 26.0f, "SMS-ANVIL SAMPLER", nullptr, textBounds);
         float textRight = textBounds.getX() + textBounds.getWidth();
         canvas_.fontSize(12.0f);
         canvas_.fillColor(colors.contentSecondary);
-        canvas_.text(34.0f, 58.0f, "SEQUENTIAL CHOP  /  LIVE SAMPLE WORKSTATION", nullptr);
-        canvas_.textBounds(34.0f, 58.0f,
+        text(34.0f, 58.0f, "SEQUENTIAL CHOP  /  LIVE SAMPLE WORKSTATION", nullptr);
+        measureText(34.0f, 58.0f,
                            "SEQUENTIAL CHOP  /  LIVE SAMPLE WORKSTATION", nullptr, textBounds);
         textRight = std::max(textRight, textBounds.getX() + textBounds.getWidth());
         canvas_.fontSize(10.0f);
-        canvas_.text(34.0f, 76.0f, "Version " ANVILSAMPLER_VERSION_STRING, nullptr);
-        canvas_.textBounds(34.0f, 76.0f,
+        text(34.0f, 76.0f, "Version " ANVILSAMPLER_VERSION_STRING, nullptr);
+        measureText(34.0f, 76.0f,
                            "Version " ANVILSAMPLER_VERSION_STRING, nullptr, textBounds);
         textRight = std::max(textRight, textBounds.getX() + textBounds.getWidth());
 
@@ -417,7 +437,7 @@ private:
         canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_LEFT |
                           DGL_NAMESPACE::NanoVG::ALIGN_MIDDLE);
         canvas_.fillColor(modeColor);
-        canvas_.text(1160.0f, 43.0f, state_.armed ? "ARMED" : "PLAY", nullptr);
+        text(1160.0f, 43.0f, state_.armed ? "ARMED" : "PLAY", nullptr);
 
         const bool menuHovered = hovered(InteractiveType::menuButton);
         sms::ui::dpf::drawRaisedControlSurface(canvas_, uiLayout::menuButton,
@@ -436,13 +456,13 @@ private:
     void drawMenuOverlay()
     {
         const auto& colors = sms::ui::dpf::theme();
-        sms::ui::dpf::drawPanel(canvas_, uiLayout::menuPanel);
+        sms::ui::dpf::drawPanel(canvas_, uiLayout::menuPanelBounds(state_.skinsAvailable));
         canvas_.fontFace(NANOVG_DEJAVU_SANS_TTF);
         canvas_.fontSize(10.0f);
         canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_LEFT |
                           DGL_NAMESPACE::NanoVG::ALIGN_TOP);
         canvas_.fillColor(colors.contentSecondary);
-        canvas_.text(1060.0f, 81.0f, "PAD LAYOUT", nullptr);
+        text(1060.0f, 81.0f, "PAD LAYOUT", nullptr);
         static constexpr const char* labels[] = {
             "16 PADS  ·  4×4", "12 PADS  ·  3×4", "8 PADS   ·  4×2",
         };
@@ -452,7 +472,7 @@ private:
                                       hovered(InteractiveType::menuLayout, index),
                                       state_.currentPad < 0);
         canvas_.fillColor(colors.contentSecondary);
-        canvas_.text(1060.0f, 207.0f, "MIDI BANK MODE", nullptr);
+        text(1060.0f, 207.0f, "MIDI BANK MODE", nullptr);
         static constexpr const char* midiLabels[] = {
             "SELECTED  ·  SHARED", "ALL BANKS  ·  UNIQUE",
         };
@@ -462,12 +482,48 @@ private:
                                       colors.selection,
                                       hovered(InteractiveType::menuMidiBankMode, index));
         canvas_.fillColor(colors.contentSecondary);
-        canvas_.text(1060.0f, 309.0f, "LINKS", nullptr);
+        text(1060.0f, 309.0f, "LINKS", nullptr);
         static constexpr const char* linkLabels[] = {"ONLINE HELP", "REPORT ISSUE"};
         for (int index = 0; index < 2; ++index)
             sms::ui::dpf::drawSegment(canvas_, uiLayout::menuLinkOption(index),
                                       linkLabels[index], false, colors.selection,
                                       hovered(InteractiveType::menuLink, index));
+        if (state_.skinsAvailable) {
+            sms::ui::dpf::drawSegment(canvas_, uiLayout::skinMenuButton, "SKINS",
+                state_.skinMenuOpen, colors.selection, hovered(InteractiveType::menuSkins));
+            const float x = uiLayout::skinMenuButton.x + 13.0f;
+            const float y = uiLayout::skinMenuButton.y + 14.0f;
+            canvas_.beginPath();
+            canvas_.moveTo(x + 2.0f, y - 4.0f);
+            canvas_.lineTo(x - 2.0f, y);
+            canvas_.lineTo(x + 2.0f, y + 4.0f);
+            canvas_.strokeColor(colors.contentSecondary);
+            canvas_.strokeWidth(1.3f);
+            canvas_.stroke();
+        }
+        if (state_.skinMenuOpen) {
+            sms::ui::dpf::drawContextMenu(canvas_, state_.skinMenu, state_.skinMenuItems,
+                hovered(InteractiveType::skinItem) ? state_.hoveredTarget.index : -1);
+            const int maximum = uiLayout::skinMenuMaxOffset(state_.skinMenuTotal);
+            if (maximum > 0) {
+                const auto bounds = state_.skinMenu.bounds();
+                const float top = state_.skinMenu.item(1).y;
+                const float height = bounds.y + bounds.height - 6.0f - top;
+                const float thumb = std::max(10.0f, height *
+                    static_cast<float>(state_.skinMenuItems.size() - 1U) /
+                    static_cast<float>(state_.skinMenuTotal - 1));
+                canvas_.beginPath();
+                canvas_.roundedRect(bounds.x + bounds.width - 5.0f, top, 2.0f, height, 1.0f);
+                canvas_.fillColor(colors.outline);
+                canvas_.fill();
+                canvas_.beginPath();
+                canvas_.roundedRect(bounds.x + bounds.width - 5.0f,
+                    top + (height - thumb) * static_cast<float>(state_.skinMenuOffset) /
+                        static_cast<float>(maximum), 2.0f, thumb, 1.0f);
+                canvas_.fillColor(colors.selection);
+                canvas_.fill();
+            }
+        }
     }
 
     void drawPadPanel()
@@ -479,19 +535,19 @@ private:
         canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_LEFT |
                           DGL_NAMESPACE::NanoVG::ALIGN_TOP);
         canvas_.fillColor(colors.contentSecondary);
-        canvas_.text(46.0f, 120.0f, state_.armed ? "DESTINATION PADS" : "PAD BANK", nullptr);
+        text(46.0f, 120.0f, state_.armed ? "DESTINATION PADS" : "PAD BANK", nullptr);
         canvas_.fontSize(11.0f);
         canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_RIGHT |
                           DGL_NAMESPACE::NanoVG::ALIGN_TOP);
-        canvas_.text(936.0f, 120.0f,
+        text(936.0f, 120.0f,
                      state_.armed ? "CLICK A PAD TO SET START" : "CLICK TO PLAY", nullptr);
         canvas_.fontSize(10.0f);
         canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_LEFT |
                           DGL_NAMESPACE::NanoVG::ALIGN_MIDDLE);
-        canvas_.text(46.0f, 154.0f, "BANK", nullptr);
+        text(46.0f, 154.0f, "BANK", nullptr);
         for (int bank = 0; bank < static_cast<int>(kBankCount); ++bank) {
             char label[4];
-            std::snprintf(label, sizeof(label), "%c", 'A' + bank);
+            std::snprintf(label, sizeof(label), sms::ui::dpf::themeFormat("%c"), 'A' + bank);
             sms::ui::dpf::drawSegment(canvas_, uiLayout::mainBank(bank), label,
                                       bank == state_.bank, colors.activityPlayback,
                                       hovered(InteractiveType::bank, bank),
@@ -521,12 +577,12 @@ private:
                  state_.pressedPad == localPad, true, tint});
 
             char padNumber[12];
-            std::snprintf(padNumber, sizeof(padNumber), "%02d", localPad + 1);
+            std::snprintf(padNumber, sizeof(padNumber), sms::ui::dpf::themeFormat("%02d"), localPad + 1);
             canvas_.fontSize(12.0f);
             canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_LEFT |
                               DGL_NAMESPACE::NanoVG::ALIGN_TOP);
             canvas_.fillColor(selected || padHovered ? colors.selection : colors.contentSecondary);
-            canvas_.text(cell.x + 12.0f, cell.y + 10.0f, padNumber, nullptr);
+            text(cell.x + 12.0f, cell.y + 10.0f, padNumber, nullptr);
             char note[16];
             midiName(mappedMidiNote(pad), note, sizeof(note));
             canvas_.fontSize(20.0f);
@@ -534,14 +590,14 @@ private:
                               DGL_NAMESPACE::NanoVG::ALIGN_MIDDLE);
             canvas_.fillColor(occupied || recording ? colors.contentPrimary
                                                      : colors.contentSecondary);
-            canvas_.text(cell.x + cell.width * 0.5f, cell.y + cell.height * 0.54f,
+            text(cell.x + cell.width * 0.5f, cell.y + cell.height * 0.54f,
                          note, nullptr);
             canvas_.fontSize(10.0f);
             canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_RIGHT |
                               DGL_NAMESPACE::NanoVG::ALIGN_BOTTOM);
             canvas_.fillColor(recording ? colors.activityCapture :
                               (playing ? colors.activityPlayback : colors.contentSecondary));
-            canvas_.text(cell.x + cell.width - 10.0f, cell.y + cell.height - 9.0f,
+            text(cell.x + cell.width - 10.0f, cell.y + cell.height - 9.0f,
                          recording ? "RECORDING" :
                          (playing ? "PLAYING" : (occupied ? "READY" : "EMPTY")), nullptr);
         }
@@ -557,10 +613,10 @@ private:
                           DGL_NAMESPACE::NanoVG::ALIGN_TOP);
         canvas_.fillColor(colors.contentSecondary);
         char heading[80];
-        std::snprintf(heading, sizeof(heading), "SAMPLE EDITOR  /  BANK %c  /  PAD %02d",
+        std::snprintf(heading, sizeof(heading), sms::ui::dpf::themeFormat("SAMPLE EDITOR  /  BANK %c  /  PAD %02d"),
                       'A' + bankForGlobalPad(state_.selectedPad),
                       localPadForGlobalPad(state_.selectedPad) + 1);
-        canvas_.text(46.0f, 120.0f, heading, nullptr);
+        text(46.0f, 120.0f, heading, nullptr);
         sms::ui::dpf::drawWaveformEditor(canvas_, uiLayout::editorWaveform,
             state_.waveform, state_.hasWaveform, state_.editorSettings,
             hovered(InteractiveType::regionHandle)
@@ -611,19 +667,19 @@ private:
         const auto endFrame = static_cast<std::uint32_t>(
             state_.editorSettings.end * state_.waveform.frames);
         std::snprintf(region, sizeof(region),
-                      "REGION  %u — %u frames     %.1f%% of source", startFrame, endFrame,
+                      sms::ui::dpf::themeFormat("REGION  %u — %u frames     %.1f%% of source"), startFrame, endFrame,
                       (state_.editorSettings.end - state_.editorSettings.start) * 100.0f);
         canvas_.fontSize(11.0f);
         canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_LEFT |
                           DGL_NAMESPACE::NanoVG::ALIGN_TOP);
         canvas_.fillColor(colors.contentSecondary);
-        canvas_.text(46.0f, 402.0f, region, nullptr);
-        canvas_.text(46.0f, 426.0f, "AMPLITUDE ENVELOPE", nullptr);
+        text(46.0f, 402.0f, region, nullptr);
+        text(46.0f, 426.0f, "AMPLITUDE ENVELOPE", nullptr);
         canvas_.fontSize(9.0f);
         canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_RIGHT |
                           DGL_NAMESPACE::NanoVG::ALIGN_TOP);
         canvas_.fillColor(colors.contentSecondary.withAlpha(0.8f));
-        canvas_.text(416.0f, 428.0f, "DRAG NODES", nullptr);
+        text(416.0f, 428.0f, "DRAG NODES", nullptr);
         sms::ui::dpf::drawEnvelopeGraph(canvas_, uiLayout::envelopeGraph,
             state_.waveform, state_.editorSettings,
             hovered(InteractiveType::envelopeNode)
@@ -646,22 +702,22 @@ private:
         canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_LEFT |
                           DGL_NAMESPACE::NanoVG::ALIGN_TOP);
         canvas_.fillColor(colors.contentSecondary);
-        canvas_.text(46.0f, 570.0f, "PAD MIXER", nullptr);
+        text(46.0f, 570.0f, "PAD MIXER", nullptr);
         char gain[24];
         char pan[24];
         char tune[24];
         char low[16];
         char high[16];
-        std::snprintf(gain, sizeof(gain), "%+.1f dB", state_.mixerSettings.gainDecibels);
+        std::snprintf(gain, sizeof(gain), sms::ui::dpf::themeFormat("%+.1f dB"), state_.mixerSettings.gainDecibels);
         if (std::abs(state_.mixerSettings.pan) < 0.005f)
-            std::snprintf(pan, sizeof(pan), "CENTER");
+            std::snprintf(pan, sizeof(pan), sms::ui::dpf::themeFormat("%s"), sms::ui::dpf::themeText("CENTER"));
         else
-            std::snprintf(pan, sizeof(pan), "%c%d",
+            std::snprintf(pan, sizeof(pan), sms::ui::dpf::themeFormat("%c%d"),
                 state_.mixerSettings.pan < 0.0f ? 'L' : 'R',
                 static_cast<int>(std::lround(std::abs(state_.mixerSettings.pan) * 100.0f)));
-        std::snprintf(tune, sizeof(tune), "%+.2f st", state_.mixerSettings.tuneSemitones);
-        std::snprintf(low, sizeof(low), "%.0f%%", state_.mixerSettings.lowpass * 100.0f);
-        std::snprintf(high, sizeof(high), "%.0f%%", state_.mixerSettings.highpass * 100.0f);
+        std::snprintf(tune, sizeof(tune), sms::ui::dpf::themeFormat("%+.2f st"), state_.mixerSettings.tuneSemitones);
+        std::snprintf(low, sizeof(low), sms::ui::dpf::themeFormat("%.0f%%"), state_.mixerSettings.lowpass * 100.0f);
+        std::snprintf(high, sizeof(high), sms::ui::dpf::themeFormat("%.0f%%"), state_.mixerSettings.highpass * 100.0f);
         drawMixerKnob(uiLayout::mixerKnob(0), InteractiveType::mixerKnob,
             0, "GAIN", state_.mixerSettings.gainDecibels,
             sms::dsp::kMinimumSampleGainDecibels,
@@ -700,26 +756,26 @@ private:
                           DGL_NAMESPACE::NanoVG::ALIGN_TOP);
         canvas_.fillColor(colors.contentSecondary);
         char heading[48];
-        std::snprintf(heading, sizeof(heading), "%s  /  PAD %02d",
-                      state_.chopSplitMode ? "SPLIT SAMPLE" : "ADJUST CUT POINTS",
+        std::snprintf(heading, sizeof(heading), sms::ui::dpf::themeFormat("%s  /  PAD %02d"),
+                      state_.chopSplitMode ? sms::ui::dpf::themeText("SPLIT SAMPLE") : sms::ui::dpf::themeText("ADJUST CUT POINTS"),
                       localPadForGlobalPad(state_.chopTargetPad) + 1);
-        canvas_.text(46.0f, 120.0f, heading, nullptr);
+        text(46.0f, 120.0f, heading, nullptr);
         canvas_.fontSize(9.0f);
         canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_RIGHT |
                           DGL_NAMESPACE::NanoVG::ALIGN_TOP);
         char neighbors[64];
         if (state_.chopSplitMode) {
-            std::snprintf(neighbors, sizeof(neighbors), "PADS %02d + %02d  /  DRAG SPLIT LINE",
+            std::snprintf(neighbors, sizeof(neighbors), sms::ui::dpf::themeFormat("PADS %02d + %02d  /  DRAG SPLIT LINE"),
                           localPadForGlobalPad(state_.chopFirstPad) + 1,
                           localPadForGlobalPad(state_.chopFirstPad + 1) + 1);
         } else {
             std::snprintf(neighbors, sizeof(neighbors),
-                          "PADS %02d + %02d + %02d  /  DRAG CUT LINES",
+                          sms::ui::dpf::themeFormat("PADS %02d + %02d + %02d  /  DRAG CUT LINES"),
                           localPadForGlobalPad(state_.chopFirstPad) + 1,
                           localPadForGlobalPad(state_.chopFirstPad + 1) + 1,
                           localPadForGlobalPad(state_.chopFirstPad + 2) + 1);
         }
-        canvas_.text(936.0f, 122.0f, neighbors, nullptr);
+        text(936.0f, 122.0f, neighbors, nullptr);
 
         const auto combined = chop::combinedWaveform(state_.chopWaveforms);
         const auto& visible = state_.waveformViewport.zoomed() && state_.waveformDetail
@@ -733,7 +789,7 @@ private:
             canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_CENTER |
                               DGL_NAMESPACE::NanoVG::ALIGN_MIDDLE);
             canvas_.fillColor(colors.contentSecondary);
-            canvas_.text(uiLayout::chopWaveform.x + uiLayout::chopWaveform.width * 0.5f,
+            text(uiLayout::chopWaveform.x + uiLayout::chopWaveform.width * 0.5f,
                          uiLayout::chopWaveform.y + uiLayout::chopWaveform.height * 0.5f,
                          "LOADING DETAIL...", nullptr);
         }
@@ -783,7 +839,7 @@ private:
             canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_CENTER |
                               DGL_NAMESPACE::NanoVG::ALIGN_MIDDLE);
             canvas_.fillColor(colors.contentSecondary);
-            canvas_.text(uiLayout::chopWaveform.x + uiLayout::chopWaveform.width * 0.5f,
+            text(uiLayout::chopWaveform.x + uiLayout::chopWaveform.width * 0.5f,
                          uiLayout::chopWaveform.y + uiLayout::chopWaveform.height * 0.5f,
                          state_.chopSplitMode ? "LOADING RAW SAMPLE..." :
                                                "LOADING THREE COMPATIBLE RAW SAMPLES...", nullptr);
@@ -821,7 +877,7 @@ private:
             const double seconds = state_.chopReady && rate > 0.0 ? frames / rate : 0.0;
             const bool previewEnabled = state_.chopReady && frames != 0U &&
                 !state_.chopApplying;
-            std::snprintf(label, sizeof(label), "PAD %02d   %.2f s",
+            std::snprintf(label, sizeof(label), sms::ui::dpf::themeFormat("PAD %02d   %.2f s"),
                           localPadForGlobalPad(state_.chopFirstPad + pad) + 1, seconds);
             sms::ui::dpf::drawSegment(canvas_, uiLayout::chopPadButton(pad), label,
                 state_.chopPreviewPad == pad,
@@ -840,7 +896,7 @@ private:
         canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_LEFT |
                           DGL_NAMESPACE::NanoVG::ALIGN_TOP);
         canvas_.fillColor(colors.contentPrimary);
-        canvas_.text(994.0f, 120.0f,
+        text(994.0f, 120.0f,
                      state_.chopSplitMode ? "INSERT SAMPLE SPLIT" : "THREE-PAD CUT EDIT", nullptr);
         canvas_.fontSize(10.0f);
         canvas_.fillColor(colors.contentSecondary);
@@ -922,7 +978,7 @@ private:
                           DGL_NAMESPACE::NanoVG::ALIGN_MIDDLE);
         canvas_.fillColor((isHovered ? colors.controlAccent : colors.contentSecondary)
             .withAlpha(alpha));
-        canvas_.text(centerX, centerY, "EXIT", nullptr);
+        text(centerX, centerY, "EXIT", nullptr);
     }
 
     void drawEditorPadPanel()
@@ -937,10 +993,10 @@ private:
         canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_LEFT |
                           DGL_NAMESPACE::NanoVG::ALIGN_TOP);
         canvas_.fillColor(colors.contentSecondary);
-        canvas_.text(994.0f, 153.0f, "SELECT PAD", nullptr);
+        text(994.0f, 153.0f, "SELECT PAD", nullptr);
         for (int bank = 0; bank < static_cast<int>(kBankCount); ++bank) {
             char label[4];
-            std::snprintf(label, sizeof(label), "%c", 'A' + bank);
+            std::snprintf(label, sizeof(label), sms::ui::dpf::themeFormat("%c"), 'A' + bank);
             sms::ui::dpf::drawSegment(canvas_, uiLayout::editorBank(bank), label,
                                       bank == state_.bank, colors.activityPlayback,
                                       hovered(InteractiveType::bank, bank),
@@ -963,19 +1019,19 @@ private:
                 {occupied, active, false, selected, padHovered,
                  state_.pressedPad == localPad, true, tint}, 6.0f);
             char label[12];
-            std::snprintf(label, sizeof(label), "%02d", localPad + 1);
+            std::snprintf(label, sizeof(label), sms::ui::dpf::themeFormat("%02d"), localPad + 1);
             canvas_.fontSize(11.0f);
             canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_LEFT |
                               DGL_NAMESPACE::NanoVG::ALIGN_MIDDLE);
             canvas_.fillColor(selected || padHovered ? colors.selection : colors.contentPrimary);
-            canvas_.text(cell.x + 9.0f, cell.y + cell.height * 0.5f, label, nullptr);
+            text(cell.x + 9.0f, cell.y + cell.height * 0.5f, label, nullptr);
             char note[16];
             midiName(mappedMidiNote(pad), note, sizeof(note));
             canvas_.fontSize(10.0f);
             canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_RIGHT |
                               DGL_NAMESPACE::NanoVG::ALIGN_MIDDLE);
             canvas_.fillColor(occupied ? colors.activityPlayback : colors.contentSecondary);
-            canvas_.text(cell.x + cell.width - 9.0f, cell.y + cell.height * 0.5f,
+            text(cell.x + cell.width - 9.0f, cell.y + cell.height * 0.5f,
                          note, nullptr);
         }
         sms::ui::dpf::drawSymbolButton(canvas_, uiLayout::editorPlayStop,
@@ -1007,7 +1063,7 @@ private:
         canvas_.fillColor(colors.contentSecondary);
         const bool fixedCapture = state_.captureMode >= 0.5f;
         if (state_.armed) {
-            canvas_.text(994.0f, 204.0f, "CAPTURE MODE", nullptr);
+            text(994.0f, 204.0f, "CAPTURE MODE", nullptr);
             sms::ui::dpf::drawSegment(canvas_, uiLayout::sequentialMode, "SEQUENTIAL",
                 !fixedCapture, colors.activityPlayback,
                 hovered(InteractiveType::sequentialMode));
@@ -1018,14 +1074,14 @@ private:
                 const float length = std::clamp(state_.fixedLengthSeconds,
                     plugin::parameterRanges::fixedLengthSeconds.minimum,
                     plugin::parameterRanges::fixedLengthSeconds.maximum);
-                canvas_.text(994.0f, 278.0f, "FIXED LENGTH", nullptr);
+                text(994.0f, 278.0f, "FIXED LENGTH", nullptr);
                 char lengthText[32];
-                std::snprintf(lengthText, sizeof(lengthText), "%.2f s", length);
+                std::snprintf(lengthText, sizeof(lengthText), sms::ui::dpf::themeFormat("%.2f s"), length);
                 canvas_.fontSize(12.0f);
                 canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_RIGHT |
                                   DGL_NAMESPACE::NanoVG::ALIGN_TOP);
                 canvas_.fillColor(colors.contentPrimary);
-                canvas_.text(1216.0f, 278.0f, lengthText, nullptr);
+                text(1216.0f, 278.0f, lengthText, nullptr);
                 sms::ui::dpf::drawSlider(canvas_, 994.0f, 298.0f, 222.0f,
                     length / plugin::parameterRanges::fixedLengthSeconds.maximum,
                     colors.activityPlayback, hovered(InteractiveType::fixedLength));
@@ -1036,16 +1092,16 @@ private:
             canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_LEFT |
                               DGL_NAMESPACE::NanoVG::ALIGN_TOP);
             canvas_.fillColor(colors.contentSecondary);
-            canvas_.text(preRollBounds.x, preRollBounds.y - 10.0f, "PRE-ROLL", nullptr);
+            text(preRollBounds.x, preRollBounds.y - 10.0f, "PRE-ROLL", nullptr);
             char preRoll[24];
-            std::snprintf(preRoll, sizeof(preRoll), "%d ms",
+            std::snprintf(preRoll, sizeof(preRoll), sms::ui::dpf::themeFormat("%d ms"),
                           static_cast<int>(std::lround(std::clamp(state_.preRollMs,
                               plugin::parameterRanges::preRollMs.minimum,
                               plugin::parameterRanges::preRollMs.maximum))));
             canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_RIGHT |
                               DGL_NAMESPACE::NanoVG::ALIGN_TOP);
             canvas_.fillColor(colors.contentPrimary);
-            canvas_.text(preRollBounds.x + preRollBounds.width,
+            text(preRollBounds.x + preRollBounds.width,
                          preRollBounds.y - 10.0f, preRoll, nullptr);
             sms::ui::dpf::drawSlider(canvas_, preRollBounds.x,
                 preRollBounds.y + 9.0f, preRollBounds.width,
@@ -1053,20 +1109,20 @@ private:
                            0.0f, 1.0f), colors.controlAccent,
                 hovered(InteractiveType::preRoll));
         } else {
-            canvas_.text(994.0f, 204.0f, "PLAYBACK", nullptr);
+            text(994.0f, 204.0f, "PLAYBACK", nullptr);
             sms::ui::dpf::drawSegment(canvas_, uiLayout::oneShotMode, "ONE SHOT",
                 state_.playbackMode < 0.5f, colors.activityPlayback,
                 hovered(InteractiveType::oneShotMode));
             sms::ui::dpf::drawSegment(canvas_, uiLayout::gatedMode, "GATE",
                 state_.playbackMode >= 0.5f, colors.activityPlayback,
                 hovered(InteractiveType::gatedMode));
-            canvas_.text(994.0f, 278.0f, "MAX VOICES", nullptr);
+            text(994.0f, 278.0f, "MAX VOICES", nullptr);
             char voices[8];
-            std::snprintf(voices, sizeof(voices), "%d", state_.maxVoices);
+            std::snprintf(voices, sizeof(voices), sms::ui::dpf::themeFormat("%d"), state_.maxVoices);
             canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_RIGHT |
                               DGL_NAMESPACE::NanoVG::ALIGN_TOP);
             canvas_.fillColor(colors.contentPrimary);
-            canvas_.text(1216.0f, 278.0f, voices, nullptr);
+            text(1216.0f, 278.0f, voices, nullptr);
             sms::ui::dpf::drawSlider(canvas_, 994.0f, 307.0f, 222.0f,
                 static_cast<float>(state_.maxVoices - 1) /
                 (plugin::parameterRanges::maxVoices.maximum - 1.0f),
@@ -1116,13 +1172,13 @@ private:
                     : "Drag a cut line, then click a pad button to preview its raw slice");
         } else if (state_.editorMode) {
             std::snprintf(liveStatus, sizeof(liveStatus),
-                          "Editing Bank %c Pad %02d — drag region, mixer, or envelope controls",
+                          sms::ui::dpf::themeFormat("Editing Bank %c Pad %02d — drag region, mixer, or envelope controls"),
                           'A' + bankForGlobalPad(state_.selectedPad),
                           localPadForGlobalPad(state_.selectedPad) + 1);
             status = liveStatus;
         } else if (state_.currentPad >= 0) {
             std::snprintf(liveStatus, sizeof(liveStatus),
-                          "Chopping to Bank %c Pad %02d — tap Space or MIDI for next slice",
+                          sms::ui::dpf::themeFormat("Chopping to Bank %c Pad %02d — tap Space or MIDI for next slice"),
                           'A' + bankForGlobalPad(state_.currentPad),
                           localPadForGlobalPad(state_.currentPad) + 1);
             status = liveStatus;
@@ -1145,31 +1201,31 @@ private:
         canvas_.fillColor((state_.editorMode || state_.chopEditorMode) ? colors.activityPlayback :
                           (state_.currentPad >= 0 ? colors.activityCapture
                                                   : colors.contentSecondary));
-        canvas_.text(38.0f, 722.0f, status, nullptr);
+        text(38.0f, 722.0f, status, nullptr);
         char details[96];
         if (state_.chopEditorMode)
-            std::snprintf(details, sizeof(details), "%s   %s",
-                          state_.chopSplitMode ? "UNAPPLIED SPLIT" :
-                              (state_.chopDirty ? "UNAPPLIED CUTS" : "CUTS UNCHANGED"),
-                          state_.chopApplying ? "WORKING" :
-                              (state_.chopSplitMode ? "SPLIT PREVIEW" : "THREE-PAD PREVIEW"));
+            std::snprintf(details, sizeof(details), sms::ui::dpf::themeFormat("%s   %s"),
+                          state_.chopSplitMode ? sms::ui::dpf::themeText("UNAPPLIED SPLIT") :
+                              (state_.chopDirty ? sms::ui::dpf::themeText("UNAPPLIED CUTS") : sms::ui::dpf::themeText("CUTS UNCHANGED")),
+                          state_.chopApplying ? sms::ui::dpf::themeText("WORKING") :
+                              (state_.chopSplitMode ? sms::ui::dpf::themeText("SPLIT PREVIEW") : sms::ui::dpf::themeText("THREE-PAD PREVIEW")));
         else if (state_.editorMode)
             std::snprintf(details, sizeof(details),
-                          "GAIN %+.1f dB   PAN %+.0f   TUNE %+.2f st",
+                          sms::ui::dpf::themeFormat("GAIN %+.1f dB   PAN %+.0f   TUNE %+.2f st"),
                           state_.mixerSettings.gainDecibels,
                           state_.mixerSettings.pan * 100.0f,
                           state_.mixerSettings.tuneSemitones);
         else if (state_.armed)
-            std::snprintf(details, sizeof(details), "START %02d", state_.startPad + 1);
+            std::snprintf(details, sizeof(details), sms::ui::dpf::themeFormat("START %02d"), state_.startPad + 1);
         else
             std::snprintf(details, sizeof(details),
-                          "START %02d   PAN %+.0f   TUNE %+.2f st",
+                          sms::ui::dpf::themeFormat("START %02d   PAN %+.0f   TUNE %+.2f st"),
                           state_.startPad + 1,
                           state_.globalPan * 100.0f, state_.globalTuneSemitones);
         canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_RIGHT |
                           DGL_NAMESPACE::NanoVG::ALIGN_MIDDLE);
         canvas_.fillColor(colors.contentSecondary);
-        canvas_.text(1226.0f, 722.0f, details, nullptr);
+        text(1226.0f, 722.0f, details, nullptr);
     }
 
     DGL_NAMESPACE::NanoVG& canvas_;
