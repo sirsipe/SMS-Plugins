@@ -778,21 +778,10 @@ private:
         text(936.0f, 122.0f, neighbors, nullptr);
 
         const auto combined = chop::combinedWaveform(state_.chopWaveforms);
-        const auto& visible = state_.waveformViewport.zoomed() && state_.waveformDetail
-            ? *state_.waveformDetail : combined;
+        const auto visible = sms::ui::waveform::visibleSummary(
+            combined, state_.waveformViewport, state_.waveformDetail);
         sms::ui::dpf::drawWaveform(canvas_, uiLayout::chopWaveform, visible,
-            state_.chopReady && (!state_.waveformViewport.zoomed() ||
-                state_.waveformDetail != nullptr), colors.activityPlayback);
-        if (state_.chopReady && state_.waveformViewport.zoomed() &&
-            state_.waveformDetail == nullptr) {
-            canvas_.fontSize(13.0f);
-            canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_CENTER |
-                              DGL_NAMESPACE::NanoVG::ALIGN_MIDDLE);
-            canvas_.fillColor(colors.contentSecondary);
-            text(uiLayout::chopWaveform.x + uiLayout::chopWaveform.width * 0.5f,
-                         uiLayout::chopWaveform.y + uiLayout::chopWaveform.height * 0.5f,
-                         "LOADING DETAIL...", nullptr);
-        }
+            state_.chopReady, colors.activityPlayback);
         sms::ui::dpf::drawWaveformViewportLabel(canvas_, uiLayout::chopWaveform,
             state_.waveformViewport, combined.sampleRate);
         drawViewportControls(uiLayout::chopZoom, uiLayout::chopScroll);

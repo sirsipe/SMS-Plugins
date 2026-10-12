@@ -92,14 +92,14 @@ inline void drawWaveformEditor(DGL_NAMESPACE::NanoVG& canvas, const ui::Rect bou
                                const bool hasWaveform,
                                const dsp::SamplePlaybackSettings& settings,
                                const waveform::EditTarget hovered = waveform::EditTarget::none,
-                               const audio::WaveformSummary* const detail = nullptr,
+                               const waveform::CachedDetail* const detail = nullptr,
                                const waveform::Viewport viewport = {})
 {
     const ScopedCanvasState canvasState(canvas);
     const Theme& colors = theme();
     canvas.fontFace(NANOVG_DEJAVU_SANS_TTF);
     drawInsetSurface(canvas, bounds, 8.0f);
-    const auto& visible = detail != nullptr && viewport.zoomed() ? *detail : summary;
+    const auto visible = waveform::visibleSummary(summary, viewport, detail);
     canvas.scissor(bounds.x, bounds.y, bounds.width, bounds.height);
     canvas.beginPath();
     canvas.moveTo(bounds.x, bounds.y + bounds.height * 0.5f);
@@ -108,7 +108,7 @@ inline void drawWaveformEditor(DGL_NAMESPACE::NanoVG& canvas, const ui::Rect bou
     canvas.strokeWidth(colors.outlineWidth);
     canvas.stroke();
 
-    if (hasWaveform && (!viewport.zoomed() || detail != nullptr)) {
+    if (hasWaveform) {
         const float scale = waveform::displayScale(visible);
         for (std::size_t bin = 0; bin < audio::kWaveformBins; ++bin) {
             const float normalized = (static_cast<float>(bin) + 0.5f) /
@@ -158,7 +158,7 @@ inline void drawWaveformEditor(DGL_NAMESPACE::NanoVG& canvas, const ui::Rect bou
                          DGL_NAMESPACE::NanoVG::ALIGN_MIDDLE);
         canvas.fillColor(colors.contentSecondary);
         canvas.text(bounds.x + bounds.width * 0.5f, bounds.y + bounds.height * 0.5f,
-                    themeText(hasWaveform ? "LOADING DETAIL..." : "EMPTY PAD"), nullptr);
+                    themeText("EMPTY PAD"), nullptr);
     }
 
     const float startX = bounds.x + bounds.width * static_cast<float>(

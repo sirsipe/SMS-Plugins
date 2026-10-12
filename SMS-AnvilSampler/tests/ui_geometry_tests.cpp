@@ -1375,6 +1375,112 @@ void splitEditorWorkflow()
               "failed split plans are not cancelled again after the DSP discarded them");
 }
 
+void waveformVisibleSummary()
+{
+    using sms::audio::WaveformSummary;
+    using namespace sms::ui::waveform;
+    WaveformSummary overview;
+    overview.pad = 7U;
+    overview.frames = 4096U;
+    overview.sampleRate = 44100.0;
+    overview.minimum[40] = -0.75f;
+    overview.maximum[40] = 0.875f;
+    const auto same = [](const WaveformSummary& left, const WaveformSummary& right) {
+        return left.pad == right.pad && left.frames == right.frames &&
+            left.sampleRate == right.sampleRate && left.minimum == right.minimum &&
+            left.maximum == right.maximum;
+    };
+    CachedDetail cached{overview, 1024U, 2048U};
+    cached.waveform.frames = 1024U;
+    cached.waveform.minimum.fill(0.0f);
+    cached.waveform.maximum.fill(0.0f);
+    cached.waveform.minimum[32] = -0.5f;
+    cached.waveform.maximum[32] = 0.625f;
+    check(same(visibleSummary(overview, {4096U, 0U, 4096U}, &cached), overview) &&
+          same(visibleSummary(overview, {}, &cached), overview),
+          "full and uninitialized viewports preserve the whole-source summary");
+    check(same(visibleSummary(overview, {4096U, 1024U, 2048U}, &cached),
+               cached.waveform),
+          "a matching detail range preserves its summary exactly");
+
+    const auto fallback = visibleSummary(overview, {4096U, 1024U, 2048U});
+    for (std::size_t bin = 0; bin < sms::audio::kWaveformBins; ++bin) {
+        const bool impulse = bin >= 32U && bin < 36U;
+        check(fallback.minimum[bin] == (impulse ? -0.75f : 0.0f) &&
+              fallback.maximum[bin] == (impulse ? 0.875f : 0.0f),
+              "overview zoom relocates the impulse using source-frame coverage");
+    }
+    auto mismatchedFrames = overview;
+    mismatchedFrames.frames = 1024U;
+    const auto concatenated = visibleSummary(mismatchedFrames, {4096U, 1024U, 2048U});
+    check(concatenated.minimum == fallback.minimum &&
+          concatenated.maximum == fallback.maximum,
+          "overview bin coverage follows viewport total for concatenated sources");
+
+    overview.minimum.fill(0.0f);
+    overview.maximum.fill(0.0f);
+    overview.minimum[70] = -0.875f;
+    overview.maximum[70] = 0.75f;
+    cached.waveform.minimum.fill(0.0f);
+    cached.waveform.maximum.fill(0.0f);
+    cached.waveform.minimum[80] = -0.625f;
+    cached.waveform.maximum[80] = 0.5f;
+    const auto overlap = visibleSummary(overview, {4096U, 1536U, 2560U}, &cached);
+    for (std::size_t bin = 0; bin < sms::audio::kWaveformBins; ++bin) {
+        const float low = bin == 16U ? -0.625f :
+            (bin >= 88U && bin < 92U ? -0.875f : 0.0f);
+        const float high = bin == 16U ? 0.5f :
+            (bin >= 88U && bin < 92U ? 0.75f : 0.0f);
+        check(overlap.minimum[bin] == low && overlap.maximum[bin] == high,
+              "pan maps covered detail and uncovered overview to their new positions");
+    }
+    check(same(visibleSummary(overview, {4096U, 2048U, 3072U}, &cached),
+               visibleSummary(overview, {4096U, 2048U, 3072U})),
+          "disjoint detail falls back to the whole-source overview");
+
+    // At 16 frames per output bin, adjacent 8-frame detail bins must merge.
+    overview.minimum.fill(-0.125f);
+    overview.maximum.fill(0.125f);
+    cached.waveform.minimum.fill(-0.25f);
+    cached.waveform.maximum.fill(0.25f);
+    cached.waveform.minimum[32] = -0.875f;
+    cached.waveform.maximum[33] = 0.75f;
+    const auto zoomOut = visibleSummary(overview, {4096U, 512U, 2560U}, &cached);
+    check(zoomOut.minimum[48] == -0.875f && zoomOut.maximum[48] == 0.75f &&
+          zoomOut.minimum[47] == -0.25f && zoomOut.maximum[49] == 0.25f &&
+          zoomOut.minimum[0] == -0.125f && zoomOut.maximum[127] == 0.125f,
+          "zoom-out conserves both extrema and uses finer cached data where covered");
+    auto coarse = cached;
+    coarse.start = 0U;
+    coarse.end = 8192U;
+    coarse.waveform.frames = 8192U;
+    check(same(visibleSummary(overview, {4096U, 512U, 2560U}, &coarse),
+               visibleSummary(overview, {4096U, 512U, 2560U})),
+          "coarser cached bins cannot replace higher-resolution overview bins");
+    auto boundary = cached;
+    boundary.start = 1032U;
+    boundary.end = 2056U;
+    const auto partial = visibleSummary(overview, {4096U, 512U, 2560U}, &boundary);
+    check(partial.minimum[32] == -0.125f && partial.maximum[32] == 0.125f &&
+          partial.minimum[33] == -0.25f && partial.maximum[33] == 0.25f,
+          "an output bin crossing the cache edge uses overview for its entire interval");
+
+    std::array<float, 32> pcm{};
+    pcm[10] = -0.75f;
+    pcm[11] = 0.5f;
+    const auto tiny = sms::audio::summarizeStereo(7U, pcm.data(), 16U);
+    const auto tinyView = visibleSummary(tiny, {16U, 4U, 12U});
+    for (std::size_t bin = 0; bin < sms::audio::kWaveformBins; ++bin) {
+        const bool impulse = bin >= 16U && bin < 32U;
+        check(tinyView.minimum[bin] == (impulse ? -0.75f : 0.0f) &&
+              tinyView.maximum[bin] == (impulse ? 0.5f : 0.0f),
+              "sub-128-frame summaries retain repeated sample-bin extrema");
+    }
+    const WaveformSummary empty{};
+    check(same(visibleSummary(empty, {4096U, 1024U, 2048U}), empty),
+          "an empty overview remains safe while waiting for a source snapshot");
+}
+
 void waveformDetailSession()
 {
     using namespace std::chrono_literals;
@@ -1397,17 +1503,52 @@ void waveformDetailSession()
     ++reply.request.firstPad;
     check(!session.accept(reply), "detail replies from a different pad are ignored");
     reply.request = *request;
+    reply.waveform.frames = static_cast<std::uint32_t>(request->end - request->start);
+    reply.waveform.minimum.fill(-0.5f);
+    reply.waveform.maximum.fill(0.75f);
     check(session.accept(reply) && session.detail() != nullptr &&
           !session.requestDue(now + 1s),
           "matching detail replies stop retries and become visible");
     check(!session.pan(0.0f, now) && session.detail() != nullptr,
           "an unchanged viewport retains its matching detail");
-    check(session.pan(-1.0f, now + 1s) && session.detail() == nullptr &&
+    check(session.pan(-1.0f, now + 1s) && session.detail() != nullptr &&
+          session.detail()->start == request->start && session.detail()->end == request->end &&
           !session.accept(reply),
-          "panning hides old detail and rejects the previous range");
+          "panning retains cached detail coverage and rejects the previous range reply");
+    sms::audio::WaveformSummary overview;
+    overview.frames = 1000U;
+    overview.minimum.fill(-0.25f);
+    overview.maximum.fill(0.25f);
+    const auto panned = sms::ui::waveform::visibleSummary(
+        overview, session.viewport(), session.detail());
+    check(panned.minimum[0] == -0.5f && panned.maximum[0] == 0.75f &&
+          panned.minimum.back() == -0.25f && panned.maximum.back() == 0.25f,
+          "panning displays cached overlap and overview before a fresh reply");
     const auto moved = session.request(7, 3U, true, now + 1050ms);
     check(moved && moved->sequence != request->sequence,
           "a changed viewport creates a new detail identity");
+    auto replacement = reply;
+    replacement.request = *moved;
+    replacement.waveform.minimum.fill(-0.625f);
+    replacement.waveform.maximum.fill(0.875f);
+    check(session.accept(replacement) && session.detail()->start == moved->start &&
+          session.detail()->end == moved->end &&
+          session.detail()->waveform.maximum[0] == 0.875f && !session.accept(reply),
+          "a fresh reply replaces cache data and captured range while old replies stay rejected");
+    for (int gesture = 0; gesture < 4; ++gesture) {
+        static_cast<void>(session.zoom(0.25f, 50.0f, bounds, now + 1100ms));
+        static_cast<void>(session.pan(1.0f, now + 1100ms));
+        const auto visible = sms::ui::waveform::visibleSummary(
+            overview, session.viewport(), session.detail());
+        check(session.detail() != nullptr && session.detail()->start == moved->start &&
+              session.detail()->end == moved->end &&
+              std::all_of(visible.minimum.begin(), visible.minimum.end(),
+                  [](const float value) { return value <= -0.25f; }) &&
+              std::all_of(visible.maximum.begin(), visible.maximum.end(),
+                  [](const float value) { return value >= 0.25f; }) &&
+              !session.accept(replacement),
+              "continuous pan and zoom retain visible extrema and reject stale replies");
+    }
     session.reset(1000U);
     check(session.detail() == nullptr && !session.accept({*moved, {}}) &&
           !session.requestDue(now + 2s),
@@ -1546,6 +1687,7 @@ int main()
     editorSnapshotCollection();
     chopEditorWorkflow();
     splitEditorWorkflow();
+    waveformVisibleSummary();
     waveformDetailSession();
     editorAuditionModes();
     playbackIndicator();

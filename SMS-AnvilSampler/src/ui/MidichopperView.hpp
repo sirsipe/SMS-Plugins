@@ -80,7 +80,7 @@ struct ViewState {
     bool chopNextEnabled = false;
     const char* status = "";
     sms::ui::waveform::Viewport waveformViewport;
-    const sms::audio::WaveformSummary* waveformDetail = nullptr;
+    const sms::ui::waveform::CachedDetail* waveformDetail = nullptr;
     const DGL_NAMESPACE::NanoImage* logo = nullptr;
     const DGL_NAMESPACE::NanoImage* background = nullptr;
     bool skinsAvailable = false;

@@ -93,14 +93,15 @@ Empty pads use empty values.
 Durable restoration stages per-pad desired updates without waiting for
 processing; published reads include them, and the next block commits them.
 
-Cut/ADSR and mixer values use versioned per-pad states. Import resets both;
-rechopping preserves mixer settings on non-empty results and clears settings
-when a pad becomes empty. The UI retains its snapshot until a matching sequenced reply carries waveform
-and settings together, ignoring stale same-pad replies and retrying failures. DSP
-returns a 128-bin min/max summary through DPF state in LV2 or the bounded
-direct-access bus in VST3. Zoom/pan requests range- and sequence-checked
-summaries from retained storage
-on the control worker. UI-local zoom resets on pad/editor changes. See
+Cut/ADSR and mixer states are versioned. Import resets both; rechopping preserves
+mixers on non-empty results and clears empty-pad settings. The UI retains
+waveform/settings snapshots until a matching sequenced reply arrives, rejecting
+stale same-pad replies and retrying failures. DSP sends 128-bin min/max summaries
+through LV2 DPF state or the bounded VST3 direct-access bus. Zoom/pan requests
+range/sequence-checked detail from retained storage on the control worker.
+Both editors reproject range-tagged cached extrema through
+`waveform::visibleSummary`, filling uncovered bins from the whole-source overview
+until matching detail arrives. Pad/editor changes reset zoom and cache. See
 [editor detail](../../Docs/AI/CHOP-EDITOR.md).
 
 `pad_color_01..64` saves slot palette indices. Zero/unavailable indices mean no

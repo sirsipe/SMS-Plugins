@@ -33,4 +33,5 @@ shared UI and framework-neutral source include paths.
 - `PadLayout.hpp`: visible-pad counts, bottom-up index mapping, and grid geometry.
 - `WaveformEditor.hpp`: renderer-independent waveform geometry, hit testing,
   value mapping, and drag behavior.
-- `WaveformViewport.hpp`: frame-range zoom, pan, and source-to-screen mapping.
+- `WaveformViewport.hpp`: frame-range zoom, pan, source-to-screen mapping, and
+  cached-detail reprojection with a whole-source summary fallback.

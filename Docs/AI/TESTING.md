@@ -37,7 +37,7 @@ need command/source checks. Optional long-audio test (keep WAVs out of Git):
 
 ## LV2 bundle discovery
 
-Use `lilv-utils` to inspect the built bundle:
+Inspect with `lilv-utils`:
 
 ```bash
 LV2_PATH="$PWD/build/bin" \
@@ -48,7 +48,7 @@ LV2_PATH="$PWD/build/bin" \
 
 ## LV2 host integration
 
-Carla: LV2 UI, state, parameters:
+Carla:
 
 ```bash
 LV2_URI='https://github.com/sirsipe/SMS-Plugins/SMS-AnvilSampler'
@@ -58,9 +58,8 @@ LV2_PATH="$PWD/build/bin" pw-jack carla-single native lv2 "$LV2_URI"
 Omit `pw-jack` if unnecessary. Current
 [Carla main](https://github.com/falkTX/Carla/blob/main/source/backend/plugin/CarlaPluginLV2.cpp)
 includes the LV2 control-input change-request feature that SMS-Anvil Sampler uses
-when MIDI activates a bank, but Carla 2.5.10 does not expose it. A future
-reproducible environment should pin a Carla revision or release containing that
-feature and verify support.
+when MIDI activates a bank, but Carla 2.5.10 does not expose it. Pin a Carla
+revision with that feature when validating bank updates.
 
 Use jalv for LV2 diagnostics:
 
@@ -71,7 +70,7 @@ LV2_PATH="$PWD/build/bin" pw-jack jalv -s "$LV2_URI"
 Jalv and Carla 2.5.10 load the UI and route MIDI, but cannot validate
 DSP-requested `active_bank` UI updates.
 
-Connect stereo/MIDI inputs and recorded outputs through JACK. Verify audio/MIDI flow.
+Connect JACK stereo/MIDI inputs and outputs; verify audio/MIDI flow.
 
 Applicable checks:
 
@@ -98,6 +97,10 @@ Applicable checks:
   suppression. Lose focus while held, release, return, and retry. Menus, numeric
   entry, and cut-point views block Space. Verify DAW transport does not respond.
 - Cut Point Editor: follow its focused [validation contract](CHOP-EDITOR.md).
+- Waveforms: in Sample Editor, Adjust Cut Points, and Split Sample, continuously
+  drag zoom/scroll and Ctrl/Shift-wheel. Check visible, correctly positioned peaks,
+  coarse fallback/refinement, deep zoom, edges, zoom-out, pad switching, and
+  Apply refresh without stale peaks.
 - Pad clipboard: Copy an edited occupied pad, then alter or clear its source and
   Paste to empty and occupied targets. Confirm stereo audio and all editor settings
   match the copy-time snapshot, and that an empty clipboard disables Paste.
@@ -117,14 +120,13 @@ ignored `build/gui-test/`. It sets VNC to 1920x1080. Use `--keep-open` for furth
 interaction. `screenshot-window WINDOW_ID OUTPUT.png` captures one window; resolve it again
 after relaunch/resize.
 
-Capture only the plug-in window. Inspect artifacts before sharing; exclude
-private data, notifications, and unrelated applications. Repository screenshots
-contain only intentional product UI.
+Inspect plug-in-only screenshots before sharing; exclude private data,
+notifications, and unrelated applications.
 
-For the VST3 UI, launch
+For VST3, launch
 `carla-single native vst3 "$PWD/build/bin/SMS-AnvilSampler.vst3"` on this desktop. Import a WAV, open Sample Editor, switch pads and back, and check the
 waveform and settings. Exercise Split Sample or Adjust Cut Points. Then save,
 close, delete the source WAV, reload, and compare audio and editor values.
 
-Report host, rate/buffer, steps, results, and unavailable checks. CI runs CTest
-and `lv2info`; host audio/UI evidence remains necessary.
+Report host, rate/buffer, steps, results, and skipped checks. CI covers CTest and
+`lv2info`, not host audio/UI behavior.

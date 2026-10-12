@@ -8,7 +8,7 @@
 
 namespace midichopper::ui {
 
-/** Owns viewport detail identity, debounce, retries, and stale-reply rejection. */
+/** Owns retained viewport detail, debounce, retries, and stale-reply rejection. */
 class WaveformDetailSession {
 public:
     using Clock = std::chrono::steady_clock;
@@ -16,7 +16,7 @@ public:
 
     [[nodiscard]] const sms::ui::waveform::Viewport& viewport() const noexcept
     { return fViewport; }
-    [[nodiscard]] const sms::audio::WaveformSummary* detail() const noexcept
+    [[nodiscard]] const sms::ui::waveform::CachedDetail* detail() const noexcept
     { return fReady ? &fDetail : nullptr; }
 
     [[nodiscard]] bool zoom(const float delta, const float anchorX,
@@ -64,7 +64,7 @@ public:
             reply.request.start != fViewport.start || reply.request.end != fViewport.end ||
             !fViewport.zoomed())
             return false;
-        fDetail = reply.waveform;
+        fDetail = {reply.waveform, reply.request.start, reply.request.end};
         fReady = true;
         fDirty = false;
         return true;
@@ -74,7 +74,6 @@ private:
     [[nodiscard]] bool scheduleIfChanged(const bool changed, const Time now) noexcept
     {
         if (changed) {
-            fReady = false;
             fDirty = fViewport.zoomed();
             fDeadline = now + std::chrono::milliseconds(50);
         }
@@ -82,7 +81,7 @@ private:
     }
 
     sms::ui::waveform::Viewport fViewport{};
-    sms::audio::WaveformSummary fDetail{};
+    sms::ui::waveform::CachedDetail fDetail{};
     plugin::WaveformDetailRequest fRequest{};
     std::uint64_t fSequence = 0U;
     bool fReady = false;

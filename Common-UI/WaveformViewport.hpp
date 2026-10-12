@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Audio/WaveformSummary.hpp"
 #include "UI/Geometry.hpp"
 
 #include <algorithm>
@@ -137,5 +138,54 @@ struct Viewport {
         return start != oldStart;
     }
 };
+
+/** Cached bins retain their source coordinates while the viewport moves. */
+struct CachedDetail {
+    audio::WaveformSummary waveform;
+    std::uint64_t start = 0U;
+    std::uint64_t end = 0U;
+};
+
+/** Reproject retained extrema; uncovered bins use the coarse whole-source view.
+ * This is a display approximation until matching detail arrives, not new PCM. */
+[[nodiscard]] inline audio::WaveformSummary visibleSummary(
+    const audio::WaveformSummary& overview, const Viewport viewport,
+    const CachedDetail* const detail = nullptr) noexcept
+{
+    if (!viewport.zoomed() || overview.frames == 0U || viewport.end <= viewport.start)
+        return overview;
+    if (detail != nullptr && detail->start == viewport.start && detail->end == viewport.end)
+        return detail->waveform;
+
+    auto visible = overview;
+    const auto length = viewport.end - viewport.start;
+    visible.frames = static_cast<std::uint32_t>(length);
+    for (std::size_t bin = 0; bin < audio::kWaveformBins; ++bin) {
+        const auto first = viewport.start + length * bin / audio::kWaveformBins;
+        const auto last = std::min(viewport.end, std::max(first + 1U,
+            viewport.start + length * (bin + 1U) / audio::kWaveformBins));
+        const bool covered = detail != nullptr && detail->start <= first &&
+            detail->end >= last && detail->end > detail->start &&
+            detail->end - detail->start <= viewport.total;
+        const auto& source = covered ? detail->waveform : overview;
+        const auto sourceStart = covered ? detail->start : 0U;
+        const auto sourceLength = covered ? detail->end - detail->start : viewport.total;
+        float low = 1.0f;
+        float high = -1.0f;
+        for (std::size_t index = 0; index < audio::kWaveformBins; ++index) {
+            const auto sourceFirst = sourceStart + sourceLength * index / audio::kWaveformBins;
+            const auto sourceLast = std::min(sourceStart + sourceLength,
+                std::max(sourceFirst + 1U,
+                    sourceStart + sourceLength * (index + 1U) / audio::kWaveformBins));
+            if (sourceFirst < last && sourceLast > first) {
+                low = std::min(low, source.minimum[index]);
+                high = std::max(high, source.maximum[index]);
+            }
+        }
+        visible.minimum[bin] = low <= high ? low : 0.0f;
+        visible.maximum[bin] = low <= high ? high : 0.0f;
+    }
+    return visible;
+}
 
 } // namespace sms::ui::waveform

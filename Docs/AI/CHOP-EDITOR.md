@@ -28,7 +28,8 @@ Ctrl-wheel zooms around the pointer; Shift-wheel pans within the source. The
 visible range gets a fresh raw 128-bin summary. Modified wheel input over a
 handle controls the viewport; unmodified wheel still moves the cut. Navigation,
 Apply refresh, and Exit reset the viewport. Zoom never changes source offsets.
-Zoom/scroll controls use the same viewport and detail requests.
+Zoom/scroll controls share these requests; drawing stays visible through the
+[viewport cache](../../SMS-AnvilSampler/Docs/ARCHITECTURE.md#project-state).
 
 From entry through Apply/loading, the editor owns MIDI exclusively; all notes
 are silent until its waveform data is ready. Then the three displayed notes
@@ -89,7 +90,7 @@ Cancellation and failures do not mutate.
   readers, and continuous unrelated monitoring/playback during edits.
 - `state-codec`: commands/replies round-trip; malformed versions, counts,
   ranges, sequences, and generations fail; snapshot replies fit the UI bus.
-- `ui-geometry`: handles, viewport/drag/wheel clamping, empty-edge geometry,
+- `ui-geometry`: handles, viewport clamping, cached-detail/overview mapping, empty-edge geometry,
   navigation, previews, coherent session readiness, retry, and stale replies.
 - Pad structure: single/multiple empty-gap collapse, nearest-empty split shifts,
   mixed source rates, settings movement, midpoint and adjusted splits, stale
