@@ -7,6 +7,7 @@
 #include "DPF/ContextMenu.hpp"
 #include "DPF/LevelMeter.hpp"
 #include "DPF/Theme.hpp"
+#include "LogoGlow.hpp"
 #include "DPF/WaveformRenderer.hpp"
 #include "MidichopperLayout.hpp"
 #include "MidichopperInteraction.hpp"
@@ -38,7 +39,7 @@ public:
                                 uiLayout::canvasHeight, 18.0f);
             canvas_.fillPaint(canvas_.imagePattern(0.0f, 0.0f,
                 uiLayout::canvasWidth, uiLayout::canvasHeight,
-                0.0f, *state_.background, 1.0f));
+                0.0f, *state_.background, sms::ui::dpf::theme().backgroundAlpha));
             canvas_.fill();
         }
         sms::ui::dpf::drawScrew(canvas_, 20.0f, 20.0f);
@@ -422,12 +423,26 @@ private:
         if (state_.logo != nullptr && state_.logo->isValid()) {
             const float x = textRight + 14.0f;
             constexpr float y = 13.0f;
-            constexpr float width = 170.0f;
-            constexpr float height = 78.0f;
+            constexpr float width = sms::ui::logoWidth;
+            constexpr float height = sms::ui::logoHeight;
+            const bool glow = state_.logoGlow != nullptr && state_.logoGlow->isValid();
+            if (glow) {
+                constexpr float padding = sms::ui::logoGlowPadding;
+                constexpr float glowWidth = sms::ui::logoGlowWidth;
+                constexpr float glowHeight = sms::ui::logoGlowHeight;
+                auto paint = canvas_.imagePattern(x - padding, y - padding,
+                    glowWidth, glowHeight, 0.0f, *state_.logoGlow, 1.0f);
+                paint.innerColor = paint.outerColor = colors.logoGlow.withAlpha(
+                    colors.logoGlow.alpha * state_.logoGlowOpacity);
+                canvas_.beginPath();
+                canvas_.rect(x - padding, y - padding, glowWidth, glowHeight);
+                canvas_.fillPaint(paint);
+                canvas_.fill();
+            }
             canvas_.beginPath();
             canvas_.rect(x, y, width, height);
             canvas_.fillPaint(canvas_.imagePattern(
-                x, y, width, height, 0.0f, *state_.logo, 0.48f));
+                x, y, width, height, 0.0f, *state_.logo, glow ? 1.0f : 0.48f));
             canvas_.fill();
         }
 
@@ -529,7 +544,11 @@ private:
     void drawPadPanel()
     {
         const auto& colors = sms::ui::dpf::theme();
-        sms::ui::dpf::drawPanel(canvas_, uiLayout::mainPanel);
+        {
+            const sms::ui::dpf::ScopedCanvasState panelState(canvas_);
+            canvas_.globalAlpha(colors.padPanelAlpha);
+            sms::ui::dpf::drawPanel(canvas_, uiLayout::mainPanel);
+        }
         canvas_.fontFace(NANOVG_DEJAVU_SANS_TTF);
         canvas_.fontSize(13.0f);
         canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_LEFT |
@@ -1027,10 +1046,10 @@ private:
                                   state_.anyPlaybackActive ? "STOP" : "PLAY",
                                   state_.anyPlaybackActive ? sms::ui::dpf::ControlSymbol::stop
                                       : sms::ui::dpf::ControlSymbol::play,
-                                  state_.anyPlaybackActive, colors.activityPlayback,
+                                  state_.anyPlaybackActive, colors.controlAccent,
                                   hovered(InteractiveType::playStop));
         sms::ui::dpf::drawSegment(canvas_, uiLayout::playOnSelect, editorAuditionLabel(state_.auditionMode),
-                                  editorAuditionPressed(state_.auditionMode), colors.activityPlayback,
+                                  editorAuditionPressed(state_.auditionMode), colors.controlAccent,
                                   hovered(InteractiveType::playOnSelect));
     }
 
@@ -1100,10 +1119,10 @@ private:
         } else {
             text(994.0f, 204.0f, "PLAYBACK", nullptr);
             sms::ui::dpf::drawSegment(canvas_, uiLayout::oneShotMode, "ONE SHOT",
-                state_.playbackMode < 0.5f, colors.activityPlayback,
+                state_.playbackMode < 0.5f, colors.controlAccent,
                 hovered(InteractiveType::oneShotMode));
             sms::ui::dpf::drawSegment(canvas_, uiLayout::gatedMode, "GATE",
-                state_.playbackMode >= 0.5f, colors.activityPlayback,
+                state_.playbackMode >= 0.5f, colors.controlAccent,
                 hovered(InteractiveType::gatedMode));
             text(994.0f, 278.0f, "MAX VOICES", nullptr);
             char voices[8];
@@ -1120,7 +1139,7 @@ private:
                 state_.anyPlaybackActive ? "STOP" : "PLAY",
                 state_.anyPlaybackActive ? sms::ui::dpf::ControlSymbol::stop
                     : sms::ui::dpf::ControlSymbol::play,
-                state_.anyPlaybackActive, colors.activityPlayback,
+                state_.anyPlaybackActive, colors.controlAccent,
                 hovered(InteractiveType::playStop));
         }
 

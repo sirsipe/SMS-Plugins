@@ -44,6 +44,7 @@
 #include "ContextMenu.hpp"
 #include "DPF/NanoUI.hpp"
 #include "DPF/SkinTheme.hpp"
+#include "DPF/LogoGlow.hpp"
 #include "SkinCatalog.hpp"
 #include "DistrhoPluginUtils.hpp"
 #include "DSP/SampleMixerSettings.hpp"
@@ -817,6 +818,11 @@ protected:
         }
 #endif
         const auto now = std::chrono::steady_clock::now();
+        if (getWindow().isVisible() && fLogoGlow && fLogoGlow->isValid() &&
+            fTheme.logoGlowPulseSeconds > 0.0f && now >= fNextLogoGlowRepaint) {
+            fNextLogoGlowRepaint = now + kMeterFrameInterval;
+            requestRepaint();
+        }
         if (fClearArmed && now >= fClearDeadline) {
             fClearArmed = false;
             requestRepaint();
@@ -847,6 +853,7 @@ protected:
         // Texture deletion/creation needs this editor's current GL context.
         if (fPendingSkin) {
             fLogo.reset();
+            fLogoGlow.reset();
             fBackground.reset();
             fSkin = std::move(*fPendingSkin);
             fPendingSkin.reset();
@@ -858,6 +865,7 @@ protected:
         // caused it, so do not schedule a redundant meter-only frame.
         fMeterRepaintPending = false;
         fNextMeterRepaint = std::chrono::steady_clock::now() + kMeterFrameInterval;
+        fNextLogoGlowRepaint = fNextMeterRepaint;
 
         const float w = static_cast<float>(getWidth());
         const float h = static_cast<float>(getHeight());
@@ -876,9 +884,20 @@ protected:
             const auto& logoPath = fSkin.imagePath("logo");
             if (!logoPath.empty())
                 fLogo.emplace(createImageFromFile(logoPath.c_str(), flags));
-            if (!fLogo || !fLogo->isValid())
+            const bool customLogoLoaded = fLogo && fLogo->isValid();
+            if (!customLogoLoaded)
                 fLogo.emplace(createImageFromMemory(anvillesampler_artwork::anvilleData,
                                               anvillesampler_artwork::anvilleDataSize, flags));
+            if (sms::ui::dpf::logoGlowEnabled(fTheme)) {
+                const auto pixels = sms::ui::dpf::loadLogoGlow(
+                    customLogoLoaded ? logoPath.c_str() : nullptr,
+                    {anvillesampler_artwork::anvilleData, anvillesampler_artwork::anvilleDataSize},
+                    fTheme.logoGlowRadius);
+                if (!pixels.empty())
+                    fLogoGlow.emplace(createImageFromRGBA(sms::ui::logoGlowWidth,
+                        sms::ui::logoGlowHeight, pixels.data(), flags));
+            }
+            fLogoGlowEpoch = std::chrono::steady_clock::now();
             const auto& backgroundPath = fSkin.imagePath("background");
             if (!backgroundPath.empty())
                 fBackground.emplace(createImageFromFile(backgroundPath.c_str(), flags));
@@ -950,6 +969,9 @@ protected:
             fChopEditor.canNavigate(1, globalPad(0), visiblePadCount()), fStatus,
             fWaveformDetail.viewport(), fWaveformDetail.detail(),
             fLogo ? &*fLogo : nullptr, fBackground ? &*fBackground : nullptr,
+            fLogoGlow ? &*fLogoGlow : nullptr,
+            sms::ui::logoGlowOpacity(fTheme.logoGlowAlpha, fTheme.logoGlowPulseSeconds,
+                std::chrono::duration<double>(std::chrono::steady_clock::now() - fLogoGlowEpoch).count()),
             fSkinCatalog.selectable(), fMenuOpen && fSkinMenuOpen, fSkinMenu,
             std::span<const sms::ui::ContextMenuItemView>{skinMenuItems.data(),
                 static_cast<std::size_t>(skinRows)}, fSkinMenuOffset,
@@ -2002,6 +2024,9 @@ private:
     sms::ui::dpf::Theme fTheme;
     std::optional<sms::ui::Skin> fPendingSkin;
     std::optional<DGL_NAMESPACE::NanoImage> fLogo;
+    std::optional<DGL_NAMESPACE::NanoImage> fLogoGlow;
+    std::chrono::steady_clock::time_point fLogoGlowEpoch{};
+    std::chrono::steady_clock::time_point fNextLogoGlowRepaint{};
     std::optional<DGL_NAMESPACE::NanoImage> fBackground;
     bool fSkinMenuOpen = false;
     int fSkinMenuOffset = 0;

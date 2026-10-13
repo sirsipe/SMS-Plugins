@@ -2,27 +2,34 @@
 
 ## Ask an LLM to create a skin
 
-Give it this guide and ask it to follow the
-[AI authoring reference](../../Docs/AI/SKINS.md), starting from
-[placeholder/skin.ini](../skins/placeholder/skin.ini). Specify the visual style,
-display name, language, and output folder. If the LLM cannot access repository
-links, attach all three files; this guide alone does not include the full key
-and label catalog. Custom skins belong in ignored `build/skins/` or outside the
-checkout. Only the placeholder is maintained in Git.
+Supply this guide, the [AI authoring reference](../../Docs/AI/SKINS.md), and
+[placeholder/skin.ini](../skins/placeholder/skin.ini), which catalogs every key.
+Specify style, name, language and output folder. Attach these files if links are
+inaccessible. Personal skins belong in ignored `build/skins/` or outside the
+checkout; only the bundled default and placeholder are maintained in Git.
+
+## Bundled appearance
+
+Every build deploys [the graffiti default](../skins/default/skin.ini) into
+`skin/` (CLAP uses sibling `SMS-AnvilleSampler.skin`). It loads automatically and
+hides the skin selector. The black/yellow background uses amber controls, warm
+panels/pads, cream text, soft white
+selections/playback highlights, red capture/arm indicators, and a yellow pulsing halo around the
+unchanged embedded anvil logo. Builds overwrite the shipped manifest and artwork in build output.
+
+Replace the installed `skin` for a custom forced appearance. Remove it to enable
+a `skins` collection or the built-in appearance.
 
 ## Loading skins
 
-Skin discovery runs when the editor opens. Colors, strings and artwork can
-switch immediately through the menu; close and reopen the editor after adding,
-renaming, removing, or editing skin files. Restart the host if it retains hidden
-editors.
+Discovery runs when the editor opens. Menu choices switch immediately.
+Reopen after editing skin files; restart hosts retaining hidden editors.
 
 ## One skin or a collection
 
 A `skin` directory inside the plugin bundle overrides every other choice and
-hides the skin selector. This preserves existing drop-in skins, including older
-manifests without a name. A malformed forced skin falls back to the built-in
-look, rather than enabling a collection behind it.
+hides the skin selector. Older unnamed manifests remain valid. A malformed forced skin uses the
+built-in look and still suppresses collections.
 
 Without `skin`, create `skins` containing one subfolder per skin:
 
@@ -50,8 +57,8 @@ name=Graffiti
 
 If at least one named skin is available, **hamburger → Skins** lists **Default**
 (the built-in appearance) first, followed by skin names sorted alphabetically.
-Names are taken directly from the manifests. The selected row is marked. Long
-lists scroll with the mouse wheel; Default stays at the top. Only immediate
+Manifest names appear literally. The selected row is marked; long lists scroll
+with the wheel while Default stays at the top. Only immediate
 subfolders are scanned. Missing names, unsupported or malformed manifests, and
 paths escaping the collection are skipped. Selecting a skin that has since
 become unreadable keeps the current skin and reports an error.
@@ -62,10 +69,10 @@ For single-file CLAP, use sibling `SMS-AnvilleSampler.skin` for an override or
 `SMS-AnvilleSampler.skins` for a collection. CLAP host integration remains
 untested.
 
-Every build includes an inactive `skin-template` example. Copy it as `skin` for
-an override, or as `skins/dark` for a selectable skin. The source example is
-[placeholder/skin.ini](../skins/placeholder/skin.ini). It catalogs colors,
-material metrics, fixed/formatted labels and both image slots.
+Every build includes an inactive `skin-template`. Copy it as `skin` for
+an override or `skins/dark` for selection. Its source
+[placeholder/skin.ini](../skins/placeholder/skin.ini) catalogs colors, metrics,
+labels/formats and image slots.
 
 ## Remembering a choice
 
@@ -74,10 +81,8 @@ or `~/.config/SMS-AnvilleSampler/selected-skin` when XDG_CONFIG_HOME is absent o
 relative. A selection writes the preference atomically. An unavailable config
 folder reports that the appearance changed but could not be remembered.
 
-The preference stores the skin's subfolder name, not its display name or an
-absolute path. Use matching subfolder names across LV2/VST3 collections to
-share the choice. New editors restore it; already-open editors retain their
-own appearance. A missing or unavailable remembered skin uses Default. A forced
+Preferences store subfolder IDs. Matching IDs share choices across LV2/VST3.
+New editors restore them; already-open editors retain their appearance. A missing or unavailable remembered skin uses Default. A forced
 `skin` ignores the preference without overwriting it. Choosing Default also
 persists. Skins do not change host parameters or DAW project state.
 
@@ -93,7 +98,7 @@ Values are literal: do not add quotes, inline comments, or escape sequences.
 | Section | Values |
 | --- | --- |
 | `[colors]` | `#RRGGBB` or `#RRGGBBAA`; semantic and material keys from the example |
-| `[metrics]` | Decimal numbers; alpha values 0–1, radii/outline width 0–24 logical pixels |
+| `[metrics]` | Decimal numbers; alpha 0–1, radii/outline width 0–24 pixels, logo pulse 0–60 seconds |
 | `[strings]` | Exact built-in label/format on the left, replacement text on the right |
 | `[images]` | `background` and `logo`, each a relative image filename inside the skin |
 
@@ -106,10 +111,9 @@ version=1
 controlAccent=#58B8E8
 selection=#80D0FF
 [metrics]
-materialGrainAlpha=0.02
-[strings]
-PLAY=GO
-SMS-ANVILLE SAMPLER=MY SAMPLER
+backgroundAlpha=0.75
+padAlpha=0.60
+padPanelAlpha=0.35
 [images]
 background=background.png
 ```
@@ -124,16 +128,30 @@ parameter names, or saved-state keys. The six pad palette colors
 use `pad1` through `pad6`; these retain the saved slot indices in their original
 order. Their menu names can be replaced in `[strings]`.
 
-Use PNG artwork (the supplied example does). NanoVG also accepts JPEG. The
+Use PNG artwork; JPEG is also supported. The
 background stretches across the 1344 × 756 logical chassis, behind the panels,
 controls, and screws. It does not replace individual control artwork. The logo
-stretches into the existing 170 × 78 header rectangle, drawn at 48% opacity.
+stretches into the 170 × 78 header rectangle: 48% opacity without a glow,
+fully opaque over an enabled halo.
 Transparent pixels reveal the built-in rendering. Assets load once on the
 first draw, when the graphics context is ready.
 
-Missing settings and invalid individual colors, numbers, or images keep their
-built-in defaults. Unknown settings are ignored. A missing, malformed,
-oversized, or unsupported manifest uses the complete built-in theme. The
+Under `[metrics]`, `backgroundAlpha` fades artwork over the chassis;
+`padAlpha` fades pad fills, tints, shadows and grain. `padPanelAlpha` fades
+the main pad-bank backing panel so artwork shows through it. Labels and
+selection outlines retain their opacity; padPanelAlpha leaves menus/control panels unchanged.
+All three accept 0–1 and default to `1`.
+
+Configure the halo with `[colors] logoGlow` and `[metrics] logoGlowAlpha`,
+`logoGlowRadius`, and `logoGlowPulseSeconds`. Alpha or radius `0` disables it;
+a transparent glow color also disables it. Pulse `0` is steady; positive values
+set the cycle length in seconds. Brightness gently cycles from 65% to 100% of
+the configured alpha. Missing alpha defaults to `0`, preserving older skins.
+The halo follows logo alpha; use transparent PNGs. Logos exceeding 4096 pixels
+on either axis receive no halo. Animation runs only while visible, up to 30 FPS.
+
+Missing/invalid settings retain built-in defaults; unknown keys are ignored.
+Missing, malformed, oversized or unsupported manifests use the built-in theme. The
 manifest limit is 64 KiB; string keys/values have a 512-byte limit and must be
 valid UTF-8 without control characters. Absolute paths, `..`, and symlinks
 escaping the skin directory are rejected. Each editor owns its palette; skin

@@ -24,6 +24,10 @@ Outputs: `build/bin/SMS-AnvilleSampler.lv2` and, when enabled,
 `build/bin/SMS-AnvilleSampler.vst3`. `ANVILLESAMPLER_BUILD_CLAP=ON` adds CLAP;
 CLAP is not currently covered by CI. Both optional format switches default OFF.
 Python 3 runs DPF's resource converter to embed `res/anville.png` in each UI binary.
+Each build copies the maintained graffiti default into LV2/VST3 `skin/` and
+CLAP sibling `SMS-AnvilleSampler.skin`, activating it without a skin menu.
+The inactive `skin-template` remains available for authoring. The copies refresh
+the shipped files even when no binaries relink.
 Use a fresh ignored `build-*` directory if an existing CMake cache uses a
 different source path or generator. Avoid repeatedly rebuilding unchanged code.
 

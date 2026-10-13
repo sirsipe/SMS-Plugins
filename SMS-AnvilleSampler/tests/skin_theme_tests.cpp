@@ -1,4 +1,5 @@
 #include "DPF/SkinTheme.hpp"
+#include "DPF/LogoGlow.hpp"
 
 #include <atomic>
 #include <barrier>
@@ -6,6 +7,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <iostream>
+#include <fstream>
+#include <iterator>
 #include <string>
 #include <thread>
 
@@ -94,6 +97,58 @@ void safeMetrics()
                   "out-of-range or invalid metrics retain built-in value");
         }
     }
+}
+
+void independentOpacityControls()
+{
+    sms::ui::Skin skin;
+    const auto original = skinTheme(skin);
+    check(original.backgroundAlpha == 1.0f && original.padAlpha == 1.0f &&
+          original.padPanelAlpha == 1.0f, "older skins retain full opacity");
+    skin.metrics["backgroundAlpha"] = "0.75";
+    skin.metrics["padAlpha"] = "0";
+    skin.metrics["padPanelAlpha"] = "0.35";
+    const auto transparent = skinTheme(skin);
+    check(transparent.backgroundAlpha == 0.75f && transparent.padAlpha == 0.0f &&
+          transparent.padPanelAlpha == 0.35f,
+          "background, pad surfaces and backing panel opacity are independent");
+    check(transparent.padTintAlpha == original.padTintAlpha &&
+          sameColor(transparent.selection, original.selection) &&
+          sameColor(transparent.contentPrimary, original.contentPrimary) &&
+          sameColor(transparent.controlAccent, original.controlAccent),
+          "surface transparency preserves saved tints, labels, selection and knob colors");
+}
+
+void logoGlowLoading()
+{
+    const Theme defaults;
+    check(!logoGlowEnabled(defaults), "legacy themes leave glow and animation disabled");
+    auto enabled = defaults;
+    enabled.logoGlowAlpha = 0.7f;
+    check(logoGlowEnabled(enabled), "nonzero alpha enables glow");
+    enabled.logoGlowRadius = 0.0f;
+    check(!logoGlowEnabled(enabled), "zero radius disables glow");
+    enabled.logoGlowRadius = 10.0f;
+    enabled.logoGlow.alpha = 0.0f;
+    check(!logoGlowEnabled(enabled), "transparent glow color disables glow");
+    const auto path = (std::filesystem::path(ANVILLESAMPLER_SKIN_TEMPLATE_DIR) /
+                       "../../res/anville.png").lexically_normal().string();
+    std::ifstream input(path, std::ios::binary);
+    check(static_cast<bool>(input), "original logo is readable for glow test");
+    const std::vector<std::uint8_t> png{std::istreambuf_iterator<char>(input),
+                                      std::istreambuf_iterator<char>()};
+    const auto embedded = loadLogoGlow(nullptr, png, 10.0f);
+    const auto custom = loadLogoGlow(path.c_str(), {}, 10.0f);
+    check(!embedded.empty() && embedded == custom,
+          "embedded and custom logos use identical alpha decoding");
+    bool visible = false, transparent = false;
+    for (std::size_t index = 3; index < embedded.size(); index += 4) {
+        visible |= embedded[index] != 0;
+        transparent |= embedded[index] == 0;
+    }
+    check(visible && transparent, "real original logo creates a confined visible silhouette halo");
+    const std::array<std::uint8_t, 4> corrupt{0, 1, 2, 3};
+    check(loadLogoGlow(nullptr, corrupt, 10.0f).empty(), "unreadable image fails without a glow");
 }
 
 void scopeRestorationAndTranslations()
@@ -187,6 +242,8 @@ int main()
 {
     colorsAndPadIndices();
     safeMetrics();
+    independentOpacityControls();
+    logoGlowLoading();
     scopeRestorationAndTranslations();
     concurrentScopeIsolation();
     placeholderCatalog();

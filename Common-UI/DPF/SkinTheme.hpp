@@ -28,6 +28,7 @@ inline constexpr std::array themeColorFields{
     ThemeColorField{"meterGreen", &Theme::meterGreen},
     ThemeColorField{"meterYellow", &Theme::meterYellow},
     ThemeColorField{"meterRed", &Theme::meterRed},
+    ThemeColorField{"logoGlow", &Theme::logoGlow},
     ThemeColorField{"chassisTop", &Theme::chassisTop},
     ThemeColorField{"chassisBottom", &Theme::chassisBottom},
     ThemeColorField{"chassisEdge", &Theme::chassisEdge},
@@ -52,6 +53,9 @@ struct ThemeMetricField {
     float maximum;
 };
 inline constexpr std::array themeMetricFields{
+    ThemeMetricField{"backgroundAlpha", &Theme::backgroundAlpha, 0.0f, 1.0f},
+    ThemeMetricField{"padAlpha", &Theme::padAlpha, 0.0f, 1.0f},
+    ThemeMetricField{"padPanelAlpha", &Theme::padPanelAlpha, 0.0f, 1.0f},
     ThemeMetricField{"padTintAlpha", &Theme::padTintAlpha, 0.0f, 1.0f},
     ThemeMetricField{"panelRadius", &Theme::panelRadius, 0.0f, 24.0f},
     ThemeMetricField{"controlRadius", &Theme::controlRadius, 0.0f, 24.0f},
@@ -63,6 +67,9 @@ inline constexpr std::array themeMetricFields{
     ThemeMetricField{"hoverFillAlpha", &Theme::hoverFillAlpha, 0.0f, 1.0f},
     ThemeMetricField{"hoverMenuFillAlpha", &Theme::hoverMenuFillAlpha, 0.0f, 1.0f},
     ThemeMetricField{"hoverHaloAlpha", &Theme::hoverHaloAlpha, 0.0f, 1.0f},
+    ThemeMetricField{"logoGlowAlpha", &Theme::logoGlowAlpha, 0.0f, 1.0f},
+    ThemeMetricField{"logoGlowRadius", &Theme::logoGlowRadius, 0.0f, 24.0f},
+    ThemeMetricField{"logoGlowPulseSeconds", &Theme::logoGlowPulseSeconds, 0.0f, 60.0f},
 };
 
 inline Theme skinTheme(const sms::ui::Skin& skin)

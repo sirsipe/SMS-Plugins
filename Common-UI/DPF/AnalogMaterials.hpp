@@ -28,7 +28,8 @@ private:
     DGL_NAMESPACE::NanoVG& canvas_;
 };
 
-inline void drawFineGrain(DGL_NAMESPACE::NanoVG& canvas, const ui::Rect bounds)
+inline void drawFineGrain(DGL_NAMESPACE::NanoVG& canvas, const ui::Rect bounds,
+                          const float opacity = 1.0f)
 {
     const Theme& colors = theme();
     const ScopedCanvasState canvasState(canvas);
@@ -48,7 +49,7 @@ inline void drawFineGrain(DGL_NAMESPACE::NanoVG& canvas, const ui::Rect bounds)
         canvas.moveTo(x, y);
         canvas.lineTo(x + length, y + 0.25f);
     }
-    canvas.strokeColor(colors.edgeHighlight.withAlpha(colors.materialGrainAlpha));
+    canvas.strokeColor(colors.edgeHighlight.withAlpha(colors.materialGrainAlpha * opacity));
     canvas.strokeWidth(0.55f);
     canvas.stroke();
 }
@@ -249,6 +250,7 @@ inline void drawRubberPad(DGL_NAMESPACE::NanoVG& canvas, const ui::Rect bounds,
     const auto& accent = state.recording ? colors.activityCapture : colors.activityPlayback;
     const float depression = state.pressed ? 2.0f : 0.0f;
     const float alpha = state.enabled ? 1.0f : colors.disabledAlpha;
+    const float surfaceAlpha = alpha * colors.padAlpha;
 
     if (state.selected && state.enabled) {
         canvas.beginPath();
@@ -264,33 +266,33 @@ inline void drawRubberPad(DGL_NAMESPACE::NanoVG& canvas, const ui::Rect bounds,
                        bounds.width + 6.0f, bounds.height + 7.0f, radius + 3.0f);
     canvas.fillPaint(canvas.boxGradient(bounds.x - 3.0f, bounds.y - 2.0f + depression,
         bounds.width + 6.0f, bounds.height + 7.0f, radius + 3.0f, 6.0f,
-        colors.shadow.withAlpha(0.72f * alpha), colors.shadow.withAlpha(0.0f)));
+        colors.shadow.withAlpha(0.72f * surfaceAlpha), colors.shadow.withAlpha(0.0f)));
     canvas.fill();
     canvas.beginPath();
     canvas.roundedRect(bounds.x, bounds.y + depression, bounds.width, bounds.height, radius);
     canvas.fillPaint(canvas.linearGradient(bounds.x, bounds.y + depression,
         bounds.x, bounds.y + bounds.height + depression,
-        colors.rubberTop.withAlpha(alpha), colors.rubberBottom.withAlpha(alpha)));
+        colors.rubberTop.withAlpha(surfaceAlpha), colors.rubberBottom.withAlpha(surfaceAlpha)));
     canvas.fill();
     if (state.tint != nullptr && state.enabled) {
         canvas.beginPath();
         canvas.roundedRect(bounds.x + 2.0f, bounds.y + 2.0f + depression,
                            bounds.width - 4.0f, bounds.height - 4.0f, radius - 2.0f);
-        canvas.fillColor(state.tint->withAlpha(colors.padTintAlpha));
+        canvas.fillColor(state.tint->withAlpha(colors.padTintAlpha * colors.padAlpha));
         canvas.fill();
     }
     if ((state.occupied || state.active || state.recording) && state.enabled) {
         canvas.beginPath();
         canvas.roundedRect(bounds.x + 2.0f, bounds.y + 2.0f + depression,
                            bounds.width - 4.0f, bounds.height - 4.0f, radius - 2.0f);
-        canvas.fillColor(accent.withAlpha(state.active ? 0.18f : 0.08f));
+        canvas.fillColor(accent.withAlpha((state.active ? 0.18f : 0.08f) * colors.padAlpha));
         canvas.fill();
     }
     if (state.hovered && state.enabled) {
         canvas.beginPath();
         canvas.roundedRect(bounds.x + 2.0f, bounds.y + 2.0f + depression,
                            bounds.width - 4.0f, bounds.height - 4.0f, radius - 2.0f);
-        canvas.fillColor(colors.selection.withAlpha(colors.hoverFillAlpha));
+        canvas.fillColor(colors.selection.withAlpha(colors.hoverFillAlpha * colors.padAlpha));
         canvas.fill();
     }
     canvas.beginPath();
@@ -303,11 +305,11 @@ inline void drawRubberPad(DGL_NAMESPACE::NanoVG& canvas, const ui::Rect bounds,
     canvas.moveTo(bounds.x + radius, bounds.y + 1.5f + depression);
     canvas.lineTo(bounds.x + bounds.width - radius, bounds.y + 1.5f + depression);
     canvas.strokeColor(colors.edgeHighlight.withAlpha(
-        colors.bevelHighlightAlpha * alpha * (state.pressed ? 0.35f : 1.0f)));
+        colors.bevelHighlightAlpha * surfaceAlpha * (state.pressed ? 0.35f : 1.0f)));
     canvas.strokeWidth(0.8f);
     canvas.stroke();
     drawFineGrain(canvas, {bounds.x + 4.0f, bounds.y + 4.0f + depression,
-                           bounds.width - 8.0f, bounds.height - 8.0f});
+                           bounds.width - 8.0f, bounds.height - 8.0f}, colors.padAlpha);
 }
 
 inline void drawLed(DGL_NAMESPACE::NanoVG& canvas, const float x, const float y,

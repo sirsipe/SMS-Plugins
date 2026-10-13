@@ -23,12 +23,13 @@ Filter with `ctest --test-dir build --output-on-failure -R NAME`:
 | `state-codec` | Audio/editor/mixer compatibility, cut/waveform protocols; truncation, corrupt headers/payloads, numeric rejection, unchanged destinations |
 | `ui-skin` | Bounded/versioned manifests, scalar/UTF-8/printf fallback, confined images, startup snapshots |
 | `ui-skin-catalog` | Discovery, forced precedence, missing choices, atomic preferences and concurrent writes |
-| `ui-skin-theme` | Complete placeholder colors/metrics/images, RGBA mapping, metric bounds, nested/thread scope isolation |
-| `ui-geometry` | Plugin identity/help URLs, pad mapping, editor snapshots, waveform/chop geometry, viewport mapping, hit testing, wheel editing, Space press/repeat routing |
+| `ui-skin-theme` | Placeholder completeness, RGBA/metric bounds, surface opacities, logo decoding/glow activation, nested/thread scopes |
+| `ui-default-skin` | Packaged default assets in enabled formats, forced/hidden selector, embedded logo, color/metric validity |
+| `ui-geometry` | Plugin identity/help URLs, pad mapping, editor snapshots, waveform/chop geometry, viewport mapping, logo halo/pulse geometry, hit testing, wheel editing, Space press/repeat routing |
 | `ui-message-bus` | Bounded VST3 message ordering, independent view cursors, explicit gap reporting on wrap, and large replies |
 | `wav-codec` | WAV formats, chunk/truncation/header/nonfinite validation, file actions, offline render, real-time access gate |
 
-Rebuild affected targets and run all tests for code changes. Docs-only changes
+Rebuild affected targets and run all tests after code changes. Docs-only changes
 need command/source checks. Optional long-audio test (keep WAVs out of Git):
 
 ```bash
@@ -55,11 +56,10 @@ LV2_URI='https://github.com/sirsipe/SMS-Plugins/SMS-AnvilleSampler'
 LV2_PATH="$PWD/build/bin" pw-jack carla-single native lv2 "$LV2_URI"
 ```
 
-Omit `pw-jack` if unnecessary. Current
+Omit `pw-jack` if unnecessary. Pin
 [Carla main](https://github.com/falkTX/Carla/blob/main/source/backend/plugin/CarlaPluginLV2.cpp)
-includes the LV2 control-input change-request feature that SMS-Anville Sampler uses
-when MIDI activates a bank, but Carla 2.5.10 does not expose it. Pin a Carla
-revision with that feature when validating bank updates.
+with LV2 control-input change-request support for MIDI bank activation;
+Carla 2.5.10 lacks it.
 
 LV2 diagnostics with jalv:
 
@@ -84,13 +84,15 @@ Applicable checks:
   Editor cycle Play on Select → Loop on Select → Off; check pressed labels,
   sustained loops after mouse release, replacement on selection, and stopping
   on Off/Exit. Play/Stop and Space loop only in editor Loop mode.
-- Skins: verify forced `skin` hides the selector. With named `skins` entries,
+- Skins: verify forced `skin` hides the selector; check halo/pulse,
+  steady/disabled settings, logos, background/pad/panel opacity and resizing. Remove the default
+  before testing collections. With named `skins` entries,
   switch Default/custom in LV2/VST3; check images/text/colors and reopening
   across formats. Test scrolling, deleted skins, config-write failure, and resizing.
 - UI/editor: check drawing/resizing, pad selection, region/mixer/ADSR drag,
   wheel/reset, sound/playhead, and single-target hover. In embedded VST3, type
   a global value: Enter commits, Escape cancels. Check ARM/play/stop icons and
-  green PLAY/red ARMED indicators. ARM hides the mixer; both edge faders remain
+  bundled blue PLAY/red ARMED indicators. ARM hides the mixer; both edge faders remain
   editable in every view. Verify independent monitor/playback gain, raw preview,
   and unchanged captured PCM. Click to focus: Space plays/stops
   in PLAY/Sample Editor and starts/chops in ARM. Hold/release/tap to check repeat
@@ -109,10 +111,10 @@ Applicable checks:
 
 ## UI interaction tooling
 
-The [Dev Container](../../.devcontainer/devcontainer.json) provides display `:1`,
-noVNC, dummy JACK, software Mesa and UI inspection tools. `desktop-health` checks desktop services,
-JACK, OpenGL, D-Bus, and portal FileChooser. Run `desktop-health --dialogs` after
-an image rebuild or portal change to exercise Open and Save dialogs. Watch via noVNC port 6080; avoid mouse input during automation.
+The [Dev Container](../../.devcontainer/devcontainer.json) supplies display `:1`,
+noVNC (port 6080), dummy JACK, software Mesa and UI tools. `desktop-health` checks
+services, JACK, OpenGL, D-Bus and FileChooser. After image/portal changes, run
+`desktop-health --dialogs` to exercise Open/Save. Avoid mouse input during automation.
 
 `bash .devcontainer/scripts/test-plugin.sh` builds VST3/LV2, runs CTest and
 `lv2info`, launches LV2 in Carla, clicks ARM, and captures the plug-in window in
@@ -128,5 +130,5 @@ For VST3, launch
 waveform and settings. Exercise Split Sample or Adjust Cut Points. Then save,
 close, delete the source WAV, reload, and compare audio and editor values.
 
-Report host, rate/buffer, steps, results, and skipped checks. CI covers CTest and
-`lv2info`, not host audio/UI behavior.
+Report host, rate/buffer, results and skipped checks. CI covers CTest/`lv2info`,
+not host audio/UI behavior.

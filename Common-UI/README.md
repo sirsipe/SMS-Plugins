@@ -19,8 +19,13 @@ shared UI and framework-neutral source include paths.
   hover opacity, and per-editor drawing scopes with thread-local restoration.
 - `DPF/SkinTheme.hpp`: supported color/metric fields and validated DPF palette
   overrides. See the [skin guide](../SMS-AnvilleSampler/Docs/SKINS.md).
+- `LogoGlow.hpp`: fixed-size alpha resampling, padded Gaussian halo generation,
+  and bounded pulse opacity; UI-only cached work, independent of DPF.
+- `DPF/LogoGlow.hpp`: logo decoding through the pinned DPF NanoVG stb decoder
+  symbols, capped at 4096 pixels per axis; no new decoder or audio dependency.
 - `DPF/AnalogMaterials.hpp`: scalable chassis, recessed-panel, rubber-pad,
-  physical-control, LED, screw, and powder-coat rendering primitives.
+  physical-control, LED, screw, and powder-coat rendering primitives; pad
+  surface opacity leaves selection outlines and external labels intact.
 - `DPF/Controls.hpp`: reusable NanoVG panel, segment, slider, and action
   primitives, symbol buttons, and ivory console fader caps with index lines.
 - `Interaction.hpp`, `ContextMenu.hpp`, and `DPF/ContextMenu.hpp`: reusable

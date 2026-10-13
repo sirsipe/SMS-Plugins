@@ -21,10 +21,11 @@ appearance for that slot. Package a selectable skin as
 asset paths. Include short installation instructions and a preview if possible.
 
 Create personal experiments under ignored `build/skins/<id>/` or outside the
-checkout. Do not add generated skins, artwork, previews, or archives to Git.
-Only [the placeholder](../../SMS-AnvilleSampler/skins/placeholder/) is maintained
-as a repository skin. Keep sampler code and the placeholder unchanged when
-authoring a custom skin.
+checkout. Do not add personal skins, artwork, previews, or archives to Git.
+The [bundled default](../../SMS-AnvilleSampler/skins/default/skin.ini) and
+[placeholder](../../SMS-AnvilleSampler/skins/placeholder/) are maintained
+repository skins; change the default only for an explicitly requested product
+change. Keep sampler code and the placeholder unchanged when authoring custom skins.
 
 ## Palette design
 
@@ -37,7 +38,7 @@ to [shared theme fields](../../Common-UI/DPF/Theme.hpp).
 | Base surfaces | `canvas`, `surface`, `surfaceRaised`, `outline`: canvas margins, inset surfaces, raised fills and lines |
 | Text | `contentPrimary`, `contentSecondary`: primary labels and quieter annotations |
 | Activity | `activityPlayback`, `activityCapture`, `selection`: waveforms, capture and selected regions/pads |
-| Controls | `controlAccent`, `controlActive`, `controlActiveContent`, `intentDanger`: knobs, active buttons/content, record and destructive actions |
+| Controls | `controlAccent`, `controlActive`, `controlActiveContent`, `intentDanger`: knobs/playback buttons, active surfaces/content, record and destructive actions |
 | Meter zones | `meterGreen`, `meterYellow`, `meterRed`: stereo meter zones; `meterGreen` also colors PLAY in the header |
 | Chassis | `chassisTop`, `chassisBottom`, `chassisEdge`: body gradient and edge |
 | Panels | `recess`, `recessEdge`, `panelTop`, `panelBottom`: inset surfaces and panel gradients |
@@ -50,10 +51,19 @@ activity, selection, active controls, danger, and meter colors when replacing
 an accent family. Preserve useful distinctions between playback, recording,
 selection and disabled controls. Keep text readable over every fill and image.
 
+Logo halos use `logoGlow`, `logoGlowAlpha`, `logoGlowRadius` and
+`logoGlowPulseSeconds`; see the skin guide for bounds, defaults and activation.
+The renderer caches a white alpha mask and tints/pulses it at draw time,
+with the original logo fully opaque over the halo.
+
 Metrics control material grain, tint/shadow/bevel/disabled/hover opacity, panel
 and control radii, and outline width. Use the template's exact keys and the
 guide's bounds. Geometry and font sizes stay fixed; metrics cannot relocate or
-resize widgets. Alpha in panel/rubber gradients can reveal background art.
+resize widgets. `backgroundAlpha`, `padAlpha` and `padPanelAlpha` independently
+control image, pad-surface and main pad-bank backing opacity. See the skin guide
+for bounds/defaults. Preserve label/selection opacity; fade every pad
+surface layer, including shadows, tint, hover/activity fill, bevels and grain.
+Panel gradient alpha also reveals artwork; pad gradients use `padAlpha`.
 Some drawing primitives replace a color's alpha for hover/disabled rendering,
 so alpha is not a universal opacity control. Test the rendered result.
 
@@ -67,7 +77,7 @@ detail under text. The upper-left header contains the title and subtitle; the
 upper-right contains mode text and the menu. Keep both readable.
 
 Use the guide's canvas and logo dimensions/aspect ratios. A transparent logo
-should preserve alpha; its fixed rendering opacity reduces contrast. The
+should preserve alpha; without a halo its fixed rendering opacity reduces contrast. The
 background stretches across the chassis and does not tile or crop to preserve
 aspect ratio. It does not skin each knob or pad individually.
 

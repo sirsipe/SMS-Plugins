@@ -166,26 +166,54 @@ foreach(anvillesampler_target IN LISTS anvillesampler_targets)
     ANVILLESAMPLER_HELP_REF="${ANVILLESAMPLER_HELP_REF}")
 endforeach()
 
-# Ship an inactive, editable example. Never overwrite the user's active skin.
+# Ship the maintained active default and an inactive authoring example.
+# Copy on every build so manifest/artwork edits do not require relinking.
+set(anvillesampler_default_skin "${CMAKE_CURRENT_SOURCE_DIR}/skins/default")
 set(anvillesampler_skin_template "${CMAKE_CURRENT_SOURCE_DIR}/skins/placeholder")
 add_custom_target(anvillesampler_skin_templates ALL
+  COMMAND "${CMAKE_COMMAND}" -E copy_directory "${anvillesampler_default_skin}"
+    "${PROJECT_BINARY_DIR}/bin/SMS-AnvilleSampler.lv2/skin"
   COMMAND "${CMAKE_COMMAND}" -E copy_directory "${anvillesampler_skin_template}"
     "${PROJECT_BINARY_DIR}/bin/SMS-AnvilleSampler.lv2/skin-template"
   VERBATIM)
 if(ANVILLESAMPLER_BUILD_VST3)
   add_custom_command(TARGET anvillesampler_skin_templates POST_BUILD
+    COMMAND "${CMAKE_COMMAND}" -E copy_directory "${anvillesampler_default_skin}"
+      "${PROJECT_BINARY_DIR}/bin/SMS-AnvilleSampler.vst3/skin"
     COMMAND "${CMAKE_COMMAND}" -E copy_directory "${anvillesampler_skin_template}"
       "${PROJECT_BINARY_DIR}/bin/SMS-AnvilleSampler.vst3/skin-template"
     VERBATIM)
 endif()
 if(ANVILLESAMPLER_BUILD_CLAP)
   add_custom_command(TARGET anvillesampler_skin_templates POST_BUILD
+    COMMAND "${CMAKE_COMMAND}" -E copy_directory "${anvillesampler_default_skin}"
+      "${PROJECT_BINARY_DIR}/bin/SMS-AnvilleSampler.skin"
     COMMAND "${CMAKE_COMMAND}" -E copy_directory "${anvillesampler_skin_template}"
       "${PROJECT_BINARY_DIR}/bin/SMS-AnvilleSampler.skin-template"
     VERBATIM)
 endif()
+add_dependencies(SMS-AnvilleSampler-lv2 anvillesampler_skin_templates)
+if(ANVILLESAMPLER_BUILD_VST3)
+  add_dependencies(SMS-AnvilleSampler-VST3-vst3 anvillesampler_skin_templates)
+endif()
+if(ANVILLESAMPLER_BUILD_CLAP)
+  add_dependencies(SMS-AnvilleSampler-clap anvillesampler_skin_templates)
+endif()
 
 if(BUILD_TESTING)
+  add_executable(anvillesampler_default_skin_tests tests/default_skin_tests.cpp)
+  target_link_libraries(anvillesampler_default_skin_tests PRIVATE sms_common_ui)
+  add_dependencies(anvillesampler_default_skin_tests anvillesampler_skin_templates)
+  set(anvillesampler_packaged_skins "${PROJECT_BINARY_DIR}/bin/SMS-AnvilleSampler.lv2/skin")
+  if(ANVILLESAMPLER_BUILD_VST3)
+    list(APPEND anvillesampler_packaged_skins "${PROJECT_BINARY_DIR}/bin/SMS-AnvilleSampler.vst3/skin")
+  endif()
+  if(ANVILLESAMPLER_BUILD_CLAP)
+    list(APPEND anvillesampler_packaged_skins "${PROJECT_BINARY_DIR}/bin/SMS-AnvilleSampler.skin")
+  endif()
+  add_test(NAME ui-default-skin COMMAND anvillesampler_default_skin_tests
+    "${anvillesampler_default_skin}" ${anvillesampler_packaged_skins})
+
   add_executable(anvillesampler_skin_catalog_tests tests/skin_catalog_tests.cpp)
   target_link_libraries(anvillesampler_skin_catalog_tests PRIVATE sms_common_ui Threads::Threads)
   add_test(NAME ui-skin-catalog COMMAND anvillesampler_skin_catalog_tests)

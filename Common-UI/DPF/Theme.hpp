@@ -24,6 +24,9 @@ struct Theme {
         {"PURPLE", {172, 107, 215}},
     }};
     float padTintAlpha = 0.32f;
+    float backgroundAlpha = 1.0f;
+    float padAlpha = 1.0f;
+    float padPanelAlpha = 1.0f;
     DGL_NAMESPACE::Color canvas{15, 15, 18};
     DGL_NAMESPACE::Color surface{27, 27, 33};
     DGL_NAMESPACE::Color surfaceRaised{39, 39, 47};
@@ -40,6 +43,7 @@ struct Theme {
     DGL_NAMESPACE::Color meterGreen{75, 211, 112};
     DGL_NAMESPACE::Color meterYellow{245, 198, 66};
     DGL_NAMESPACE::Color meterRed{239, 83, 96};
+    DGL_NAMESPACE::Color logoGlow{255, 214, 0};
 
     // Physical material palette. These remain semantic so shared controls do
     // not need to know which product palette is active.
@@ -69,6 +73,10 @@ struct Theme {
     float hoverFillAlpha = 0.07f;
     float hoverMenuFillAlpha = 0.10f;
     float hoverHaloAlpha = 0.50f;
+    // Opt-in: existing skins retain the original logo rendering and idle policy.
+    float logoGlowAlpha = 0.0f;
+    float logoGlowRadius = 10.0f;
+    float logoGlowPulseSeconds = 3.0f;
 };
 
 // A drawing scope selects one editor's immutable palette. Restore it even if

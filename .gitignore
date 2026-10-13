@@ -6,6 +6,7 @@
 *.swp
 *~
 
-# Only the maintained placeholder belongs in source control.
+# Only the bundled default and maintained placeholder belong in source control.
 /SMS-AnvilleSampler/skins/*
 !/SMS-AnvilleSampler/skins/placeholder/
+!/SMS-AnvilleSampler/skins/default/

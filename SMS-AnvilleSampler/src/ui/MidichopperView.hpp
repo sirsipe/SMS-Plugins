@@ -83,6 +83,8 @@ struct ViewState {
     const sms::ui::waveform::CachedDetail* waveformDetail = nullptr;
     const DGL_NAMESPACE::NanoImage* logo = nullptr;
     const DGL_NAMESPACE::NanoImage* background = nullptr;
+    const DGL_NAMESPACE::NanoImage* logoGlow = nullptr;
+    float logoGlowOpacity = 0.0f;
     bool skinsAvailable = false;
     bool skinMenuOpen = false;
     sms::ui::ContextMenuGeometry skinMenu;

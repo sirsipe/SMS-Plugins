@@ -14,6 +14,7 @@
 #include "MidichopperLayout.hpp"
 #include "MidichopperInteraction.hpp"
 #include "LevelMeter.hpp"
+#include "LogoGlow.hpp"
 #include "PadLayout.hpp"
 #include "UI/Geometry.hpp"
 #include "WaveformEditor.hpp"
@@ -35,6 +36,51 @@ void check(const bool condition, const char* const message)
         std::cerr << "FAIL: " << message << '\n';
         std::exit(EXIT_FAILURE);
     }
+}
+
+void logoGlow()
+{
+    using namespace sms::ui;
+    check(logoGlowOpacity(0.7f, 0.0f, 100.0) == 0.7f, "zero period keeps glow steady");
+    check(logoGlowOpacity(0.0f, 3.0f, 1.0) == 0.0f, "zero alpha disables glow");
+    check(std::abs(logoGlowOpacity(0.7f, 3.0f, 1.5) - 0.455f) < 0.00001f,
+          "pulse retains a visible minimum brightness");
+    check(std::abs(logoGlowOpacity(0.7f, 3.0f, 0.0) -
+                   logoGlowOpacity(0.7f, 3.0f, 3000000.0)) < 0.00001f,
+          "pulse repeats without accumulated time drift");
+    std::vector<std::uint8_t> pixels(logoWidth * logoHeight * 4, 0);
+    auto mask = makeLogoGlow(pixels, logoWidth, logoHeight, 10.0f);
+    for (std::size_t index = 3; index < mask.size(); index += 4)
+        check(mask[index] == 0, "transparent artwork creates no glow");
+    const int cx = logoWidth / 2, cy = logoHeight / 2;
+    pixels[(cy * logoWidth + cx) * 4 + 3] = 255;
+    mask = makeLogoGlow(pixels, logoWidth, logoHeight, 10.0f);
+    const auto alpha = [&](int x, int y) {
+        return mask[((y + logoGlowPadding) * logoGlowWidth + x + logoGlowPadding) * 4 + 3];
+    };
+    check(alpha(cx, cy) > alpha(cx + 5, cy) && alpha(cx + 5, cy) > 0,
+          "glow spreads softly around the actual alpha silhouette");
+    check(alpha(cx + 15, cy) == 0 && mask[3] == 0,
+          "finite blur support leaves distant pixels transparent");
+    check(alpha(cx - 3, cy) == alpha(cx + 3, cy) && alpha(cx, cy - 3) == alpha(cx, cy + 3),
+          "halo remains centered around the original logo");
+    for (std::size_t index = 0; index < pixels.size(); index += 4) {
+        pixels[index] = 255;
+        pixels[index + 1] = 120;
+    }
+    check(makeLogoGlow(pixels, logoWidth, logoHeight, 10.0f) == mask,
+          "glow depends only on alpha, preserving logo colors");
+    check(makeLogoGlow(pixels, logoWidth, logoHeight, 0.0f).empty() &&
+          makeLogoGlow(pixels, logoWidth, logoHeight, 25.0f).empty() &&
+          makeLogoGlow({}, 0, 0, 10.0f).empty() &&
+          makeLogoGlow({}, 4097, 1, 10.0f).empty() &&
+          makeLogoGlow({}, logoWidth, logoHeight, 10.0f).empty(),
+          "disabled and invalid mask requests do not allocate output");
+    std::vector<std::uint8_t> solid{0, 0, 0, 255};
+    const auto stretched = makeLogoGlow(solid, 1, 1, 24.0f);
+    check(stretched.size() == logoGlowWidth * logoGlowHeight * 4 &&
+          stretched[((logoGlowPadding + cy) * logoGlowWidth + logoGlowPadding + cx) * 4 + 3] == 255,
+          "arbitrary artwork dimensions stretch to the fixed header rectangle");
 }
 
 void padLayouts()
@@ -1686,6 +1732,7 @@ void mixerValueEntry()
 
 int main()
 {
+    logoGlow();
     padLayouts();
     wideCanvasGeometry();
     pluginIdentity();

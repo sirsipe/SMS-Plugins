@@ -6,29 +6,31 @@ _A live stereo chopping sampler for Linux._
 
 ![SMS-Anville Sampler interface](Docs/SMS-AnvilleSampler-v0.0.8.png)
 
+
 **VST3 is preferred:** faster GUI loading and more human testing. LV2 is mostly
 AI-tested; CLAP is untested.
 
 Tested: **REAPER**, **Ardour**, **Carla**.
 
 - Control with any MIDI controller.
-- Record input and quickly chop input to pads, or load samples to pads.
+- Capture/chop input or load samples into pads.
 - Waveform editing and splitting.
 - Pad/global mixer/FX: Gain, Pan, Dirty, Tune (Varispeed), and Lowpass/Highpass with 6/12/24 dB slopes; separate monitor and playback levels.
 - Sample specific amplitude envelope; Attack, Decay, Sustain, Release.
 - Layouts: 2x4, 3x4, or 4x4 pads; four shared/unique MIDI banks; pad colors.
 - VST3 presets store samples/settings across supported DAWs: Ardour presets also
   load in REAPER and vice versa. Carla does not support them.
+- Skins? **Yes!** - You may create your own!
 
-> Versions 1.0.0+ are not backwards compatible with alpha releases (v0.0.1-v0.0.9). Alpha releases have been removed from GitHub releases to avoid confusion.
+> Versions 1.0.0+ are not backwards compatible with alpha releases (v0.0.1-v0.9.9). Alpha releases have been removed from GitHub releases to avoid confusion.
 
 ## Basic Usage
 
 1. Insert **SMS-Anville Sampler** on a stereo REAPER track receiving audio and MIDI; or on MIDI-track in Ardour, with stereo input sidechain. Stereo input is needed for live capture.
 
 2. Press **ARM** (red record circle) to arm; release it for PLAY.
-   The header light/text is red when ARMED and green in PLAY.
-   The first empty visible pad is selected; click another while idle to override it.
+   Bundled header indicators: red ARMED, blue PLAY.
+   The first empty visible pad is selected; click another while idle.
 
 3. **The first MIDI note-on or Space press starts the slice.** Later taps close
    the current slice and continue at the next pad.
@@ -37,7 +39,7 @@ Tested: **REAPER**, **Ardour**, **Carla**.
 4. **FINALIZE** or releasing **ARM** keeps the open slice. **UNDO** discards the
    open/last slice; **CLEAR** clears all banks after a confirmation click.
 
-5. Right click on a pad to edit the sample, split it to neighbouring pads, or adjust the existing cut points with neighbouring pads.
+5. Right-click a pad to edit, split, or adjust cuts with neighbours.
 
 ![ARM capture view](Docs/arm-view.png)
 
@@ -52,7 +54,7 @@ Select **All Banks** (unique notes, default) for gapless notes or **Selected Ban
 (shared notes) to reuse controller notes in the active bank. All Banks limits
 the base note to 64.
 
-Choose a layout matching your controller. Layout changes preserve samples.
+Layouts match your controller and preserve samples.
 
 ![Hamburger menu](Docs/hamburger-menu.png)
 
@@ -79,6 +81,10 @@ Right-click a middle pad for **Adjust cut points**. See the
 
 ![Adjust Cut Points view with three slices](Docs/adjust-cut-points.png)
 
+Right-click for **Split Sample**; following samples shift right without being overwritten.
+
+![Split Sample view with two proposed slices](Docs/split-sample.png)
+
 ### General Controls
 
 - Drag/wheel knobs and sliders.
@@ -92,7 +98,8 @@ Right-click a middle pad for **Adjust cut points**. See the
   The plug-in consumes Space when delivered; a DAW that intercepts keyboard
   shortcuts first may require its option to send keys to the plug-in.
 
-Customize images, colors, and labels with [skins](Docs/SKINS.md).
+The bundled [graffiti skin](Docs/SKINS.md) loads automatically; customize its
+images, colors, labels and pulsing logo halo.
 
 ## Other controls
 
@@ -125,7 +132,6 @@ and 6 dB/octave filter slopes.
 
 - Stereo LED rails around the faders show raw input and final output.
 
-![Split Sample view with two proposed slices](Docs/split-sample.png)
 
 
 ## Vision, Contributions, License
