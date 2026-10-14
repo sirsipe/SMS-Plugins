@@ -8,6 +8,8 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
+#include <locale>
 #include <string>
 #include <vector>
 
@@ -98,11 +100,34 @@ void scalarHelpers()
           "metric accepts decimal exponent");
     check(sms::ui::Skin::parseMetric("-0.5", metric) && metric == -0.5f,
           "metric accepts negative decimal");
-    for (const auto* invalid : {"", "nan", "inf", "-infinity", "1e99", "1px", "0x10", " 1", "+-1"}) {
+    check(sms::ui::Skin::parseMetric(".25", metric) && metric == 0.25f &&
+          sms::ui::Skin::parseMetric("1.", metric) && metric == 1.0f &&
+          sms::ui::Skin::parseMetric("2E+1", metric) && metric == 20.0f,
+          "decimal grammar accepts fractional and exponent forms");
+    check(sms::ui::Skin::parseMetric("1.401298464324817e-45", metric) &&
+          metric == std::numeric_limits<float>::denorm_min(), "representable subnormal accepted");
+    check(sms::ui::Skin::parseMetric("3.4028234663852886e38", metric) &&
+          metric == std::numeric_limits<float>::max(), "largest finite float accepted");
+    check(sms::ui::Skin::parseMetric("-0", metric) && metric == 0.0f && std::signbit(metric),
+          "negative zero retains its sign");
+    check(sms::ui::Skin::parseMetric("0e-999", metric) && metric == 0.0f,
+          "exact zero with large exponent accepted");
+    for (const auto* invalid : {"", "nan", "inf", "-infinity", "1e99", "1e-999", "1px",
+                               "0x10", "-0x1p2", " 1", "1 ", "1,25", "+-1", "++1", ".", "1e"}) {
         const auto before = metric;
         check(!sms::ui::Skin::parseMetric(invalid, metric) && metric == before,
               "invalid metric leaves destination unchanged");
     }
+    struct CommaDecimal : std::numpunct<char> {
+        char do_decimal_point() const override { return ','; }
+    };
+    const auto previous = std::locale::global(std::locale(std::locale::classic(), new CommaDecimal));
+    const bool dotAccepted = sms::ui::Skin::parseMetric("1.25", metric) && metric == 1.25f;
+    const bool commaRejected = !sms::ui::Skin::parseMetric("1,25", metric) && metric == 1.25f;
+    const bool localeUnchanged = std::use_facet<std::numpunct<char>>(std::locale()).decimal_point() == ',';
+    std::locale::global(previous);
+    check(dotAccepted && commaRejected && localeUnchanged,
+          "metric parsing ignores and preserves host decimal locale");
 }
 
 void fallbackAndBounds(const Fixture& fixture)

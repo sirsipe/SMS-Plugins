@@ -13,6 +13,8 @@ Consumers link `sms_common_ui` to inherit shared include paths and the compiled
 - `DPF/NanoUI.hpp`: logical-canvas scaling and repaint lifecycle.
 - `Skin.hpp`: bounded versioned INI snapshots, UTF-8 text/checked-format lookup, and confined
   image paths; framework-neutral and used only outside audio processing.
+  Decimal metrics use classic-locale streams, supporting Xcode 15 libc++ without
+  floating-point `from_chars`, while keeping the host locale unchanged.
 - `SkinCatalog.hpp`: named collection discovery, forced-folder precedence, and
   atomic per-user preferences; IDs stay separate from translated display text.
 - `SkinFileIO.hpp/.cpp`: UTF-8/native path conversion, bounded artwork reads,

@@ -3,12 +3,13 @@
 #include "SkinFileIO.hpp"
 
 #include <array>
-#include <charconv>
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <locale>
+#include <sstream>
 #include <string>
 #include <string_view>
 
@@ -102,13 +103,31 @@ public:
             if (!value.empty() && (value.front() == '-' || value.front() == '+')) return false;
         }
         if (value.empty()) return false;
-        float parsed = 0;
-        const auto converted = std::from_chars(value.data(), value.data() + value.size(),
-                                                parsed, std::chars_format::general);
-        if (converted.ec != std::errc{} || converted.ptr != value.data() + value.size() ||
-            !std::isfinite(parsed)) return false;
-        result = parsed;
-        return true;
+        // libc++ streams accept hexadecimal floats; metrics allow decimals only.
+        for (const char byte : value)
+            if (!((byte >= '0' && byte <= '9') || byte == '.' || byte == '-' ||
+                  byte == '+' || byte == 'e' || byte == 'E')) return false;
+        try {
+            // Xcode 15 libc++ lacks floating-point from_chars. A classic-locale
+            // stream preserves decimal parsing without changing the host locale.
+            std::istringstream input{std::string(value)};
+            input.imbue(std::locale::classic());
+            float parsed = 0;
+            input >> std::noskipws >> parsed;
+            if (input.bad() || !input.eof() || !std::isfinite(parsed)) return false;
+            // libc++ reports ERANGE for representable subnormals as well.
+            if (input.fail() && std::fpclassify(parsed) != FP_SUBNORMAL) return false;
+            // Some libraries silently round underflow to zero; retain rejection
+            // of nonzero values below the representable range.
+            if (parsed == 0) {
+                for (const char byte : value) {
+                    if (byte == 'e' || byte == 'E') break;
+                    if (byte >= '1' && byte <= '9') return false;
+                }
+            }
+            result = parsed;
+            return true;
+        } catch (...) { return false; }
     }
 
     /** Returned pointer remains valid while this snapshot is alive and unmodified. */

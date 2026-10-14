@@ -262,6 +262,10 @@ if(BUILD_TESTING)
     HAVE_DGL DGL_USE_FILE_BROWSER
     ANVILLESAMPLER_SKIN_TEMPLATE_DIR="${anvillesampler_skin_template}")
   target_link_libraries(anvillesampler_skin_theme_tests PRIVATE sms_common_ui dgl-opengl Threads::Threads)
+  if(MSVC)
+    # DGL's private system dependency does not expose its Khronos headers to consumers.
+    target_link_libraries(anvillesampler_skin_theme_tests PRIVATE dgl-system-libs-definitions)
+  endif()
   add_test(NAME ui-skin-theme COMMAND anvillesampler_skin_theme_tests)
 
   add_executable(anvillesampler_preview_mailbox_tests tests/preview_mailbox_tests.cpp)
