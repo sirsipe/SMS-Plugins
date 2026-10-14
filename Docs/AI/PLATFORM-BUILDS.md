@@ -66,7 +66,7 @@ drivers are managed by the host; the plugin requires no ASIO component itself.
 
 ## Proposed enablement
 
-[Windows CI](../../.github/workflows/windows-ci.yml) runs on push to `main`, pull
+[Windows CI](../../.github/workflows/windows-ci.yml) runs on push to `main` or `win-vst3`, pull
 requests, or manual dispatch. It uses GitHub's
 [Windows 2022 image](https://github.com/actions/runner-images/blob/main/images/windows/Windows2022-Readme.md)
 with Visual Studio 2022 C++ tools, Windows SDK and CMake 3.22+. It selects

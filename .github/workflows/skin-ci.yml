@@ -2,7 +2,7 @@ name: Skin portability
 
 on:
   push:
-    branches: [main]
+    branches: [main, win-vst3]
     paths:
       - 'Common-UI/**'
       - 'SMS-AnvilleSampler/tests/skin*_tests.cpp'
