@@ -153,6 +153,16 @@ void wideCanvasGeometry()
 
 void pluginIdentity()
 {
+    check(DISTRHO_PLUGIN_IS_SYNTH == 1,
+          "DPF classifies the sampler as an instrument, including LV2 export");
+    check(std::string_view(DISTRHO_PLUGIN_VST3_CATEGORIES) == "Instrument|Sampler|Stereo",
+          "VST3 advertises a stereo sampler instrument");
+    constexpr std::array<std::string_view, 3> clapFeatures{DISTRHO_PLUGIN_CLAP_FEATURES};
+    check(clapFeatures == std::array<std::string_view, 3>{"instrument", "sampler", "stereo"},
+          "CLAP advertises a stereo sampler instrument");
+    check(DISTRHO_PLUGIN_NUM_INPUTS == 2 && DISTRHO_PLUGIN_NUM_OUTPUTS == 2 &&
+          DISTRHO_PLUGIN_WANT_MIDI_INPUT == 1,
+          "instrument classification preserves stereo live capture and MIDI playback ports");
     check(std::string_view(DISTRHO_PLUGIN_NAME) == "SMS-Anville Sampler",
           "host-visible product name uses Anville");
     check(std::string_view(DISTRHO_PLUGIN_URI) ==

@@ -12,6 +12,10 @@
 
 #define DISTRHO_PLUGIN_HAS_UI          1
 #define DISTRHO_PLUGIN_IS_RT_SAFE      1
+// DPF uses IS_SYNTH for all MIDI instruments, including samplers with audio inputs.
+#define DISTRHO_PLUGIN_IS_SYNTH        1
+#define DISTRHO_PLUGIN_VST3_CATEGORIES "Instrument|Sampler|Stereo"
+#define DISTRHO_PLUGIN_CLAP_FEATURES   "instrument", "sampler", "stereo"
 #define DISTRHO_PLUGIN_NUM_INPUTS      2
 #define DISTRHO_PLUGIN_NUM_OUTPUTS     2
 #define DISTRHO_PLUGIN_WANT_MIDI_INPUT 1

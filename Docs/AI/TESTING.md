@@ -1,6 +1,6 @@
 # Testing reference
 
-See [build and native skin tests](DEVELOPMENT.md).
+See [build and skin tests](DEVELOPMENT.md).
 
 ## Automated checks
 
@@ -25,7 +25,7 @@ Filter with `ctest --test-dir build --output-on-failure -R NAME`:
 | `ui-skin-catalog` | Discovery, forced precedence, missing choices, native config folders, Unicode atomic preferences and concurrent writes |
 | `ui-skin-theme` | Placeholder completeness, RGBA/metric bounds, surface opacities, logo decoding/glow activation, nested/thread scopes |
 | `ui-default-skin` | Packaged default assets in enabled formats, forced/hidden selector, embedded logo, color/metric validity |
-| `ui-geometry` | Plugin identity/help URLs, pad mapping, editor snapshots, waveform/chop geometry, viewport mapping, logo halo/pulse geometry, hit testing, wheel editing, Space press/repeat routing |
+| `ui-geometry` | Instrument metadata/ports, identity/help URLs, pad mapping, editor snapshots, waveform/chop geometry, viewport mapping, logo halo/pulse geometry, hit testing, wheel editing, Space press/repeat routing |
 | `ui-message-bus` | Bounded VST3 message ordering, independent view cursors, explicit gap reporting on wrap, and large replies |
 | `wav-codec` | WAV formats, chunk/truncation/header/nonfinite validation, file actions, offline render, real-time access gate |
 

@@ -20,13 +20,13 @@ Tested: **REAPER**, **Ardour**, **Carla**.
 - Layouts: 2x4, 3x4, or 4x4 pads; four shared/unique MIDI banks; pad colors.
 - VST3 presets store samples/settings across supported DAWs: Ardour presets also
   load in REAPER and vice versa. Carla does not support them.
-- Skins? **Yes!** - You may create your own!
+- Skins? **Yes!** - Create your own!
 
 > Versions 1.0.0+ are not backwards compatible with alpha releases (v0.0.1-v0.9.9). Alpha releases have been removed from GitHub releases to avoid confusion.
 
 ## Basic Usage
 
-1. Insert **SMS-Anville Sampler** on a stereo REAPER track receiving audio and MIDI; or on MIDI-track in Ardour, with stereo input sidechain. Stereo input is needed for live capture.
+1. Insert **SMS-Anville Sampler** as an instrument on a REAPER track receiving stereo audio/MIDI, or an Ardour MIDI track with stereo input sidechain for capture. Rescan after upgrading if listed as FX.
 
 2. Press **ARM** (red record circle) to arm; release it for PLAY.
    Bundled header indicators: red ARMED, blue PLAY.
