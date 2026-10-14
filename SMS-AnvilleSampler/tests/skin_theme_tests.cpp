@@ -1,5 +1,7 @@
 #include "DPF/SkinTheme.hpp"
 #include "DPF/LogoGlow.hpp"
+#include "DPF/WaveformRenderer.hpp"
+#include "../../third_party/DPF/dgl/src/nanovg/nanovg.h"
 
 #include <atomic>
 #include <barrier>
@@ -11,6 +13,7 @@
 #include <iterator>
 #include <string>
 #include <thread>
+#include <vector>
 
 #ifndef ANVILLESAMPLER_SKIN_TEMPLATE_DIR
 #error "Define ANVILLESAMPLER_SKIN_TEMPLATE_DIR to the placeholder skin directory"
@@ -46,6 +49,76 @@ DGL_NAMESPACE::Color expectedColor(unsigned index)
 {
     return DGL_NAMESPACE::Color(static_cast<int>(index + 1), static_cast<int>(index + 31),
                                static_cast<int>(index + 61), static_cast<float>(index + 91) / 255.0f);
+}
+
+void envelopeHandleColors()
+{
+    struct Fill {
+        std::array<float, 4> bounds;
+        DGL_NAMESPACE::Color color;
+    };
+    std::vector<Fill> fills;
+    // Record real NanoVG draw submissions without requiring OpenGL or a display.
+    NVGparams backend{};
+    backend.userPtr = &fills;
+    backend.renderCreate = [](void*, void*) { return 1; };
+    backend.renderCreateTexture = [](void*, int, int, int, int, const unsigned char*) { return 1; };
+    backend.renderDeleteTexture = [](void*, int) { return 1; };
+    backend.renderViewport = [](void*, float, float, float) {};
+    backend.renderFlush = [](void*) {};
+    backend.renderFill = [](void* data, NVGpaint* paint, NVGcompositeOperationState,
+                            NVGscissor*, float, const float* bounds, const NVGpath*, int) {
+        static_cast<std::vector<Fill>*>(data)->push_back({
+            {bounds[0], bounds[1], bounds[2], bounds[3]},
+            {paint->innerColor.r, paint->innerColor.g, paint->innerColor.b, paint->innerColor.a}});
+    };
+    backend.renderStroke = [](void*, NVGpaint*, NVGcompositeOperationState,
+                              NVGscissor*, float, float, const NVGpath*, int) {};
+    auto* context = nvgCreateInternal(&backend, nullptr);
+    check(context != nullptr, "recording renderer creates a NanoVG context");
+    {
+        DGL_NAMESPACE::NanoVG canvas(context);
+        const sms::ui::Rect bounds{0.0f, 0.0f, 370.0f, 104.0f};
+        sms::audio::WaveformSummary summary;
+        summary.frames = 48000;
+        sms::dsp::SamplePlaybackSettings settings;
+        settings.attackSeconds = 0.2f;
+        settings.decaySeconds = 0.2f;
+        settings.sustainLevel = 0.4f;
+        settings.releaseSeconds = 0.2f;
+        const auto graph = sms::ui::waveform::envelopeGeometry(bounds, summary, settings);
+        const std::array<sms::ui::Point, 3> handles{{
+            {graph.attackHandleX, graph.top}, {graph.decayHandleX, graph.sustainY},
+            {graph.releaseHandleX, graph.sustainY}}};
+        using sms::ui::waveform::EditTarget;
+        for (const char* playback : {"#24A8D380", "#73CE41FF"}) {
+            sms::ui::Skin skin;
+            skin.colors["activityPlayback"] = playback;
+            skin.colors["controlAccent"] = "#FF8800";
+            const auto colors = skinTheme(skin);
+            ThemeScope scope(colors, skin);
+            for (const auto hovered : {EditTarget::none, EditTarget::attackNode,
+                                       EditTarget::decayNode, EditTarget::releaseNode}) {
+                fills.clear();
+                canvas.beginFrame(400, 120);
+                drawEnvelopeGraph(canvas, bounds, summary, settings, hovered);
+                canvas.endFrame();
+                for (const auto handle : handles) {
+                    unsigned matches = 0;
+                    for (const auto& fill : fills) {
+                        if (std::abs((fill.bounds[0] + fill.bounds[2]) * 0.5f - handle.x) > 0.01f ||
+                            std::abs((fill.bounds[1] + fill.bounds[3]) * 0.5f - handle.y) > 0.01f)
+                            continue;
+                        ++matches;
+                        check(sameColor(fill.color, colors.activityPlayback),
+                              "every envelope handle uses skin playback RGBA, including on hover");
+                    }
+                    check(matches == 1, "each envelope handle submits one identifiable fill");
+                }
+            }
+        }
+    }
+    nvgDeleteInternal(context);
 }
 
 void colorsAndPadIndices()
@@ -240,6 +313,7 @@ void placeholderCatalog()
 
 int main()
 {
+    envelopeHandleColors();
     colorsAndPadIndices();
     safeMetrics();
     independentOpacityControls();

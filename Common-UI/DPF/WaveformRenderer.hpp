@@ -250,7 +250,7 @@ inline void drawEnvelopeGraph(DGL_NAMESPACE::NanoVG& canvas, const ui::Rect boun
             static_cast<int>(waveform::EditTarget::attackNode) + static_cast<int>(index);
         canvas.beginPath();
         canvas.circle(handles[index].x, handles[index].y, isHovered ? 8.0f : 5.0f);
-        canvas.fillColor(index == 0U ? colors.controlAccent : colors.activityPlayback);
+        canvas.fillColor(colors.activityPlayback);
         canvas.fill();
         canvas.strokeColor(isHovered ? colors.contentPrimary : colors.canvas);
         canvas.strokeWidth(isHovered ? 2.0f : 1.5f);

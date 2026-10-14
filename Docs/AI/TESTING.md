@@ -23,14 +23,14 @@ Filter with `ctest --test-dir build --output-on-failure -R NAME`:
 | `state-codec` | Audio/editor/mixer compatibility, cut/waveform protocols; truncation, corrupt headers/payloads, numeric rejection, unchanged destinations |
 | `ui-skin` | Bounded/versioned manifests, scalar/UTF-8/printf fallback, Unicode bundle/image paths, confined images, startup snapshots |
 | `ui-skin-catalog` | Discovery, forced precedence, missing choices, native config folders, Unicode atomic preferences and concurrent writes |
-| `ui-skin-theme` | Placeholder completeness, RGBA/metric bounds, surface opacities, logo decoding/glow activation, nested/thread scopes |
+| `ui-skin-theme` | Placeholder completeness, RGBA/metric bounds, envelope point RGBA/hover, opacities, logo decoding/glow, nested/thread scopes |
 | `ui-default-skin` | Packaged default assets in enabled formats, forced/hidden selector, embedded logo, color/metric validity |
 | `ui-geometry` | Instrument metadata/ports, identity/help URLs, pad mapping, editor snapshots, waveform/chop geometry, viewport mapping, logo halo/pulse geometry, hit testing, wheel editing, Space press/repeat routing |
 | `ui-message-bus` | Bounded VST3 message ordering, independent view cursors, explicit gap reporting on wrap, and large replies |
 | `wav-codec` | WAV formats, chunk/truncation/header/nonfinite validation, file actions, offline render, real-time access gate |
 
-Rebuild affected targets and run all tests after code changes. Check docs-only
-commands against source. Optional long-audio test:
+Rebuild affected targets and run all tests after code changes. Check documented
+commands against source. Long-audio test:
 
 ```bash
 ./build/anvillesampler_transfer_tests "/path/to/long-sample.wav"

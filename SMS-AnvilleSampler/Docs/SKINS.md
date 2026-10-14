@@ -45,7 +45,7 @@ SMS-AnvilleSampler.vst3/
       logo.png
 ```
 
-Each collection manifest must be valid and contain a nonempty display name:
+Valid collection manifests require a nonempty display name:
 
 ```ini
 [skin]
@@ -55,7 +55,7 @@ name=Graffiti
 
 If at least one named skin is available, **hamburger → Skins** lists **Default**
 (the built-in appearance) first, followed by skin names sorted alphabetically.
-Manifest names appear literally. The selected row is marked; lists scroll with the wheel while Default stays
+Names appear literally. The selected row is marked; lists scroll with the wheel while Default stays
 at the top. Only immediate subfolders are scanned. Missing names, unsupported or malformed manifests, and
 paths escaping the collection are skipped. Selecting a skin that has since
 become unreadable keeps the current skin and reports an error.
@@ -102,7 +102,7 @@ Values are literal: do not add quotes, inline comments, or escape sequences.
 | `[colors]` | `#RRGGBB` or `#RRGGBBAA`; semantic and material keys from the example |
 | `[metrics]` | Decimal numbers; alpha 0–1, radii/outline width 0–24 pixels, logo pulse 0–60 seconds |
 | `[strings]` | Exact built-in label/format on the left, replacement text on the right |
-| `[images]` | `background` and `logo`, each a relative image filename inside the skin |
+| `[images]` | `background` and `logo`: relative image filenames inside the skin |
 
 For example:
 
@@ -130,6 +130,8 @@ parameter names, or saved-state keys. The six pad palette colors
 use `pad1` through `pad6`; these retain the saved slot indices in their original
 order. Their menu names can be replaced in `[strings]`.
 
+The ADSR curve and all points use `activityPlayback`, including on hover.
+
 Use PNG or JPEG artwork, up to 64 MiB per encoded file. Unicode folder and image
 filenames are supported. The
 background stretches across the 1344 × 756 logical chassis, behind the panels,
@@ -137,7 +139,7 @@ controls, and screws. It does not replace individual control artwork. The logo
 stretches into the 170 × 78 header rectangle: 48% opacity without a glow,
 fully opaque over an enabled halo.
 Transparent pixels reveal the built-in rendering. Assets load once on the
-first draw, when the graphics context is ready.
+first draw with a ready graphics context.
 
 Under `[metrics]`, `backgroundAlpha` fades artwork over the chassis;
 `padAlpha` fades pad fills, tints, shadows and grain. `padPanelAlpha` fades
@@ -152,11 +154,11 @@ the configured alpha. Missing alpha defaults to `0`, preserving older skins.
 The halo follows logo alpha; use transparent PNGs. Logos exceeding 4096 pixels
 on either axis receive no halo. Animation runs only while visible, up to 30 FPS.
 
-Missing/invalid settings retain built-in defaults; unknown keys are ignored.
+Missing/invalid settings retain defaults; unknown keys are ignored.
 Missing, malformed, oversized or unsupported manifests use the built-in theme. The
 manifest limit is 64 KiB; string keys/values have a 512-byte limit and must be
 valid UTF-8 without control characters. Absolute paths, `..`, and symlinks
 escaping the skin directory are rejected. Each editor owns its palette; skin
-loading and preference I/O never run in the
-audio callback. Image replacement waits for the next draw with a current
+loading and preference I/O never run in
+audio callbacks. Image replacement waits for a draw with a current
 graphics context.
