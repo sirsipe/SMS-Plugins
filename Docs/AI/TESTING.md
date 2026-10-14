@@ -1,6 +1,6 @@
 # Testing reference
 
-See [build](DEVELOPMENT.md).
+See [build and native skin tests](DEVELOPMENT.md).
 
 ## Automated checks
 
@@ -21,24 +21,25 @@ Filter with `ctest --test-dir build --output-on-failure -R NAME`:
 | `adsr-envelope` | Exact stage sequences, early note-off, retrigger, zero-duration/live edits, sanitization, automatic-release resume |
 | `sampler-transfer` | Concurrent transfers; exact monitoring/MIDI/recording continuity; retained storage, stale commits, capacity, host snapshots, dispatcher lifecycle, callback allocation/destruction |
 | `state-codec` | Audio/editor/mixer compatibility, cut/waveform protocols; truncation, corrupt headers/payloads, numeric rejection, unchanged destinations |
-| `ui-skin` | Bounded/versioned manifests, scalar/UTF-8/printf fallback, confined images, startup snapshots |
-| `ui-skin-catalog` | Discovery, forced precedence, missing choices, atomic preferences and concurrent writes |
+| `ui-skin` | Bounded/versioned manifests, scalar/UTF-8/printf fallback, Unicode bundle/image paths, confined images, startup snapshots |
+| `ui-skin-catalog` | Discovery, forced precedence, missing choices, native config folders, Unicode atomic preferences and concurrent writes |
 | `ui-skin-theme` | Placeholder completeness, RGBA/metric bounds, surface opacities, logo decoding/glow activation, nested/thread scopes |
 | `ui-default-skin` | Packaged default assets in enabled formats, forced/hidden selector, embedded logo, color/metric validity |
 | `ui-geometry` | Plugin identity/help URLs, pad mapping, editor snapshots, waveform/chop geometry, viewport mapping, logo halo/pulse geometry, hit testing, wheel editing, Space press/repeat routing |
 | `ui-message-bus` | Bounded VST3 message ordering, independent view cursors, explicit gap reporting on wrap, and large replies |
 | `wav-codec` | WAV formats, chunk/truncation/header/nonfinite validation, file actions, offline render, real-time access gate |
 
-Rebuild affected targets and run all tests after code changes. Docs-only changes
-need command/source checks. Optional long-audio test (keep WAVs out of Git):
+Rebuild affected targets and run all tests after code changes. Check docs-only
+commands against source. Optional long-audio test:
 
 ```bash
 ./build/anvillesampler_transfer_tests "/path/to/long-sample.wav"
 ```
 
+
 ## LV2 bundle discovery
 
-Inspect with `lilv-utils`:
+Use `lilv-utils`:
 
 ```bash
 LV2_PATH="$PWD/build/bin" \
@@ -67,8 +68,7 @@ LV2 diagnostics with jalv:
 LV2_PATH="$PWD/build/bin" pw-jack jalv -s "$LV2_URI"
 ```
 
-Jalv and Carla 2.5.10 load the UI and route MIDI, but cannot validate
-DSP-requested `active_bank` UI updates.
+Jalv and Carla 2.5.10 load UI/MIDI but cannot validate DSP-requested `active_bank` updates.
 
 Connect JACK stereo/MIDI inputs and outputs; verify audio/MIDI flow.
 

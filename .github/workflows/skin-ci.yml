@@ -1,0 +1,38 @@
+name: Skin portability
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Common-UI/**'
+      - 'SMS-AnvilleSampler/tests/skin*_tests.cpp'
+      - 'SMS-AnvilleSampler/tests/skins/**'
+      - '.github/workflows/skin-ci.yml'
+  pull_request:
+    paths:
+      - 'Common-UI/**'
+      - 'SMS-AnvilleSampler/tests/skin*_tests.cpp'
+      - 'SMS-AnvilleSampler/tests/skins/**'
+      - '.github/workflows/skin-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  skin-tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022, macos-14]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Configure skin tests
+        run: cmake -S SMS-AnvilleSampler/tests/skins -B build-skins-雪
+      - name: Build
+        run: cmake --build build-skins-雪 --config Release --parallel 2
+      - name: Test
+        run: ctest --test-dir build-skins-雪 -C Release --output-on-failure

@@ -1,25 +1,50 @@
 #include "SkinCatalog.hpp"
+#include "SkinFileIO.hpp"
 
+#include <atomic>
 #include <chrono>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <thread>
 
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#endif
+
 namespace {
 namespace fs = std::filesystem;
 using sms::ui::Skin;
 using sms::ui::SkinCatalog;
 using sms::ui::SkinPreference;
+using sms::ui::skinFileIO::pathFromUtf8;
+using sms::ui::skinFileIO::pathToUtf8;
 void check(bool value, const char* message)
 {
     if (!value) { std::cerr << "FAIL: " << message << '\n'; std::exit(EXIT_FAILURE); }
 }
 struct Fixture {
-    fs::path root = fs::temp_directory_path() /
-        ("sms-catalog-" + std::to_string(::getpid()) + "-" +
-         std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
-    Fixture() { fs::create_directories(root); }
+    fs::path root;
+    Fixture()
+    {
+        static std::atomic<unsigned> sequence{0};
+        for (unsigned attempt = 0; attempt < 100; ++attempt) {
+            root = fs::temp_directory_path() / pathFromUtf8(
+                "sms-catalog-Ääni-雪-" +
+                std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) +
+                "-" + std::to_string(sequence.fetch_add(1)));
+            std::error_code error;
+            if (fs::create_directory(root, error)) return;
+            check(!error, "create portable temporary directory");
+        }
+        check(false, "unique portable temporary directory");
+    }
     ~Fixture() { std::error_code error; fs::remove_all(root, error); }
     static void file(const fs::path& path, const std::string& value)
     {
@@ -30,9 +55,29 @@ struct Fixture {
     }
     void skin(std::string_view id, std::string_view name)
     {
-        file(root / "skins" / id / "skin.ini", "[skin]\nversion=1\nname=" + std::string(name) + "\n");
+        file(root / "skins" / pathFromUtf8(id) / "skin.ini", "[skin]\nversion=1\nname=" + std::string(name) + "\n");
     }
 };
+bool symlink(const fs::path& target, const fs::path& link, bool directory = false)
+{
+    std::error_code error;
+    if (directory) fs::create_directory_symlink(target, link, error);
+    else fs::create_symlink(target, link, error);
+    if (!error) return true;
+#ifdef _WIN32
+    // Win32 ERROR_PRIVILEGE_NOT_HELD has no reliable generic-category mapping.
+    constexpr int privilegeNotHeld = 1314;
+    check(error == std::errc::permission_denied || error == std::errc::operation_not_permitted ||
+          error == std::errc::operation_not_supported || error == std::errc::function_not_supported ||
+          error.value() == privilegeNotHeld, "unexpected Windows symlink fixture failure");
+    std::cout << "SKIP: symlink creation unavailable for " << pathToUtf8(link)
+              << ": " << error.message() << '\n';
+    return false;
+#else
+    check(false, "POSIX symlink fixture creation succeeds");
+    return false;
+#endif
+}
 void names()
 {
     Fixture f;
@@ -78,19 +123,35 @@ void catalog()
     check(SkinCatalog::discover(f.root / "SMS-AnvilleSampler.skin").selectable(), "single-file collection discovered");
     check(!SkinCatalog::discover({}).selectable(), "missing plugin path cannot discover cwd skins");
 }
+void unicodeCatalog()
+{
+    Fixture f;
+    constexpr std::string_view id = "雪 🔨";
+    f.skin(id, "Unicode skin 雪");
+    const auto c = SkinCatalog::discover(f.root / "skin");
+    check(c.entries.size() == 2 && c.entries[1].id == id && c.selectedIndex(id) == 1,
+          "Unicode collection folder discovered as UTF8 ID");
+    check(pathToUtf8(c.entries[1].directory.filename()) == id && c.load(1).name == "Unicode skin 雪",
+          "Unicode catalog directory and manifest load");
+    const auto preference = f.root / pathFromUtf8("設定") / "selected-skin";
+    check(SkinPreference::write(preference, c.entries[1].id) &&
+          c.selectedIndex(SkinPreference::read(preference)) == 1,
+          "Unicode catalog selection survives preference roundtrip");
+}
 void confinementAndBounds()
 {
     Fixture f;
     f.skin("inside", "Inside");
     Fixture::file(f.root / "outside" / "skin.ini", "[skin]\nversion=1\nname=Outside\n");
-    fs::create_directory_symlink(f.root / "outside", f.root / "skins" / "escape");
+    symlink(f.root / "outside", f.root / "skins" / "escape", true);
     fs::create_directories(f.root / "skins" / "manifest-escape");
-    fs::create_symlink(f.root / "outside" / "skin.ini", f.root / "skins" / "manifest-escape" / "skin.ini");
+    symlink(f.root / "outside" / "skin.ini", f.root / "skins" / "manifest-escape" / "skin.ini");
     auto c = SkinCatalog::discover(f.root / "skin");
     check(c.entries.size() == 2, "directory and manifest symlink escapes excluded");
     fs::rename(f.root / "skins", f.root / "actual");
-    fs::create_directory_symlink(f.root / "actual", f.root / "skins");
-    check(SkinCatalog::discover(f.root / "skin").entries.size() == 2, "symlink collection root resolves safely");
+    if (symlink(f.root / "actual", f.root / "skins", true))
+        check(SkinCatalog::discover(f.root / "skin").entries.size() == 2, "symlink collection root resolves safely");
+    else fs::rename(f.root / "actual", f.root / "skins");
     for (int i = 0; i < 150; ++i) f.skin("bounded-" + std::to_string(1000 + i), "Bounded");
     c = SkinCatalog::discover(f.root / "skin");
     check(c.entries.size() == 152 && c.entries[150].id == "bounded-1149",
@@ -106,13 +167,34 @@ void confinementAndBounds()
 void preferences()
 {
     Fixture f;
-    const auto path = f.root / "config" / "selected-skin";
+    const auto path = f.root / pathFromUtf8("設定") / pathFromUtf8("選択-skin");
     check(SkinPreference::read(path).empty(), "missing preference defaults");
     check(SkinPreference::write(path, "Ääni folder") && SkinPreference::read(path) == "Ääni folder", "folder ID roundtrip");
     for (const auto* id : {"../escape", "/absolute", ".", "..", "nested/name", "back\\slash", "bad\nline"}) {
         check(!SkinPreference::write(path, id) && SkinPreference::read(path) == "Ääni folder", "unsafe preference cannot replace previous file");
     }
     check(!SkinPreference::write(path, std::string(513, 'x')), "oversize ID rejected");
+    check(SkinPreference::write(path, "雪 🔨") && SkinPreference::read(path) == "雪 🔨",
+          "Unicode preference overwrites existing file");
+    std::ifstream persisted(path, std::ios::binary);
+    const std::string bytes((std::istreambuf_iterator<char>(persisted)), std::istreambuf_iterator<char>());
+    check(bytes == "SMS-SKIN-PREFERENCE 1\n雪 🔨\n", "Unicode ID retains version 1 UTF8 file format");
+    persisted.close();
+#ifdef _WIN32
+    check(SkinPreference::write(path, "old"), "initial held-reader preference");
+    const HANDLE heldReader = ::CreateFileW(path.c_str(), GENERIC_READ,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL, nullptr);
+    check(heldReader != INVALID_HANDLE_VALUE, "open Windows preference reader with delete sharing");
+    check(SkinPreference::write(path, "new") && SkinPreference::read(path) == "new",
+          "Windows atomic replacement publishes new preference while reader remains open");
+    char heldBytes[128]{};
+    DWORD heldCount = 0;
+    check(::ReadFile(heldReader, heldBytes, static_cast<DWORD>(sizeof(heldBytes)), &heldCount, nullptr) != 0 &&
+          std::string(heldBytes, heldCount) == "SMS-SKIN-PREFERENCE 1\nold\n",
+          "held Windows reader retains complete previous preference after replacement");
+    check(::CloseHandle(heldReader) != 0, "close held Windows preference reader");
+#endif
     check(SkinPreference::write(path, "") && SkinPreference::read(path).empty(), "Default persists empty ID");
     for (const auto* malformed : {"folder\n", "SMS-SKIN-PREFERENCE 2\nfolder\n", "SMS-SKIN-PREFERENCE 1\n../bad\n", "SMS-SKIN-PREFERENCE 1\nfolder", "SMS-SKIN-PREFERENCE 1\na\nb\n"}) {
         Fixture::file(path, malformed);
@@ -134,6 +216,13 @@ void preferences()
         check(id == "a" || id == "b", "reader observes only complete concurrent writes");
     }
     first.join(); second.join();
+    check(SkinPreference::write(path, "Ääni folder"), "initial Unicode concurrent preference");
+    std::thread unicodeFirst(writer, "Ääni folder"), unicodeSecond(writer, "雪 🔨");
+    for (int i = 0; i < 200; ++i) {
+        const auto id = SkinPreference::read(path);
+        check(id == "Ääni folder" || id == "雪 🔨", "reader observes only complete Unicode concurrent writes");
+    }
+    unicodeFirst.join(); unicodeSecond.join();
     for (const auto& entry : fs::directory_iterator(path.parent_path()))
         check(entry.path() == path, "atomic writes leave no temporary files");
 }
@@ -141,23 +230,68 @@ struct Environment {
     std::string key, old; bool existed;
     explicit Environment(const char* name): key(name), existed(std::getenv(name) != nullptr)
     { if (existed) old = std::getenv(name); }
-    ~Environment() { if (existed) ::setenv(key.c_str(), old.c_str(), 1); else ::unsetenv(key.c_str()); }
+    static void set(const char* name, const std::string& value)
+    {
+#ifdef _WIN32
+        check(::_putenv_s(name, value.c_str()) == 0, "set Windows test environment");
+#else
+        check(::setenv(name, value.c_str(), 1) == 0, "set POSIX test environment");
+#endif
+    }
+    static void unset(const char* name)
+    {
+#ifdef _WIN32
+        check(::_putenv_s(name, "") == 0, "unset Windows test environment");
+#else
+        check(::unsetenv(name) == 0, "unset POSIX test environment");
+#endif
+    }
+    ~Environment() { if (existed) set(key.c_str(), old); else unset(key.c_str()); }
 };
 void configuration()
 {
+    Fixture f;
     Environment xdg("XDG_CONFIG_HOME"), home("HOME");
-    ::setenv("XDG_CONFIG_HOME", "/tmp/sms-xdg", 1); ::setenv("HOME", "/tmp/sms-home", 1);
-    check(SkinPreference::configPath() == "/tmp/sms-xdg/SMS-AnvilleSampler/selected-skin", "absolute XDG preferred");
-    ::setenv("XDG_CONFIG_HOME", "relative", 1);
-    check(SkinPreference::configPath() == "/tmp/sms-home/.config/SMS-AnvilleSampler/selected-skin", "relative XDG falls back HOME");
-    ::unsetenv("XDG_CONFIG_HOME"); ::unsetenv("HOME");
+    const auto xdgRoot = f.root / pathFromUtf8("設定-xdg");
+    const auto homeRoot = f.root / pathFromUtf8("家-home");
+#ifdef _WIN32
+    const auto native = SkinPreference::configPath();
+    check(native.is_absolute() && native.filename() == "selected-skin" &&
+          native.parent_path().filename() == "SMS-AnvilleSampler", "Windows native config path is absolute with plugin suffix");
+#endif
+    Environment::set("XDG_CONFIG_HOME", pathToUtf8(xdgRoot));
+    Environment::set("HOME", pathToUtf8(homeRoot));
+#if defined(_WIN32)
+    check(SkinPreference::configPath() == native, "Windows native config ignores XDG and HOME overrides");
+#elif defined(__APPLE__)
+    check(SkinPreference::configPath() == homeRoot / "Library" / "Application Support" / "SMS-AnvilleSampler" / "selected-skin",
+          "macOS config uses Unicode HOME Application Support and ignores XDG");
+#else
+    check(SkinPreference::configPath() == xdgRoot / "SMS-AnvilleSampler" / "selected-skin", "absolute Unicode XDG preferred");
+#endif
+    Environment::set("XDG_CONFIG_HOME", "relative");
+#if defined(_WIN32)
+    check(SkinPreference::configPath() == native, "relative XDG cannot alter Windows native config");
+#elif defined(__APPLE__)
+    check(SkinPreference::configPath() == homeRoot / "Library" / "Application Support" / "SMS-AnvilleSampler" / "selected-skin",
+          "relative XDG cannot alter macOS config");
+#else
+    check(SkinPreference::configPath() == homeRoot / ".config" / "SMS-AnvilleSampler" / "selected-skin", "relative XDG falls back Unicode HOME");
+#endif
+    Environment::unset("XDG_CONFIG_HOME"); Environment::unset("HOME");
+#ifdef _WIN32
+    check(SkinPreference::configPath() == native, "missing POSIX user directories preserves Windows native persistence");
+    Environment::set("HOME", "relative");
+    check(SkinPreference::configPath() == native, "relative HOME cannot alter Windows native config");
+#else
     check(SkinPreference::configPath().empty(), "missing user directories disables persistence");
-    ::setenv("HOME", "relative", 1);
+    Environment::set("HOME", "relative");
     check(SkinPreference::configPath().empty(), "relative HOME cannot persist to cwd");
+#endif
 }
 }
 int main()
 {
-    names(); catalog(); confinementAndBounds(); preferences(); configuration();
+    names(); catalog(); unicodeCatalog(); confinementAndBounds(); preferences(); configuration();
     std::cout << "Skin catalog tests passed\n";
 }

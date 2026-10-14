@@ -12,10 +12,8 @@ checkout; only the bundled default and placeholder are maintained in Git.
 
 Every build deploys [the graffiti default](../skins/default/skin.ini) into
 `skin/` (CLAP uses sibling `SMS-AnvilleSampler.skin`). It loads automatically and
-hides the skin selector. The black/yellow background uses amber controls, warm
-panels/pads, cream text, soft white
-selections/playback highlights, red capture/arm indicators, and a yellow pulsing halo around the
-unchanged embedded anvil logo. Builds overwrite the shipped manifest and artwork in build output.
+hides the skin selector. It uses amber controls, cream text, and a yellow halo around the embedded anvil.
+Builds overwrite the shipped manifest and artwork in build output.
 
 Replace the installed `skin` for a custom forced appearance. Remove it to enable
 a `skins` collection or the built-in appearance.
@@ -57,9 +55,8 @@ name=Graffiti
 
 If at least one named skin is available, **hamburger → Skins** lists **Default**
 (the built-in appearance) first, followed by skin names sorted alphabetically.
-Manifest names appear literally. The selected row is marked; long lists scroll
-with the wheel while Default stays at the top. Only immediate
-subfolders are scanned. Missing names, unsupported or malformed manifests, and
+Manifest names appear literally. The selected row is marked; lists scroll with the wheel while Default stays
+at the top. Only immediate subfolders are scanned. Missing names, unsupported or malformed manifests, and
 paths escaping the collection are skipped. Selecting a skin that has since
 become unreadable keeps the current skin and reports an error.
 
@@ -69,17 +66,22 @@ For single-file CLAP, use sibling `SMS-AnvilleSampler.skin` for an override or
 `SMS-AnvilleSampler.skins` for a collection. CLAP host integration remains
 untested.
 
-Every build includes an inactive `skin-template`. Copy it as `skin` for
-an override or `skins/dark` for selection. Its source
+Copy the bundled `skin-template` as `skin` or `skins/dark`. Its source
 [placeholder/skin.ini](../skins/placeholder/skin.ini) catalogs colors, metrics,
 labels/formats and image slots.
 
 ## Remembering a choice
 
-Choices are saved per user in `$XDG_CONFIG_HOME/SMS-AnvilleSampler/selected-skin`,
-or `~/.config/SMS-AnvilleSampler/selected-skin` when XDG_CONFIG_HOME is absent or
-relative. A selection writes the preference atomically. An unavailable config
-folder reports that the appearance changed but could not be remembered.
+Choices are saved per user under `SMS-AnvilleSampler/selected-skin`:
+
+| Platform | Parent folder |
+| --- | --- |
+| Linux | Absolute `$XDG_CONFIG_HOME`, otherwise `~/.config` |
+| Windows 10 (1607+) | Native Roaming AppData (normally `%APPDATA%`) |
+| macOS | `~/Library/Application Support` |
+
+Selections replace preferences atomically. Unavailable config reports
+that the appearance changed but could not be remembered.
 
 Preferences store subfolder IDs. Matching IDs share choices across LV2/VST3.
 New editors restore them; already-open editors retain their appearance. A missing or unavailable remembered skin uses Default. A forced
@@ -128,7 +130,8 @@ parameter names, or saved-state keys. The six pad palette colors
 use `pad1` through `pad6`; these retain the saved slot indices in their original
 order. Their menu names can be replaced in `[strings]`.
 
-Use PNG artwork; JPEG is also supported. The
+Use PNG or JPEG artwork, up to 64 MiB per encoded file. Unicode folder and image
+filenames are supported. The
 background stretches across the 1344 × 756 logical chassis, behind the panels,
 controls, and screws. It does not replace individual control artwork. The logo
 stretches into the 170 × 78 header rectangle: 48% opacity without a glow,
@@ -138,8 +141,7 @@ first draw, when the graphics context is ready.
 
 Under `[metrics]`, `backgroundAlpha` fades artwork over the chassis;
 `padAlpha` fades pad fills, tints, shadows and grain. `padPanelAlpha` fades
-the main pad-bank backing panel so artwork shows through it. Labels and
-selection outlines retain their opacity; padPanelAlpha leaves menus/control panels unchanged.
+the main pad-bank backing panel so artwork shows through it. Labels, selection outlines, menus and control panels retain their opacity.
 All three accept 0–1 and default to `1`.
 
 Configure the halo with `[colors] logoGlow` and `[metrics] logoGlowAlpha`,

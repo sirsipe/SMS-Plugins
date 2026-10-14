@@ -1,0 +1,113 @@
+name: Windows CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Check out repository and submodules
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+
+      - name: Select Python for artwork generation
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+          architecture: x64
+
+      - name: Check prerequisites
+        run: |
+          cmake --version
+          if ($LASTEXITCODE -ne 0) { throw 'CMake is unavailable' }
+          python --version
+          if ($LASTEXITCODE -ne 0) { throw 'Python is unavailable' }
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+          $visualStudio = & $vswhere -version '[17.0,18.0)' -products '*' `
+            -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $visualStudio) { throw 'Visual Studio 2022 C++ tools are unavailable' }
+          if (-not (Test-Path third_party/DPF/CMakeLists.txt)) { throw 'DPF submodule is missing' }
+
+      - name: Fetch pinned OpenGL headers for MSVC
+        run: |
+          $headers = @(
+            @{
+              Path = 'GL/glext.h'
+              Url = 'https://raw.githubusercontent.com/KhronosGroup/OpenGL-Registry/6af574a14089ccfee87efe230ebcdd8742859813/api/GL/glext.h'
+              Sha256 = 'd7b6f15b1bb209e08bd6ada36983f8bb40429e66c24083aa2474d55205d97047'
+            },
+            @{
+              Path = 'KHR/khrplatform.h'
+              Url = 'https://raw.githubusercontent.com/KhronosGroup/EGL-Registry/db3425b8246136faccb5e2782b5694960bd6edf1/api/KHR/khrplatform.h'
+              Sha256 = '7b1e01aaa7ad8f6fc34b5c7bdf79ebf5189bb09e2c4d2e79fc5d350623d11e83'
+            }
+          )
+          foreach ($header in $headers) {
+            $file = Join-Path 'third_party/DPF/khronos' $header.Path
+            New-Item -ItemType Directory -Force (Split-Path $file) | Out-Null
+            Invoke-WebRequest -Uri $header.Url -OutFile $file
+            $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $file).Hash.ToLowerInvariant()
+            if ($hash -ne $header.Sha256) { throw "Header checksum mismatch: $file" }
+          }
+
+      - name: Configure Windows x64 VST3
+        run: |
+          cmake -S SMS-AnvilleSampler -B build-win -G 'Visual Studio 17 2022' -A x64 `
+            -DANVILLESAMPLER_BUILD_LV2=OFF -DANVILLESAMPLER_BUILD_VST3=ON `
+            -DBUILD_TESTING=ON -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded `
+            "-DPython3_EXECUTABLE=$((Get-Command python).Source)"
+          if ($LASTEXITCODE -ne 0) { throw 'CMake configuration failed' }
+
+      - name: Build
+        run: cmake --build build-win --config Release --parallel 2
+
+      - name: Run tests
+        run: ctest --test-dir build-win -C Release --output-on-failure
+
+      - name: Validate bundle layout
+        run: |
+          $required = @(
+            'Contents/x86_64-win/SMS-AnvilleSampler.vst3',
+            'skin/skin.ini', 'skin/background.png', 'skin-template/skin.ini'
+          )
+          foreach ($relative in $required) {
+            $file = Join-Path 'build-win/bin/SMS-AnvilleSampler.vst3' $relative
+            if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { throw "Missing bundle file: $file" }
+          }
+          if (Test-Path 'build-win/bin/SMS-AnvilleSampler.lv2') { throw 'Unexpected LV2 output' }
+
+      - name: Package manual build artifact
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          $prefix = "SMS-AnvilleSampler-$($env:GITHUB_SHA.Substring(0,12))-windows-x86_64"
+          $archive = Join-Path dist "$prefix-vst3.zip"
+          Compress-Archive -LiteralPath build-win/bin/SMS-AnvilleSampler.vst3 -DestinationPath $archive
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant()
+          "$hash  $prefix-vst3.zip" | Set-Content -Encoding ascii dist/SHA256SUMS.txt
+
+      - name: Upload manual build artifact
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: SMS-AnvilleSampler-${{ github.sha }}-windows-x86_64
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0

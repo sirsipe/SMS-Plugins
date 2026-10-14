@@ -1,14 +1,22 @@
-# Deferred Windows and macOS builds
+# Windows CI and deferred platform releases
 
 Audience: maintainers or agents resuming cross-platform work. This page records
-research, not current platform support. SMS-Anville Sampler releases remain Linux
+development build support, not native DAW validation. Releases remain Linux
 x86-64 LV2 and VST3; do not add other release artifacts until their native-host
 checks below pass.
 
 ## Findings
 
-The plugin, core, state codec, and Common-UI sources have no known direct Linux
-API dependency. DPF/DGL owns format and window-system integration. The pinned
+The engine and state codec use portable C++.
+[Skin filesystem operations](../../Common-UI/SkinFileIO.cpp) implement Linux,
+Windows 10+, and macOS paths and preference persistence; Windows resolves the
+loaded module through the wide API because pinned DPF exposes ANSI filenames.
+The [focused skin CI](../../.github/workflows/skin-ci.yml) builds filesystem tests
+on all three platforms independently of DPF. This is not full plugin coverage.
+Online Help in
+[the UI](../../SMS-AnvilleSampler/src/ui/MidichopperUI.cpp) launches a browser
+only on Linux; other platforms return failure. DPF/DGL owns format and
+window-system integration. The pinned
 DPF CMake support generates Windows and macOS VST3 bundles and an Apple-only
 AUv2 `.component`. Its [feature table](../../third_party/DPF/FEATURES.md) reports
 MIDI input, parameter outputs, an embedded UI, and full internal state for VST3
@@ -29,31 +37,57 @@ input/output and MIDI input, DPF automatically classifies the AU as `aumf`, a
 music effect. DPF's AU wrapper does not support host-driven UI resizing, so the
 default 1344x756 editor and host behavior need explicit testing.
 
+## Windows runtime requirements
+
+Target Windows 10 (1607+) or Windows 11, with a 64-bit VST3 host and graphics
+driver providing OpenGL 2.x compatibility. Native client/DAW validation remains
+pending. Windows 7 is not a supported target; skin preference replacement uses
+the Windows 10 rename path without a legacy fallback. This does not establish
+that the plugin cannot load on Windows 7.
+
+Keep the complete VST3 bundle. WebView2, Python, CMake and SDKs are not runtime
+dependencies. The configured MSVC CI build uses a static C++ runtime. Audio
+drivers are managed by the host; the plugin requires no ASIO component itself.
+
 ## Current gaps
 
-- The format list always starts with LV2. VST3 and CLAP have options, but LV2
-  cannot be disabled and AU has no project option.
+- Online Help needs a native browser launcher for Windows/macOS.
+- The project removes unused DPF WebView definitions and Windows source files
+  from its targets. This avoids generator-expression feature detection and
+  CHOC/Windows loader conflicts without changing the pinned submodule.
+- LV2 can be disabled for VST3/CLAP-only builds; AU has no project option.
 - The CMake install rule installs only LV2. Windows VST3, macOS VST3, and AU
   need bundle-aware installation and packaging.
-- Project CI, artifacts, and releases are Ubuntu-only. Neither MSVC nor Apple
-  SDK compilation is currently verified.
+- Full plugin CI is configured for Ubuntu and Windows x64/MSVC. Windows
+  cross-compilation succeeds with LLVM-MinGW; the native Windows workflow must
+  run on GitHub to verify MSVC and CTest. Apple SDK compilation remains unverified.
 - There is no Windows/macOS DAW validation, universal-macOS check, signing, or
   notarization workflow.
 
 ## Proposed enablement
 
-First add `ANVILLESAMPLER_BUILD_LV2` (default `ON`) and
-`ANVILLESAMPLER_BUILD_AU` (default `OFF`, rejected unless `APPLE`), build the format
-list conditionally, and preserve all existing Linux defaults. Add install rules
-only for enabled bundles.
+[Windows CI](../../.github/workflows/windows-ci.yml) runs on push to `main`, pull
+requests, or manual dispatch. It uses GitHub's
+[Windows 2022 image](https://github.com/actions/runner-images/blob/main/images/windows/Windows2022-Readme.md)
+with Visual Studio 2022 C++ tools, Windows SDK and CMake 3.22+. It selects
+Python 3.12 for embedded artwork and initializes the pinned DPF submodule.
+Before configuring, it downloads pinned Khronos `glext.h` and `khrplatform.h`
+into DPF's expected directories and checks their SHA-256 hashes. There is no
+external VST3 SDK, Linux package, private dependency or secret to install.
 
-A prospective native Windows x64 build is:
+The workflow builds VST3 only, runs all CTest tests, verifies bundle binary,
+default skin and template paths, and checks LV2 was not produced. The static
+MSVC runtime avoids a separate Visual C++ redistributable for these artifacts.
+Push/PR runs retain no bundles; manual runs upload a ZIP and SHA-256 checksum
+for 14 days. See [testing branch builds](../RELEASING.md).
+
+With the same prerequisites, the native Windows x64 commands are:
 
 ```powershell
 cmake -S SMS-AnvilleSampler -B build-win `
   -G "Visual Studio 17 2022" -A x64 `
   -DANVILLESAMPLER_BUILD_LV2=OFF -DANVILLESAMPLER_BUILD_VST3=ON `
-  -DBUILD_TESTING=ON
+  -DBUILD_TESTING=ON -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
 cmake --build build-win --config Release --parallel
 ctest --test-dir build-win -C Release --output-on-failure
 ```
@@ -61,6 +95,8 @@ ctest --test-dir build-win -C Release --output-on-failure
 Expected output is `build-win/bin/SMS-AnvilleSampler.vst3`, including
 `Contents/x86_64-win/SMS-AnvilleSampler.vst3`.
 
+For macOS, first add `ANVILLESAMPLER_BUILD_AU` (default OFF, rejected unless
+`APPLE`) and install rules for enabled bundles, preserving Linux defaults.
 A prospective native universal macOS build is:
 
 ```bash
@@ -91,5 +127,6 @@ minimum macOS version from actual host coverage; do not guess it from the SDK.
   fixed-size editor in Logic.
 - Verify both slices of a universal macOS bundle, then establish appropriate
   Windows signing and Apple code-signing/notarization before distribution.
-- Add native CI, packaging, checksums, installation documentation, and release
-  procedure changes only when maintainers decide to support the platforms.
+- Add remaining macOS CI, signing, installation documentation and platform
+  release publishing only after native-host checks pass. Windows CI artifacts
+  remain unsigned development builds.

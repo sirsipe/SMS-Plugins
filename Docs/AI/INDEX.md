@@ -5,7 +5,7 @@ Read [AGENTS.md](../../AGENTS.md), then the relevant row.
 | Task | Read | Source of truth / starting point |
 | --- | --- | --- |
 | Build, dependencies, formats | [Development](DEVELOPMENT.md) | [CMake](../../SMS-AnvilleSampler/CMakeLists.txt) |
-| Deferred Windows/macOS builds | [Platform builds](PLATFORM-BUILDS.md) | Research and acceptance checks; not current support |
+| Windows/macOS builds | [Platform builds](PLATFORM-BUILDS.md) | CI prerequisites, gaps and native-host acceptance |
 | Dev Container setup | [Development](DEVELOPMENT.md), [Testing](TESTING.md) | [Configuration](../../.devcontainer/devcontainer.json) |
 | Tests, LV2 discovery, host/UI checks | [Testing](TESTING.md) | [Tests](../../SMS-AnvilleSampler/tests/) |
 | Engine, state, UI | [Anville Sampler architecture](../../SMS-AnvilleSampler/Docs/ARCHITECTURE.md) | [Plugin source](../../SMS-AnvilleSampler/src/) |

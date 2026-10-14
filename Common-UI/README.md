@@ -7,14 +7,19 @@ Unlike `Common-Src`, code below `DPF` deliberately depends on DPF/DGL and is
 compiled as part of each plug-in UI target so that the plug-in's DPF feature
 defines remain authoritative.
 
-Consumers can link the header-only `sms_common_ui` CMake target to inherit the
-shared UI and framework-neutral source include paths.
+Consumers link `sms_common_ui` to inherit shared include paths and the compiled
+`sms_skin_file_io` platform library. Other shared UI components remain headers.
 
 - `DPF/NanoUI.hpp`: logical-canvas scaling and repaint lifecycle.
 - `Skin.hpp`: bounded versioned INI snapshots, UTF-8 text/checked-format lookup, and confined
   image paths; framework-neutral and used only outside audio processing.
 - `SkinCatalog.hpp`: named collection discovery, forced-folder precedence, and
   atomic per-user preferences; IDs stay separate from translated display text.
+- `SkinFileIO.hpp/.cpp`: UTF-8/native path conversion, bounded artwork reads,
+  native config folders and atomic preference replacement. Windows uses wide
+  APIs and Windows 10+ rename semantics; Linux/macOS use POSIX files. No DPF
+  dependency. Platform paths are documented in the
+  [skin guide](../SMS-AnvilleSampler/Docs/SKINS.md).
 - `DPF/Theme.hpp`: semantic colors, fixed pad tint identities, drawing metrics,
   hover opacity, and per-editor drawing scopes with thread-local restoration.
 - `DPF/SkinTheme.hpp`: supported color/metric fields and validated DPF palette

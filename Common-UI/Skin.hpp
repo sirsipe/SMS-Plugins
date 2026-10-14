@@ -1,5 +1,7 @@
 #pragma once
 
+#include "SkinFileIO.hpp"
+
 #include <array>
 #include <charconv>
 #include <cmath>
@@ -23,24 +25,49 @@ public:
 
     [[nodiscard]] bool valid() const noexcept { return valid_; }
 
+    /** Resolve native module paths for Windows, where DPF exposes ANSI metadata. */
+    [[nodiscard]] static std::filesystem::path directoryForNativeBinary(
+        const std::filesystem::path& binary, const std::filesystem::path& singleFileSkinName) noexcept
+    {
+        try {
+            if (binary.empty()) return {};
+            std::error_code error;
+            if (!std::filesystem::is_regular_file(binary, error) || error) return {};
+            const auto matches = [](const std::filesystem::path& component, std::string_view expected) {
+                auto name = skinFileIO::pathToUtf8(component);
+                for (char& byte : name)
+                    if (byte >= 'A' && byte <= 'Z') byte = static_cast<char>(byte + ('a' - 'A'));
+                return name == expected;
+            };
+            const auto parent = binary.parent_path();
+            if (matches(parent.extension(), ".lv2")) return parent / "skin";
+            const auto contents = parent.parent_path();
+            if (matches(contents.filename(), "contents") && matches(contents.parent_path().extension(), ".vst3"))
+                return contents.parent_path() / "skin";
+            if (singleFileSkinName.empty()) return {};
+            return parent / singleFileSkinName;
+        } catch (...) { return {}; }
+    }
+
     /** DPF may identify a bundle directory or a single-file plugin as its bundle path. */
     [[nodiscard]] static std::filesystem::path directoryForPlugin(
         const char* bundlePath, const char* binaryPath, const char* singleFileSkinName) noexcept
     {
         try {
             if (bundlePath != nullptr && bundlePath[0] != '\0') {
-                const std::filesystem::path bundle{bundlePath};
+                const auto bundle = skinFileIO::pathFromUtf8(bundlePath);
                 std::error_code error;
                 const auto status = std::filesystem::status(bundle, error);
                 if (error) return {};
                 if (std::filesystem::is_directory(status)) return bundle / "skin";
                 if (!std::filesystem::is_regular_file(status)) return {};
                 if (singleFileSkinName == nullptr || singleFileSkinName[0] == '\0') return {};
-                return bundle.parent_path() / singleFileSkinName;
+                return bundle.parent_path() / skinFileIO::pathFromUtf8(singleFileSkinName);
             }
             if (binaryPath == nullptr || binaryPath[0] == '\0' ||
                 singleFileSkinName == nullptr || singleFileSkinName[0] == '\0') return {};
-            return std::filesystem::path(binaryPath).parent_path() / singleFileSkinName;
+            return skinFileIO::pathFromUtf8(binaryPath).parent_path() /
+                skinFileIO::pathFromUtf8(singleFileSkinName);
         } catch (...) {
             return {};
         }
@@ -282,7 +309,7 @@ private:
                                      const std::string_view value)
     {
         if (value.empty()) return {};
-        const std::filesystem::path relative{value};
+        const auto relative = skinFileIO::pathFromUtf8(value);
         if (relative.is_absolute() || relative.has_root_path()) return {};
         for (const auto& part : relative)
             if (part == "..") return {};
@@ -296,7 +323,7 @@ private:
             if (candidate == path.end() || *candidate != part) return {};
             ++candidate;
         }
-        return path.string();
+        return skinFileIO::pathToUtf8(path);
     }
 };
 

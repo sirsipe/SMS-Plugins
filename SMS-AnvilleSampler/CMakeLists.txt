@@ -11,9 +11,17 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+if(MSVC)
+  add_compile_options(/utf-8)
+endif()
 
-option(ANVILLESAMPLER_BUILD_VST3 "Also build a VST3 bundle" OFF)
+option(ANVILLESAMPLER_BUILD_LV2 "Build an LV2 bundle" ON)
+option(ANVILLESAMPLER_BUILD_VST3 "Build a VST3 bundle" OFF)
 option(ANVILLESAMPLER_BUILD_CLAP "Also build a CLAP bundle" OFF)
+if(NOT ANVILLESAMPLER_BUILD_LV2 AND NOT ANVILLESAMPLER_BUILD_VST3 AND
+   NOT ANVILLESAMPLER_BUILD_CLAP)
+  message(FATAL_ERROR "Enable at least one Anville Sampler plugin format")
+endif()
 set(ANVILLESAMPLER_HELP_REF "main" CACHE STRING
   "Git ref used for Online Help (main for development builds, release tag for releases)")
 if(NOT ANVILLESAMPLER_HELP_REF MATCHES "^(main|SMS-AnvilleSampler-v[0-9]+\\.[0-9]+\\.[0-9]+)$")
@@ -62,7 +70,10 @@ elseif(MSVC)
   target_compile_options(anvillesampler_core PRIVATE /W4 /permissive-)
 endif()
 
-set(ANVILLESAMPLER_PLUGIN_FORMATS lv2)
+set(ANVILLESAMPLER_PLUGIN_FORMATS)
+if(ANVILLESAMPLER_BUILD_LV2)
+  list(APPEND ANVILLESAMPLER_PLUGIN_FORMATS lv2)
+endif()
 if(ANVILLESAMPLER_BUILD_CLAP)
   list(APPEND ANVILLESAMPLER_PLUGIN_FORMATS clap)
 endif()
@@ -92,12 +103,14 @@ set(ANVILLESAMPLER_UI_SOURCES
   "${ANVILLESAMPLER_ARTWORK_DIR}/anvillesampler_artwork.cpp"
   "${ANVILLESAMPLER_ARTWORK_DIR}/anvillesampler_artwork.hpp")
 
-dpf_add_plugin(SMS-AnvilleSampler
-  TARGETS ${ANVILLESAMPLER_PLUGIN_FORMATS}
-  UI_TYPE opengl
-  USE_FILE_BROWSER
-  FILES_DSP ${ANVILLESAMPLER_DSP_SOURCES}
-  FILES_UI ${ANVILLESAMPLER_UI_SOURCES})
+if(ANVILLESAMPLER_PLUGIN_FORMATS)
+  dpf_add_plugin(SMS-AnvilleSampler
+    TARGETS ${ANVILLESAMPLER_PLUGIN_FORMATS}
+    UI_TYPE opengl
+    USE_FILE_BROWSER
+    FILES_DSP ${ANVILLESAMPLER_DSP_SOURCES}
+    FILES_UI ${ANVILLESAMPLER_UI_SOURCES})
+endif()
 
 # Only the VST3 variant needs same-process UI access. Keep LV2's separate UI
 # binary and its existing host feature requirements unchanged.
@@ -129,6 +142,7 @@ if(ANVILLESAMPLER_BUILD_VST3)
   endif()
   set_target_properties(SMS-AnvilleSampler-VST3-vst3 PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY "${anvillesampler_vst3_binary_dir}"
+    RUNTIME_OUTPUT_DIRECTORY "${anvillesampler_vst3_binary_dir}"
     OUTPUT_NAME "SMS-AnvilleSampler")
 endif()
 
@@ -142,12 +156,23 @@ foreach(property COMPILE_DEFINITIONS INTERFACE_COMPILE_DEFINITIONS)
     set_target_properties(dgl-opengl PROPERTIES "${property}" "${dgl_definitions}")
   endif()
 endforeach()
+get_target_property(dgl_sources dgl-opengl SOURCES)
+list(FILTER dgl_sources EXCLUDE REGEX "(^|/)WebViewWin32\\.cpp$")
+set_property(TARGET dgl-opengl PROPERTY SOURCES "${dgl_sources}")
 
-set(anvillesampler_targets SMS-AnvilleSampler)
+set(anvillesampler_targets)
+if(ANVILLESAMPLER_PLUGIN_FORMATS)
+  list(APPEND anvillesampler_targets SMS-AnvilleSampler)
+endif()
 if(ANVILLESAMPLER_BUILD_VST3)
   list(APPEND anvillesampler_targets SMS-AnvilleSampler-VST3)
 endif()
 foreach(anvillesampler_target IN LISTS anvillesampler_targets)
+  if(WIN32)
+    get_target_property(ui_sources ${anvillesampler_target}-ui SOURCES)
+    list(FILTER ui_sources EXCLUDE REGEX "(^|/)DistrhoUI_win32\\.cpp$")
+    set_property(TARGET ${anvillesampler_target}-ui PROPERTY SOURCES "${ui_sources}")
+  endif()
   target_include_directories(${anvillesampler_target} PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/../Common-Src"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
@@ -170,12 +195,15 @@ endforeach()
 # Copy on every build so manifest/artwork edits do not require relinking.
 set(anvillesampler_default_skin "${CMAKE_CURRENT_SOURCE_DIR}/skins/default")
 set(anvillesampler_skin_template "${CMAKE_CURRENT_SOURCE_DIR}/skins/placeholder")
-add_custom_target(anvillesampler_skin_templates ALL
-  COMMAND "${CMAKE_COMMAND}" -E copy_directory "${anvillesampler_default_skin}"
-    "${PROJECT_BINARY_DIR}/bin/SMS-AnvilleSampler.lv2/skin"
-  COMMAND "${CMAKE_COMMAND}" -E copy_directory "${anvillesampler_skin_template}"
-    "${PROJECT_BINARY_DIR}/bin/SMS-AnvilleSampler.lv2/skin-template"
-  VERBATIM)
+add_custom_target(anvillesampler_skin_templates ALL)
+if(ANVILLESAMPLER_BUILD_LV2)
+  add_custom_command(TARGET anvillesampler_skin_templates POST_BUILD
+    COMMAND "${CMAKE_COMMAND}" -E copy_directory "${anvillesampler_default_skin}"
+      "${PROJECT_BINARY_DIR}/bin/SMS-AnvilleSampler.lv2/skin"
+    COMMAND "${CMAKE_COMMAND}" -E copy_directory "${anvillesampler_skin_template}"
+      "${PROJECT_BINARY_DIR}/bin/SMS-AnvilleSampler.lv2/skin-template"
+    VERBATIM)
+endif()
 if(ANVILLESAMPLER_BUILD_VST3)
   add_custom_command(TARGET anvillesampler_skin_templates POST_BUILD
     COMMAND "${CMAKE_COMMAND}" -E copy_directory "${anvillesampler_default_skin}"
@@ -192,7 +220,9 @@ if(ANVILLESAMPLER_BUILD_CLAP)
       "${PROJECT_BINARY_DIR}/bin/SMS-AnvilleSampler.skin-template"
     VERBATIM)
 endif()
-add_dependencies(SMS-AnvilleSampler-lv2 anvillesampler_skin_templates)
+if(ANVILLESAMPLER_BUILD_LV2)
+  add_dependencies(SMS-AnvilleSampler-lv2 anvillesampler_skin_templates)
+endif()
 if(ANVILLESAMPLER_BUILD_VST3)
   add_dependencies(SMS-AnvilleSampler-VST3-vst3 anvillesampler_skin_templates)
 endif()
@@ -204,7 +234,10 @@ if(BUILD_TESTING)
   add_executable(anvillesampler_default_skin_tests tests/default_skin_tests.cpp)
   target_link_libraries(anvillesampler_default_skin_tests PRIVATE sms_common_ui)
   add_dependencies(anvillesampler_default_skin_tests anvillesampler_skin_templates)
-  set(anvillesampler_packaged_skins "${PROJECT_BINARY_DIR}/bin/SMS-AnvilleSampler.lv2/skin")
+  set(anvillesampler_packaged_skins)
+  if(ANVILLESAMPLER_BUILD_LV2)
+    list(APPEND anvillesampler_packaged_skins "${PROJECT_BINARY_DIR}/bin/SMS-AnvilleSampler.lv2/skin")
+  endif()
   if(ANVILLESAMPLER_BUILD_VST3)
     list(APPEND anvillesampler_packaged_skins "${PROJECT_BINARY_DIR}/bin/SMS-AnvilleSampler.vst3/skin")
   endif()
@@ -306,6 +339,8 @@ if(BUILD_TESTING)
   add_test(NAME wav-codec COMMAND anvillesampler_wav_codec_tests)
 endif()
 
-install(
-  DIRECTORY "${PROJECT_BINARY_DIR}/bin/SMS-AnvilleSampler.lv2"
-  DESTINATION "${CMAKE_INSTALL_LIBDIR}/lv2")
+if(ANVILLESAMPLER_BUILD_LV2)
+  install(
+    DIRECTORY "${PROJECT_BINARY_DIR}/bin/SMS-AnvilleSampler.lv2"
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/lv2")
+endif()

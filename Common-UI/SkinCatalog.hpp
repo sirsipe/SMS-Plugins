@@ -5,7 +5,6 @@
 #include <algorithm>
 #include <cstdlib>
 #include <vector>
-#include <unistd.h>
 
 namespace sms::ui {
 
@@ -63,7 +62,7 @@ public:
             std::filesystem::directory_iterator iterator(root, error), end;
             while (!error && iterator != end) {
                 const auto path = iterator->path();
-                const auto id = path.filename().string();
+                const auto id = skinFileIO::pathToUtf8(path.filename());
                 std::error_code candidateError;
                 const auto canonical = std::filesystem::canonical(path, candidateError);
                 if (!candidateError && !id.empty() && safeId(id) &&
@@ -112,29 +111,17 @@ public:
     [[nodiscard]] static std::filesystem::path configPath() noexcept
     {
         try {
-            std::filesystem::path root;
-            if (const char* xdg = std::getenv("XDG_CONFIG_HOME"); xdg && *xdg) {
-                root = xdg;
-                if (!root.is_absolute()) root.clear();
-            }
-            if (root.empty()) {
-                const char* home = std::getenv("HOME");
-                if (!home || !*home || !std::filesystem::path(home).is_absolute()) return {};
-                root = std::filesystem::path(home) / ".config";
-            }
-            return root / "SMS-AnvilleSampler" / "selected-skin";
+            const auto root = skinFileIO::userConfigDirectory();
+            return root.empty() ? std::filesystem::path{}
+                                : root / "SMS-AnvilleSampler" / "selected-skin";
         } catch (...) { return {}; }
     }
     [[nodiscard]] static std::string read(const std::filesystem::path& path) noexcept
     {
         try {
             if (path.empty()) return {};
-            std::ifstream input(path, std::ios::binary);
-            if (!input) return {};
-            std::string contents(maxPreferenceBytes + 1, '\0');
-            input.read(contents.data(), static_cast<std::streamsize>(contents.size()));
-            if (input.bad() || input.gcount() > static_cast<std::streamsize>(maxPreferenceBytes)) return {};
-            contents.resize(static_cast<std::size_t>(input.gcount()));
+            const auto bytes = skinFileIO::readBytes(path, maxPreferenceBytes);
+            const std::string contents(bytes.begin(), bytes.end());
             constexpr std::string_view header = "SMS-SKIN-PREFERENCE 1\n";
             if (contents.compare(0, header.size(), header) != 0 ||
                 contents.size() <= header.size() || contents.back() != '\n') return {};
@@ -144,33 +131,11 @@ public:
     }
     [[nodiscard]] static bool write(const std::filesystem::path& path, std::string_view id) noexcept
     {
-        int descriptor = -1;
-        std::string temporary;
         try {
             if (path.empty() || path.filename().empty() || !SkinCatalog::safeId(id)) return false;
-            std::error_code error;
-            std::filesystem::create_directories(path.parent_path(), error);
-            if (error) return false;
-            const auto contents = std::string("SMS-SKIN-PREFERENCE 1\n") + std::string(id) + "\n";
-            temporary = (path.parent_path() / (path.filename().string() + ".tmp-XXXXXX")).string();
-            descriptor = ::mkstemp(temporary.data());
-            if (descriptor < 0) return false;
-            std::size_t offset = 0;
-            while (offset < contents.size()) {
-                const auto count = ::write(descriptor, contents.data() + offset, contents.size() - offset);
-                if (count <= 0) break;
-                offset += static_cast<std::size_t>(count);
-            }
-            const bool closed = ::close(descriptor) == 0;
-            descriptor = -1;
-            if (offset == contents.size() && closed) {
-                std::filesystem::rename(temporary, path, error);
-                if (!error) return true;
-            }
-        } catch (...) {}
-        if (descriptor >= 0) ::close(descriptor);
-        if (!temporary.empty()) { std::error_code error; std::filesystem::remove(temporary, error); }
-        return false;
+            return skinFileIO::writeAtomically(path,
+                std::string("SMS-SKIN-PREFERENCE 1\n") + std::string(id) + "\n");
+        } catch (...) { return false; }
     }
 };
 

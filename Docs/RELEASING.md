@@ -6,7 +6,7 @@ must never push branches/tags, publish releases, or trigger publishing workflows
 GitHub Actions builds and tests SMS-Anville Sampler on every push to `main` and on
 every pull request. A separate documentation job checks links, indexing, and
 size limits. Push and pull-request builds do not retain artifacts. Manually
-dispatched Ubuntu CI builds retain test artifacts for 14 days. Workflow
+dispatched Ubuntu and Windows CI builds retain test artifacts for 14 days. Workflow
 definitions live in [.github/workflows](../.github/workflows/).
 
 ## Testing a branch build
@@ -18,9 +18,17 @@ the `SMS-AnvilleSampler-<commit>-linux-x86_64` artifact from the workflow run's
 summary page. It contains separate LV2 and VST3 `.tar.gz` archives plus
 `SHA256SUMS.txt` and expires after 14 days.
 
+
+For an unsigned Windows x64 development build, select **Windows CI** instead.
+Its `SMS-AnvilleSampler-<commit>-windows-x86_64` artifact contains a VST3 ZIP and
+`SHA256SUMS.txt`. Extract the whole `SMS-AnvilleSampler.vst3` folder, including
+`Contents`, `skin` and `skin-template`. Windows CI runs CTest and bundle checks;
+it does not establish native DAW compatibility or publish a Windows release.
+Prerequisites and configuration live in [platform builds](AI/PLATFORM-BUILDS.md).
+
 The manual control becomes available after the workflow containing it is on the
 default branch. The same build can be started from the GitHub CLI with
-`gh workflow run ubuntu-ci.yml --ref <branch>`.
+`gh workflow run ubuntu-ci.yml --ref <branch>` (or `windows-ci.yml` for Windows).
 
 To publish a release:
 

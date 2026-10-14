@@ -882,16 +882,20 @@ protected:
             fSkinImagesLoaded = true;
             const auto flags = DGL_NAMESPACE::NanoVG::IMAGE_GENERATE_MIPMAPS;
             const auto& logoPath = fSkin.imagePath("logo");
-            if (!logoPath.empty())
-                fLogo.emplace(createImageFromFile(logoPath.c_str(), flags));
+            const auto logoBytes = sms::ui::skinFileIO::readImage(
+                sms::ui::skinFileIO::pathFromUtf8(logoPath));
+            if (!logoBytes.empty())
+                fLogo.emplace(createImageFromMemory(logoBytes.data(),
+                    static_cast<uint>(logoBytes.size()), flags));
             const bool customLogoLoaded = fLogo && fLogo->isValid();
             if (!customLogoLoaded)
                 fLogo.emplace(createImageFromMemory(anvillesampler_artwork::anvilleData,
                                               anvillesampler_artwork::anvilleDataSize, flags));
             if (sms::ui::dpf::logoGlowEnabled(fTheme)) {
                 const auto pixels = sms::ui::dpf::loadLogoGlow(
-                    customLogoLoaded ? logoPath.c_str() : nullptr,
-                    {anvillesampler_artwork::anvilleData, anvillesampler_artwork::anvilleDataSize},
+                    customLogoLoaded ? std::span<const std::uint8_t>(logoBytes)
+                        : std::span<const std::uint8_t>(anvillesampler_artwork::anvilleData,
+                                                       anvillesampler_artwork::anvilleDataSize),
                     fTheme.logoGlowRadius);
                 if (!pixels.empty())
                     fLogoGlow.emplace(createImageFromRGBA(sms::ui::logoGlowWidth,
@@ -899,8 +903,11 @@ protected:
             }
             fLogoGlowEpoch = std::chrono::steady_clock::now();
             const auto& backgroundPath = fSkin.imagePath("background");
-            if (!backgroundPath.empty())
-                fBackground.emplace(createImageFromFile(backgroundPath.c_str(), flags));
+            const auto backgroundBytes = sms::ui::skinFileIO::readImage(
+                sms::ui::skinFileIO::pathFromUtf8(backgroundPath));
+            if (!backgroundBytes.empty())
+                fBackground.emplace(createImageFromMemory(backgroundBytes.data(),
+                    static_cast<uint>(backgroundBytes.size()), flags));
         }
         char collapseLabel[48];
         const int collapsingPads = collapseShiftCount();
@@ -2013,8 +2020,13 @@ protected:
 private:
     std::filesystem::path skinDirectory() const
     {
+#if defined(_WIN32)
+        return sms::ui::Skin::directoryForNativeBinary(sms::ui::skinFileIO::moduleBinaryPath(),
+                                                       "SMS-AnvilleSampler.skin");
+#else
         return sms::ui::Skin::directoryForPlugin(getBundlePath(), getBinaryFilename(),
                                                 "SMS-AnvilleSampler.skin");
+#endif
     }
 
     const sms::ui::SkinCatalog fSkinCatalog;

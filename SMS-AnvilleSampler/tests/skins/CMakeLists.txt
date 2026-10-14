@@ -1,0 +1,20 @@
+cmake_minimum_required(VERSION 3.22)
+project(SMSSkinTests LANGUAGES CXX)
+
+# Test filesystem/platform contracts natively without a plugin SDK or display.
+enable_testing()
+find_package(Threads REQUIRED)
+add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../Common-UI"
+  "${CMAKE_CURRENT_BINARY_DIR}/Common-UI")
+
+foreach(name skin skin_catalog)
+  add_executable(${name}_tests "../${name}_tests.cpp")
+  target_link_libraries(${name}_tests PRIVATE sms_common_ui Threads::Threads)
+  if(MSVC)
+    target_compile_options(${name}_tests PRIVATE /utf-8 /W4 /permissive-)
+  else()
+    target_compile_options(${name}_tests PRIVATE -Wall -Wextra -Wpedantic)
+  endif()
+endforeach()
+add_test(NAME ui-skin COMMAND skin_tests)
+add_test(NAME ui-skin-catalog COMMAND skin_catalog_tests)

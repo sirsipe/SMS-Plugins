@@ -22,7 +22,9 @@ ctest --test-dir build --output-on-failure
 
 Outputs: `build/bin/SMS-AnvilleSampler.lv2` and, when enabled,
 `build/bin/SMS-AnvilleSampler.vst3`. `ANVILLESAMPLER_BUILD_CLAP=ON` adds CLAP;
-CLAP is not currently covered by CI. Both optional format switches default OFF.
+CLAP is not currently covered by CI. VST3/CLAP default OFF;
+`ANVILLESAMPLER_BUILD_LV2` defaults ON and can be disabled for VST3-only builds.
+At least one format must be enabled.
 Python 3 runs DPF's resource converter to embed `res/anville.png` in each UI binary.
 Each build copies the maintained graffiti default into LV2/VST3 `skin/` and
 CLAP sibling `SMS-AnvilleSampler.skin`, activating it without a skin menu.
@@ -32,9 +34,27 @@ Use a fresh ignored `build-*` directory if an existing CMake cache uses a
 different source path or generator. Avoid repeatedly rebuilding unchanged code.
 
 Windows and macOS formats are deferred and are not supported release targets.
-The investigated build path, known gaps, and required validation are recorded in
+Windows CI prerequisites, native build commands, remaining gaps and validation live in
 [Platform builds](PLATFORM-BUILDS.md); do not present its unverified commands as
 current release instructions.
+
+## Native skin filesystem tests
+
+These checks need CMake 3.22+ and C++20, without DPF or a display:
+
+```bash
+cmake -S SMS-AnvilleSampler/tests/skins -B build-skins
+cmake --build build-skins --config Release --parallel 2
+ctest --test-dir build-skins -C Release --output-on-failure
+```
+
+[Skin CI](../../.github/workflows/skin-ci.yml) runs them on Linux, Windows/MSVC
+and macOS, including Unicode installation paths. Windows symlink cases report
+skips when privileges are unavailable; other coverage still runs. The checks
+cover manifests, discovery, native config folders, Unicode paths/artwork reads,
+and concurrent atomic preferences, including held Windows readers. Windows
+persistence requires Windows 10 version 1607 or newer. They do not validate a
+native DAW/editor or establish Windows/macOS plugin release support.
 
 ## Docker development environment
 

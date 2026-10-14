@@ -8,6 +8,7 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
@@ -16,6 +17,10 @@
 #include <stdexcept>
 #include <thread>
 #include <vector>
+
+#ifdef _WIN32
+#include <malloc.h>
+#endif
 
 // Count destruction as well as allocation: retiring a retained sample on the
 // callback thread is just as unsuitable as allocating its replacement there.
@@ -45,19 +50,33 @@ void operator delete[](void* pointer, std::size_t) noexcept { ::operator delete(
 void* operator new(std::size_t bytes, std::align_val_t alignment)
 {
     allocation_probe::allocated();
+#ifdef _WIN32
+    if (void* pointer = _aligned_malloc(std::max(bytes, std::size_t{1}),
+                                       static_cast<std::size_t>(alignment))) return pointer;
+#else
     void* pointer = nullptr;
     if (posix_memalign(&pointer, static_cast<std::size_t>(alignment),
                       std::max(bytes, std::size_t{1})) == 0) return pointer;
+#endif
     throw std::bad_alloc{};
 }
 void* operator new[](std::size_t bytes, std::align_val_t alignment)
 { return ::operator new(bytes, alignment); }
-void operator delete(void* pointer, std::align_val_t) noexcept { ::operator delete(pointer); }
-void operator delete[](void* pointer, std::align_val_t) noexcept { ::operator delete(pointer); }
-void operator delete(void* pointer, std::size_t, std::align_val_t) noexcept
-{ ::operator delete(pointer); }
-void operator delete[](void* pointer, std::size_t, std::align_val_t) noexcept
-{ ::operator delete(pointer); }
+void operator delete(void* pointer, std::align_val_t) noexcept
+{
+#ifdef _WIN32
+    allocation_probe::deleted(pointer);
+    _aligned_free(pointer);
+#else
+    ::operator delete(pointer);
+#endif
+}
+void operator delete[](void* pointer, std::align_val_t alignment) noexcept
+{ ::operator delete(pointer, alignment); }
+void operator delete(void* pointer, std::size_t, std::align_val_t alignment) noexcept
+{ ::operator delete(pointer, alignment); }
+void operator delete[](void* pointer, std::size_t, std::align_val_t alignment) noexcept
+{ ::operator delete(pointer, alignment); }
 
 namespace {
 using midichopper::SamplerEngine;
@@ -72,6 +91,28 @@ void check(bool value, const char* message)
         std::cerr << "FAIL: " << message << '\n';
         std::exit(EXIT_FAILURE);
     }
+}
+
+void alignedAllocationProbe()
+{
+    constexpr auto alignment = std::align_val_t{64};
+    allocation_probe::audioThread = true;
+    const std::array<void*, 4> pointers{
+        ::operator new(0, alignment), ::operator new[](128, alignment),
+        ::operator new(128, alignment), ::operator new[](128, alignment)};
+    for (const auto pointer : pointers)
+        check(reinterpret_cast<std::uintptr_t>(pointer) % 64 == 0,
+              "aligned allocation probe respects requested alignment");
+    ::operator delete(pointers[0], alignment);
+    ::operator delete[](pointers[1], alignment);
+    ::operator delete(pointers[2], std::size_t{128}, alignment);
+    ::operator delete[](pointers[3], std::size_t{128}, alignment);
+    allocation_probe::audioThread = false;
+    check(allocation_probe::allocations.load() == 4 &&
+          allocation_probe::deletions.load() == 4,
+          "all aligned allocation and deletion forms count exactly once");
+    allocation_probe::allocations.store(0);
+    allocation_probe::deletions.store(0);
 }
 
 template<class Predicate>
@@ -876,6 +917,7 @@ PadData readOptionalWav(const char* path)
 int main(int argc, char** argv)
 {
     check(argc <= 2, "usage: anvillesampler_transfer_tests [optional.wav]");
+    alignedAllocationProbe();
     dispatcherLifecycle();
     publishedStateWithoutCallbacks();
     concurrentImportedPublication();

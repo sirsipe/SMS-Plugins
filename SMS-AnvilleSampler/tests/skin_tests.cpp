@@ -1,5 +1,7 @@
 #include "Skin.hpp"
+#include "SkinFileIO.hpp"
 
+#include <atomic>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -7,9 +9,12 @@
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <vector>
 
 namespace {
 namespace fs = std::filesystem;
+using sms::ui::skinFileIO::pathFromUtf8;
+using sms::ui::skinFileIO::pathToUtf8;
 
 void check(bool condition, const char* message)
 {
@@ -20,9 +25,24 @@ void check(bool condition, const char* message)
 }
 
 struct Fixture {
-    fs::path root = fs::temp_directory_path() /
-        ("sms-skin-tests-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
-    Fixture() { fs::create_directories(root / "skin" / "images"); }
+    fs::path root;
+    Fixture()
+    {
+        static std::atomic<unsigned> sequence{0};
+        for (unsigned attempt = 0; attempt < 100; ++attempt) {
+            root = fs::temp_directory_path() / pathFromUtf8(
+                "sms-skin-tests-雪-🔨-" +
+                std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) +
+                "-" + std::to_string(sequence.fetch_add(1)));
+            std::error_code error;
+            if (fs::create_directory(root, error)) {
+                fs::create_directories(directory() / "images");
+                return;
+            }
+            check(!error, "create portable temporary directory");
+        }
+        check(false, "unique portable temporary directory");
+    }
     ~Fixture() { std::error_code error; fs::remove_all(root, error); }
     fs::path directory() const { return root / "skin"; }
     void manifest(const std::string& contents) const
@@ -32,6 +52,26 @@ struct Fixture {
         check(static_cast<bool>(output), "write test manifest");
     }
 };
+
+bool symlink(const fs::path& target, const fs::path& link)
+{
+    std::error_code error;
+    fs::create_symlink(target, link, error);
+    if (!error) return true;
+#ifdef _WIN32
+    // Win32 ERROR_PRIVILEGE_NOT_HELD has no reliable generic-category mapping.
+    constexpr int privilegeNotHeld = 1314;
+    check(error == std::errc::permission_denied || error == std::errc::operation_not_permitted ||
+          error == std::errc::operation_not_supported || error == std::errc::function_not_supported ||
+          error.value() == privilegeNotHeld, "unexpected Windows symlink fixture failure");
+    std::cout << "SKIP: symlink creation unavailable for " << pathToUtf8(link)
+              << ": " << error.message() << '\n';
+    return false;
+#else
+    check(false, "POSIX symlink fixture creation succeeds");
+    return false;
+#endif
+}
 
 void fullFallback(const Fixture& fixture, const std::string& manifest)
 {
@@ -124,17 +164,18 @@ void imageConfinement(const Fixture& fixture)
     { std::ofstream output(image); output << "fixture"; }
     const auto external = fixture.root / "external.png";
     { std::ofstream output(external); output << "fixture"; }
-    fs::create_symlink(external, fixture.directory() / "escape.png");
-    fs::create_symlink(image, fixture.directory() / "inside.png");
+    const bool escapeLink = symlink(external, fixture.directory() / "escape.png");
+    const bool insideLink = symlink(image, fixture.directory() / "inside.png");
     fixture.manifest("[skin]\nversion=1\n[images]\nbackground=images/background.png\n"
                      "logo=inside.png\nunknown=images/background.png\n");
     const auto skin = sms::ui::Skin::load(fixture.directory());
-    check(skin.valid() && skin.images.size() == 2 && skin.imagePath("background") ==
-          fs::canonical(image).string() && skin.imagePath("logo") == fs::canonical(image).string(),
-          "relative images and confined symlinks resolve at startup");
+    check(skin.valid() && skin.images.size() == (insideLink ? 2u : 1u) && skin.imagePath("background") ==
+          pathToUtf8(fs::canonical(image)), "relative images resolve at startup");
+    if (insideLink)
+        check(skin.imagePath("logo") == pathToUtf8(fs::canonical(image)), "confined image symlink resolves at startup");
     check(skin.imagePath("missing").empty(), "missing image falls back");
-    for (const auto& invalid : {std::string("../external.png"), external.string(),
-                              std::string("escape.png"), std::string("images/../inside.png"),
+    for (const auto& invalid : {std::string("../external.png"), pathToUtf8(external),
+                              std::string("images/../background.png"),
                               std::string("missing.png"), std::string("images"), std::string()}) {
         fixture.manifest("[skin]\nversion=1\n[images]\nbackground=" + invalid +
                          "\nlogo=images/background.png\n");
@@ -142,6 +183,50 @@ void imageConfinement(const Fixture& fixture)
         check(partial.valid() && partial.imagePath("background").empty() &&
               !partial.imagePath("logo").empty(), "unsafe or missing image ignored independently");
     }
+    if (escapeLink) {
+        fixture.manifest("[skin]\nversion=1\n[images]\nbackground=escape.png\n");
+        check(sms::ui::Skin::load(fixture.directory()).imagePath("background").empty(),
+              "escaping image symlink rejected");
+    }
+}
+
+void unicodeImages(const Fixture& fixture)
+{
+    const std::string relative = "画像/背景-雪-🔨.png";
+    const auto image = fixture.directory() / pathFromUtf8(relative);
+    fs::create_directories(image.parent_path());
+    const std::vector<std::uint8_t> contents{0, 1, 127, 128, 255};
+    {
+        std::ofstream output(image, std::ios::binary);
+        output.write(reinterpret_cast<const char*>(contents.data()),
+                     static_cast<std::streamsize>(contents.size()));
+        check(static_cast<bool>(output), "write Unicode image fixture");
+    }
+    fixture.manifest("[skin]\nversion=1\n[images]\nbackground=" + relative + "\n");
+    const auto skin = sms::ui::Skin::load(fixture.directory());
+    const auto canonical = fs::canonical(image);
+    check(skin.valid() && skin.imagePath("background") == pathToUtf8(canonical),
+          "Unicode image filename resolves to UTF8 path");
+    const auto roundtrip = pathFromUtf8(skin.imagePath("background"));
+    check(roundtrip == canonical && pathToUtf8(roundtrip) == skin.imagePath("background"),
+          "Unicode native path and UTF8 image path roundtrip");
+    check(sms::ui::skinFileIO::readImage(roundtrip) == contents,
+          "Unicode image path reads exact binary bytes");
+    check(sms::ui::skinFileIO::readBytes(roundtrip, contents.size()) == contents,
+          "bounded Unicode byte read accepts exact file size");
+    check(sms::ui::skinFileIO::readBytes(roundtrip, contents.size() - 1).empty(),
+          "bounded Unicode byte read rejects file beyond limit");
+    check(sms::ui::skinFileIO::readImage(image.parent_path() / pathFromUtf8("不明.png")).empty(),
+          "missing Unicode image read falls back");
+    const auto empty = image.parent_path() / pathFromUtf8("空.png");
+    {
+        std::ofstream output(empty, std::ios::binary);
+        check(static_cast<bool>(output), "write empty Unicode image fixture");
+    }
+    check(sms::ui::skinFileIO::readImage(empty).empty(), "empty Unicode image read falls back");
+    check(sms::ui::skinFileIO::readImage(image.parent_path()).empty(), "directory image read falls back");
+    fs::resize_file(empty, sms::ui::skinFileIO::maxImageBytes + 1);
+    check(sms::ui::skinFileIO::readImage(empty).empty(), "image exceeding 64 MiB limit falls back");
 }
 
 void translatedFormats(const Fixture& fixture)
@@ -217,11 +302,11 @@ void pluginDirectories(const Fixture& fixture)
     const auto binary = fixture.root / "Renamed-plugin.clap";
     { std::ofstream output(binary); output << "fixture"; }
     const auto singleFileSkin = fixture.root / "SMS-AnvilleSampler.skin";
-    const auto binaryName = binary.string();
+    const auto binaryName = pathToUtf8(binary);
     for (const auto* name : {"SMS-AnvilleSampler.lv2", "SMS-AnvilleSampler.vst3"}) {
         const auto bundle = fixture.root / name;
         fs::create_directory(bundle);
-        const auto bundleName = bundle.string();
+        const auto bundleName = pathToUtf8(bundle);
         check(sms::ui::Skin::directoryForPlugin(bundleName.c_str(), binaryName.c_str(),
                                                "SMS-AnvilleSampler.skin") == bundle / "skin",
               "LV2 and VST3 directories use bundle root skin");
@@ -229,20 +314,30 @@ void pluginDirectories(const Fixture& fixture)
     check(sms::ui::Skin::directoryForPlugin(binaryName.c_str(), nullptr,
                                            "SMS-AnvilleSampler.skin") == singleFileSkin,
           "renamed single-file CLAP bundle uses fixed sibling skin directory");
+    const auto unicodeBundle = fixture.root / pathFromUtf8("楽器-🔨.vst3");
+    fs::create_directory(unicodeBundle);
+    const auto unicodeBundleName = pathToUtf8(unicodeBundle);
+    check(sms::ui::Skin::directoryForPlugin(unicodeBundleName.c_str(), binaryName.c_str(),
+                                           "SMS-AnvilleSampler.skin") == unicodeBundle / "skin",
+          "Unicode bundle filename uses UTF8 metadata");
+    const char* unicodeSkinName = "外観-雪.skin";
+    check(sms::ui::Skin::directoryForPlugin(binaryName.c_str(), nullptr, unicodeSkinName) ==
+          fixture.root / pathFromUtf8(unicodeSkinName), "Unicode single-file skin name uses UTF8 metadata");
     for (const auto* absentBundle : {static_cast<const char*>(nullptr), ""})
         check(sms::ui::Skin::directoryForPlugin(absentBundle, binaryName.c_str(),
                                                "SMS-AnvilleSampler.skin") == singleFileSkin,
               "missing bundle metadata uses binary sibling skin directory");
-    const auto missing = (fixture.root / "missing.vst3").string();
+    const auto missing = pathToUtf8(fixture.root / "missing.vst3");
     check(sms::ui::Skin::directoryForPlugin(missing.c_str(), binaryName.c_str(),
                                            "SMS-AnvilleSampler.skin").empty(),
           "nonexistent supplied bundle does not fall back to unrelated binary path");
     const auto dangling = fixture.root / "dangling.vst3";
-    fs::create_symlink(fixture.root / "missing-target", dangling);
-    const auto danglingName = dangling.string();
-    check(sms::ui::Skin::directoryForPlugin(danglingName.c_str(), binaryName.c_str(),
-                                           "SMS-AnvilleSampler.skin").empty(),
-          "failed bundle status does not fall back to unrelated binary path");
+    if (symlink(fixture.root / "missing-target", dangling)) {
+        const auto danglingName = pathToUtf8(dangling);
+        check(sms::ui::Skin::directoryForPlugin(danglingName.c_str(), binaryName.c_str(),
+                                               "SMS-AnvilleSampler.skin").empty(),
+              "failed bundle status does not fall back to unrelated binary path");
+    }
     for (const auto* absentBinary : {static_cast<const char*>(nullptr), ""})
         check(sms::ui::Skin::directoryForPlugin(nullptr, absentBinary,
                                                "SMS-AnvilleSampler.skin").empty(),
@@ -250,6 +345,46 @@ void pluginDirectories(const Fixture& fixture)
     for (const auto* absentSkinName : {static_cast<const char*>(nullptr), ""})
         check(sms::ui::Skin::directoryForPlugin(binaryName.c_str(), nullptr, absentSkinName).empty(),
               "missing single-file skin name yields defaults");
+}
+
+void nativePluginDirectories(const Fixture& fixture)
+{
+    const auto writeBinary = [](const fs::path& binary) {
+        fs::create_directories(binary.parent_path());
+        std::ofstream output(binary, std::ios::binary);
+        output << "fixture";
+        check(static_cast<bool>(output), "write native plugin binary fixture");
+    };
+    const auto skinName = pathFromUtf8("外観-雪.skin");
+    const auto lv2 = fixture.root / pathFromUtf8("楽器-雪.lv2") / pathFromUtf8("音源.so");
+    writeBinary(lv2);
+    check(sms::ui::Skin::directoryForNativeBinary(lv2, skinName) == lv2.parent_path() / "skin",
+          "native Unicode LV2 binary resolves bundle skin");
+    const auto vst3Bundle = fixture.root / pathFromUtf8("楽器-🔨.vst3");
+    const auto vst3 = vst3Bundle / "Contents" / "x86_64-win" / pathFromUtf8("音源.vst3");
+    writeBinary(vst3);
+    check(sms::ui::Skin::directoryForNativeBinary(vst3, skinName) == vst3Bundle / "skin",
+          "native Unicode VST3 binary resolves outer bundle skin");
+    const auto upperBundle = fixture.root / "Instrument.VST3";
+    const auto upperBinary = upperBundle / "CONTENTS" / "x86_64-win" / "Instrument.vst3";
+    writeBinary(upperBinary);
+    check(sms::ui::Skin::directoryForNativeBinary(upperBinary, skinName) == upperBundle / "skin",
+          "native bundle layout accepts Windows case variations");
+    const auto upperLv2 = fixture.root / "Instrument.LV2" / "Instrument.dll";
+    writeBinary(upperLv2);
+    check(sms::ui::Skin::directoryForNativeBinary(upperLv2, skinName) == upperLv2.parent_path() / "skin",
+          "native LV2 extension accepts Windows case variations");
+    const auto clap = fixture.root / pathFromUtf8("楽器-雪.clap");
+    writeBinary(clap);
+    check(sms::ui::Skin::directoryForNativeBinary(clap, skinName) == fixture.root / skinName,
+          "native Unicode single-file CLAP resolves sibling skin");
+    check(sms::ui::Skin::directoryForNativeBinary(fixture.root / "missing.clap", skinName).empty(),
+          "missing native plugin binary yields defaults");
+#ifdef _WIN32
+    const auto module = sms::ui::skinFileIO::moduleBinaryPath();
+    check(module.is_absolute() && fs::is_regular_file(module),
+          "Windows wide module path is absolute and names existing binary");
+#endif
 }
 } // namespace
 
@@ -261,6 +396,8 @@ int main()
     partialEntriesAndSnapshot(fixture);
     translatedFormats(fixture);
     imageConfinement(fixture);
+    unicodeImages(fixture);
     pluginDirectories(fixture);
+    nativePluginDirectories(fixture);
     std::cout << "Skin tests passed\n";
 }
