@@ -1,5 +1,9 @@
 # SudoMetalStudio Plugins
 
+# **STILL IN ALPHA - PLEASE WAIT FOR v1.0.0 BEFORE USING**
+
+
+
 _Professionally developed, **Linux-native** audio plugins._
 Windows and macOS versions may follow later.
 
