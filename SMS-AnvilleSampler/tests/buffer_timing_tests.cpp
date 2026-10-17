@@ -100,7 +100,8 @@ PadData playbackSource(const double rate, const std::uint32_t pad)
     return source;
 }
 
-Audio renderPlayback(const double rate, const PlaybackMode mode, const bool effects,
+Audio renderPlayback(const double rate, const PlaybackMode mode, const bool effects, const bool reverse,
+                     const bool globalReverse,
                      const std::vector<std::uint32_t>& partition, const bool emptyCallbacks)
 {
     SamplerEngine engine(rate, 0.2);
@@ -109,6 +110,7 @@ Audio renderPlayback(const double rate, const PlaybackMode mode, const bool effe
     settings.playbackMode = mode;
     settings.maxVoices = 2U;
     settings.gain = 0.75f;
+    settings.reverse = globalReverse;
     if (effects) {
         settings.lowpass = 0.3f;
         settings.highpass = 0.1f;
@@ -127,16 +129,17 @@ Audio renderPlayback(const double rate, const PlaybackMode mode, const bool effe
         playback.sustainLevel = 0.7f;
         playback.releaseSeconds = 0.002f;
         engine.setPadPlaybackSettings(pad, playback);
+        sms::dsp::SampleMixerSettings mixer;
+        mixer.reverse = reverse && pad != 1U ? 1.0f : 0.0f;
         if (effects) {
-            sms::dsp::SampleMixerSettings mixer;
             mixer.pan = pad == 1U ? -0.4f : 0.3f;
             mixer.tuneSemitones = static_cast<float>(pad * 4U);
             mixer.lowpass = 0.2f;
             mixer.highpass = 0.15f;
             mixer.filterSlope = static_cast<float>(pad);
             mixer.dirty = pad == 2U ? 1.0f : 0.0f;
-            engine.setPadMixerSettings(pad, mixer);
         }
+        engine.setPadMixerSettings(pad, mixer);
     }
     const std::array<MidiEvent, 22> events{{
         {0U, 36U, 127U, MidiEventType::NoteOn},
@@ -172,14 +175,76 @@ Audio renderPlayback(const double rate, const PlaybackMode mode, const bool effe
     return output;
 }
 
+void reverseMatchesReversedSourceBeforeTrimmingAndEffects()
+{
+    PadData source;
+    source.sampleRate = 72000.0;
+    source.frames = 257U;
+    source.stereo.resize(static_cast<std::size_t>(source.frames) * 2U);
+    for (std::uint32_t frame = 0U; frame < source.frames; ++frame) {
+        source.stereo[frame * 2U] = static_cast<float>((frame * 17U + 3U) % 89U) / 96.0f;
+        source.stereo[frame * 2U + 1U] = -static_cast<float>((frame * 11U + 5U) % 67U) / 80.0f;
+    }
+    PadData physicallyReversed = source;
+    for (std::uint32_t frame = 0U; frame < source.frames; ++frame) {
+        const auto sourceFrame = source.frames - 1U - frame;
+        physicallyReversed.stereo[frame * 2U] = source.stereo[sourceFrame * 2U];
+        physicallyReversed.stereo[frame * 2U + 1U] = source.stereo[sourceFrame * 2U + 1U];
+    }
+
+    const auto render = [&](const PadData& audio, const bool reverse) {
+        SamplerEngine engine(48000.0, 0.1);
+        auto settings = engine.settings();
+        settings.monitorInput = false;
+        settings.playbackMode = PlaybackMode::OneShot;
+        settings.lowpass = 0.27f;
+        settings.highpass = 0.08f;
+        settings.filterSlope = 2.0f;
+        settings.tuneSemitones = -2.0f;
+        engine.setSettings(settings);
+        check(engine.importPad(0U, audio), "import full-source reverse oracle sample");
+        sms::dsp::SamplePlaybackSettings playback;
+        playback.start = 0.117f;
+        playback.end = 0.641f;
+        playback.attackSeconds = 0.003f;
+        playback.decaySeconds = 0.009f;
+        playback.sustainLevel = 0.63f;
+        playback.releaseSeconds = 0.019f;
+        engine.setPadPlaybackSettings(0U, playback);
+        sms::dsp::SampleMixerSettings mixer;
+        mixer.gainDecibels = -3.0f;
+        mixer.pan = 0.23f;
+        mixer.tuneSemitones = 1.5f;
+        mixer.lowpass = 0.31f;
+        mixer.highpass = 0.11f;
+        mixer.filterSlope = 1.0f;
+        mixer.dirty = 1.0f;
+        mixer.reverse = reverse ? 1.0f : 0.0f;
+        engine.setPadMixerSettings(0U, mixer);
+        const std::array<MidiEvent, 1> event{{{0U, 36U, 127U, MidiEventType::NoteOn}}};
+        return processTimeline(engine, nullptr, event, kPartitions[0], true);
+    };
+
+    const auto reverse = render(source, true);
+    const auto flippedForward = render(physicallyReversed, false);
+    compare(reverse, flippedForward);
+    check(std::any_of(reverse.left.begin(), reverse.left.end(), [](float value) {
+        return std::abs(value) > 0.001f;
+    }), "asymmetric trimmed reverse oracle renders audible audio");
+}
+
 void playbackPartitions()
 {
     for (const auto rate : {44100.0, 48000.0})
         for (const auto mode : {PlaybackMode::OneShot, PlaybackMode::Gated})
-            for (const bool effects : {false, true}) {
-                const auto expected = renderPlayback(rate, mode, effects, kPartitions[0], false);
+            for (const bool effects : {false, true})
+              for (const bool reverse : {false, true})
+                for (const bool globalReverse : {false, true}) {
+                const auto expected = renderPlayback(rate, mode, effects, reverse,
+                                                     globalReverse, kPartitions[0], false);
                 for (const auto& partition : kPartitions)
-                    compare(renderPlayback(rate, mode, effects, partition, true), expected);
+                    compare(renderPlayback(rate, mode, effects, reverse, globalReverse,
+                                           partition, true), expected);
             }
 }
 
@@ -385,6 +450,7 @@ int main()
 {
     eventOrdering();
     playbackOffsets();
+    reverseMatchesReversedSourceBeforeTrimmingAndEffects();
     playbackPartitions();
     loopingPlaybackPartitions();
     capturePartitions();

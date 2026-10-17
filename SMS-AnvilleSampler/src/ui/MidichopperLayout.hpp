@@ -129,6 +129,8 @@ inline constexpr sms::ui::Rect mainPlayStop{1049.0f, 342.0f, 112.0f, 32.0f};
 inline constexpr sms::ui::Rect monitor{994.0f, 651.0f, 222.0f, 34.0f};
 inline constexpr float globalMixerLabelY = 386.0f;
 inline constexpr sms::ui::Rect padMixerSeparator{354.0f, 586.0f, 1.0f, 77.0f};
+inline constexpr sms::ui::Rect padDirection{64.0f, 604.0f, 42.0f, 34.0f};
+inline constexpr sms::ui::Rect globalDirection{1007.0f, 428.0f, 42.0f, 34.0f};
 inline constexpr sms::ui::Rect finalizeAction{994.0f, 610.0f, 70.0f, 34.0f};
 inline constexpr sms::ui::Rect undoAction{1070.0f, 610.0f, 70.0f, 34.0f};
 inline constexpr sms::ui::Rect clearAction{1146.0f, 610.0f, 70.0f, 34.0f};
@@ -166,8 +168,8 @@ inline constexpr sms::ui::Rect clearAction{1146.0f, 610.0f, 70.0f, 34.0f};
 [[nodiscard]] constexpr sms::ui::Rect mixerKnob(const int index) noexcept
 {
     switch (index) {
-    case 0: return {90.0f, 590.0f, 80.0f, 72.0f}; // Gain
-    case 1: return {215.0f, 590.0f, 80.0f, 72.0f}; // Pan
+    case 0: return {145.0f, 590.0f, 80.0f, 72.0f}; // Gain
+    case 1: return {255.0f, 590.0f, 80.0f, 72.0f}; // Pan
     case 6: return {380.0f, 590.0f, 80.0f, 72.0f}; // Dirty
     case 2: return {500.0f, 590.0f, 80.0f, 72.0f}; // Tune
     case 3: return {630.0f, 590.0f, 80.0f, 72.0f}; // Lowpass
@@ -186,8 +188,8 @@ inline constexpr sms::ui::Rect clearAction{1146.0f, 610.0f, 70.0f, 34.0f};
 [[nodiscard]] constexpr sms::ui::Rect globalMixerKnob(const int index) noexcept
 {
     switch (index) {
-    case 1: return {1013.0f, 408.0f, 68.0f, 72.0f}; // Pan
-    case 6: return {1124.0f, 408.0f, 68.0f, 72.0f}; // Dirty
+    case 1: return {1068.0f, 408.0f, 68.0f, 72.0f}; // Pan
+    case 6: return {1142.0f, 408.0f, 68.0f, 72.0f}; // Dirty
     case 2: return {994.0f, 494.0f, 68.0f, 72.0f}; // Tune
     case 3: return {1068.0f, 494.0f, 68.0f, 72.0f}; // Lowpass
     case 4: return {1142.0f, 494.0f, 68.0f, 72.0f}; // Highpass

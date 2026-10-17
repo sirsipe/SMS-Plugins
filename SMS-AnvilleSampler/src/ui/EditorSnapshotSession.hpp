@@ -5,6 +5,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cmath>
 
 namespace midichopper::ui {
 
@@ -26,9 +27,20 @@ public:
         fRequest = {nextEditorSnapshotSequence(), static_cast<std::uint32_t>(pad)};
         fPending = pad >= 0;
         fReady = false;
+        fLocalEdit = false;
+    }
+
+    void beginLocalEdit(const int pad, const sms::dsp::SamplePlaybackSettings& playback,
+                        const sms::dsp::SampleMixerSettings& mixer) noexcept
+    {
+        begin(pad);
+        fLocalPlayback = playback;
+        fLocalMixer = mixer;
+        fLocalEdit = true;
     }
 
     [[nodiscard]] bool pending() const noexcept { return fPending; }
+    [[nodiscard]] bool localEdit() const noexcept { return fLocalEdit; }
     [[nodiscard]] int pad() const noexcept { return static_cast<int>(fRequest.pad); }
     [[nodiscard]] plugin::EditorSnapshotRequest request() const noexcept { return fRequest; }
     [[nodiscard]] bool readyFor(const int pad) const noexcept
@@ -38,6 +50,24 @@ public:
     {
         if (!fPending || fReady || reply.request.sequence != fRequest.sequence ||
             reply.request.pad != fRequest.pad || reply.waveform.pad != fRequest.pad)
+            return false;
+        // A mailbox edit can still be waiting for the next audio block when a
+        // matching control-worker snapshot is made. Keep optimistic controls
+        // until a retry confirms the final combined edit.
+        if (fLocalEdit && (reply.mixer.reverse != fLocalMixer.reverse ||
+            std::abs(reply.playback.start - fLocalPlayback.start) > 1.0e-6f ||
+            std::abs(reply.playback.end - fLocalPlayback.end) > 1.0e-6f ||
+            reply.playback.attackSeconds != fLocalPlayback.attackSeconds ||
+            reply.playback.decaySeconds != fLocalPlayback.decaySeconds ||
+            reply.playback.sustainLevel != fLocalPlayback.sustainLevel ||
+            reply.playback.releaseSeconds != fLocalPlayback.releaseSeconds ||
+            reply.mixer.gainDecibels != fLocalMixer.gainDecibels ||
+            reply.mixer.pan != fLocalMixer.pan ||
+            reply.mixer.tuneSemitones != fLocalMixer.tuneSemitones ||
+            reply.mixer.lowpass != fLocalMixer.lowpass ||
+            reply.mixer.highpass != fLocalMixer.highpass ||
+            reply.mixer.filterSlope != fLocalMixer.filterSlope ||
+            reply.mixer.dirty != fLocalMixer.dirty))
             return false;
         fReply = reply;
         fReady = true;
@@ -54,6 +84,9 @@ private:
     plugin::EditorSnapshotReply fReply{};
     bool fPending = false;
     bool fReady = false;
+    bool fLocalEdit = false;
+    sms::dsp::SamplePlaybackSettings fLocalPlayback{};
+    sms::dsp::SampleMixerSettings fLocalMixer{};
 };
 
 /** A detail retry keeps its identity; only a new source/range advances it. */

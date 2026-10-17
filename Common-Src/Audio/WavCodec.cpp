@@ -319,8 +319,10 @@ WavAudio renderProcessedStereo(const WavAudio& source,
         const auto first = static_cast<std::uint32_t>(position);
         const auto second = std::min(first + 1U, sourceFrames - 1U);
         const float fraction = static_cast<float>(position - first);
-        const std::size_t firstInput = static_cast<std::size_t>(start + first) * 2U;
-        const std::size_t secondInput = static_cast<std::size_t>(start + second) * 2U;
+        const std::size_t firstInput = static_cast<std::size_t>(
+            mixer.reverse >= 0.5f ? source.frames - 1U - (start + first) : start + first) * 2U;
+        const std::size_t secondInput = static_cast<std::size_t>(
+            mixer.reverse >= 0.5f ? source.frames - 1U - (start + second) : start + second) * 2U;
         const std::size_t target = static_cast<std::size_t>(frame) * 2U;
         output.stereo[target] = (source.stereo[firstInput] * (1.0f - fraction) +
                                  source.stereo[secondInput] * fraction) * gain * leftGain;

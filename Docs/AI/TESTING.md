@@ -1,8 +1,8 @@
 # Testing reference
 
-See [build and skin tests](DEVELOPMENT.md).
+[Build and skin tests](DEVELOPMENT.md).
 
-## Automated checks
+## Checks
 
 ```bash
 ctest --test-dir build --output-on-failure
@@ -29,8 +29,7 @@ Filter with `ctest --test-dir build --output-on-failure -R NAME`:
 | `ui-message-bus` | Bounded VST3 message ordering, independent view cursors, explicit gap reporting on wrap, and large replies |
 | `wav-codec` | WAV formats, chunk/truncation/header/nonfinite validation, file actions, offline render, real-time access gate |
 
-Rebuild affected targets and run all tests after code changes. Check documented
-commands against source. Long-audio test:
+Rebuild affected targets and run all tests after code changes. Long-audio test:
 
 ```bash
 ./build/anvillesampler_transfer_tests "/path/to/long-sample.wav"
@@ -39,7 +38,7 @@ commands against source. Long-audio test:
 
 ## LV2 bundle discovery
 
-Use `lilv-utils`:
+`lilv-utils` discovery:
 
 ```bash
 LV2_PATH="$PWD/build/bin" \
@@ -68,21 +67,22 @@ LV2 diagnostics with jalv:
 LV2_PATH="$PWD/build/bin" pw-jack jalv -s "$LV2_URI"
 ```
 
-Jalv and Carla 2.5.10 load UI/MIDI but cannot validate DSP-requested `active_bank` updates.
+Jalv/Carla 2.5.10 cannot validate DSP-requested `active_bank` updates.
 
-Connect JACK stereo/MIDI inputs and outputs; verify audio/MIDI flow.
-
-Applicable checks:
+Checks:
 
 - Capture: ARM; first note starts capture, later notes split consecutive visible
   pads; FINALIZE keeps the open slice. UNDO discards the open/last slice;
-  confirmed CLEAR empties all banks. Repeat in VST3/LV2. Check transitions/fixed mode
-  when affected, and compare recorded output for timing/pre-roll changes.
+  confirmed CLEAR empties all banks. Repeat in VST3/LV2; check affected capture
+  modes and compare recorded output for timing/pre-roll changes.
 - Playback: return to PLAY; verify expected notes/banks, voice limits, and stereo
   output. Hold a Gate pad beyond several Start/End turns; release and check its
-  ADSR fade (zero Release stops immediately). One Shot still ends once. In Sample
+  ADSR fade (zero Release stops immediately). One Shot still ends once. In both directions, toggle the Pad Mixer direction during each and confirm
+  the active voice turns immediately without restarting ADSR or filters. Check
+  mirrored cuts/cursor, pad-specific arrows and restoration. Repeat Global Reverse
+  with overlapping One Shot/Gate voices and mixed pad directions. Cut/split stays raw. In Sample
   Editor cycle Play on Select → Loop on Select → Off; check pressed labels,
-  sustained loops after mouse release, replacement on selection, and stopping
+  live Start/End edits across turns, replacement on selection, and stopping
   on Off/Exit. Play/Stop and Space loop only in editor Loop mode.
 - Skins: verify forced `skin` hides the selector; check halo/pulse,
   steady/disabled settings, logos, background/pad/panel opacity and resizing. Remove the default
@@ -107,28 +107,24 @@ Applicable checks:
   Paste to empty and occupied targets. Confirm stereo audio and all editor settings
   match the copy-time snapshot, and that an empty clipboard disables Paste.
 - State: save populated pads/settings, close, reload, and compare playback.
-  Check DAW restoration for integration changes.
+  Check DAW restoration.
 
 ## UI interaction tooling
 
 The [Dev Container](../../.devcontainer/devcontainer.json) supplies display `:1`,
 noVNC (port 6080), dummy JACK, software Mesa and UI tools. `desktop-health` checks
 services, JACK, OpenGL, D-Bus and FileChooser. After image/portal changes, run
-`desktop-health --dialogs` to exercise Open/Save. Avoid mouse input during automation.
+`desktop-health --dialogs` to exercise Open/Save. Avoid concurrent mouse input.
 
 `bash .devcontainer/scripts/test-plugin.sh` builds VST3/LV2, runs CTest and
 `lv2info`, launches LV2 in Carla, clicks ARM, and captures the plug-in window in
-ignored `build/gui-test/`. It sets VNC to 1920x1080. Use `--keep-open` for further
-interaction. `screenshot-window WINDOW_ID OUTPUT.png` captures one window; resolve it again
+ignored `build/gui-test/`. VNC becomes 1920x1080; `--keep-open` enables further interaction. `screenshot-window WINDOW_ID OUTPUT.png` captures one window; resolve it again
 after relaunch/resize.
 
-Inspect plug-in-only screenshots before sharing; exclude private data,
-notifications, and unrelated applications.
+Inspect screenshots before sharing; exclude private data and unrelated windows.
 
-For VST3, launch
-`carla-single native vst3 "$PWD/build/bin/SMS-AnvilleSampler.vst3"` on this desktop. Import a WAV, open Sample Editor, switch pads and back, and check the
-waveform and settings. Exercise Split Sample or Adjust Cut Points. Then save,
+VST3:
+`carla-single native vst3 "$PWD/build/bin/SMS-AnvilleSampler.vst3"` on this desktop. Import a WAV; open Sample Editor and switch pads; check waveform/settings. Exercise Split Sample or Adjust Cut Points. Then save,
 close, delete the source WAV, reload, and compare audio and editor values.
 
-Report host, rate/buffer, results and skipped checks. CI covers CTest/`lv2info`,
-not host audio/UI behavior.
+Report host, rate/buffer, results, skips. CI covers CTest/`lv2info` only.

@@ -11,6 +11,7 @@
 #include "EditorSnapshotProtocol.hpp"
 #include "PadWorkflows.hpp"
 #include "PlaybackRequest.hpp"
+#include "PadDirectionRequest.hpp"
 #include "StateKeys.hpp"
 #include "PadClipboardProtocol.hpp"
 #include "PadColorState.hpp"
@@ -70,7 +71,8 @@ constexpr std::uint32_t kPlayStopRequestState = kPadColorStateOffset + midichopp
 constexpr std::uint32_t kChopSnapshotRequestState = kPlayStopRequestState + 1U;
 constexpr std::uint32_t kChopSnapshotDataState = kChopSnapshotRequestState + 1U;
 constexpr std::uint32_t kCaptureActionRequestState = kChopSnapshotDataState + 1U;
-constexpr std::uint32_t kStateCount = kCaptureActionRequestState + 1U;
+constexpr std::uint32_t kPadDirectionRequestState = kCaptureActionRequestState + 1U;
+constexpr std::uint32_t kStateCount = kPadDirectionRequestState + 1U;
 static_assert(midichopper::kPadCount <= 64U,
               "pending clear requests use one bit per pad");
 
@@ -281,6 +283,11 @@ protected:
             setupParameter(index, parameter, "Global Dirty", "global_dirty", "",
                            kParameterIsBoolean | kParameterIsInteger,
                            "Mono 12-bit, 26.04 kHz sample-and-hold before filters and tune.");
+            break;
+        case kParameterGlobalReverse:
+            setupParameter(index, parameter, "Global Reverse", "global_reverse", "",
+                           kParameterIsBoolean | kParameterIsInteger,
+                           "Turn all pad voices at their current positions; combines with each pad's direction.");
             break;
         case kParameterFinalize:
             setupParameter(index, parameter, "Finalize", "finalize", "",
@@ -498,7 +505,7 @@ protected:
             const auto pad = index - kMixerStateOffset;
             state.key = kPadMixerStateKeys[pad].c_str();
             state.label = "Pad Sample Mixer Settings";
-            state.defaultValue = "MX2;0;0;0;0;0;0;0";
+            state.defaultValue = "MX3;0;0;0;0;0;0;0;0";
             state.hints = 0;
         } else if (index == kPadStructureRequestState) {
             state.key = kPadStructureRequestKey;
@@ -530,6 +537,11 @@ protected:
             state.label = "Chop Snapshot Data";
             state.defaultValue = "";
             state.hints = kStateIsOnlyForUI;
+        } else if (index == kPadDirectionRequestState) {
+            state.key = midichopper::plugin::kPadDirectionRequestKey;
+            state.label = "Pad Direction Request";
+            state.defaultValue = "";
+            state.hints = kStateIsOnlyForDSP;
         } else if (index == kCaptureActionRequestState) {
             state.key = midichopper::plugin::kCaptureActionRequestKey;
             state.label = "Capture Action Request";
@@ -645,6 +657,8 @@ protected:
             return String();
         if (std::strcmp(key, midichopper::plugin::kCaptureActionRequestKey) == 0)
             return String();
+        if (std::strcmp(key, midichopper::plugin::kPadDirectionRequestKey) == 0)
+            return String();
         if (std::strcmp(key, kPlayStopRequestKey) == 0)
             return String();
         if (std::strcmp(key, kWaveformDetailRequestKey) == 0 ||
@@ -709,6 +723,14 @@ protected:
         }
         if (std::strcmp(key, kChopSnapshotDataKey) == 0)
             return;
+        if (std::strcmp(key, midichopper::plugin::kPadDirectionRequestKey) == 0) {
+            midichopper::plugin::PadDirectionRequest request;
+            if (value != nullptr && midichopper::plugin::decodePadDirectionRequest(value, request)) {
+                const std::lock_guard lock(padWorkflows_.mutationMutex());
+                sampler_.restorePadEditorSettings(request.pad, request.playback, request.mixer);
+            }
+            return;
+        }
         if (std::strcmp(key, kPlayStopRequestKey) == 0) {
             midichopper::plugin::PlaybackRequest request;
             if (value != nullptr && midichopper::plugin::decodePlaybackRequest(value, request))
@@ -1066,6 +1088,7 @@ private:
         settings.highpass = clampedParameter(kParameterGlobalHighpass);
         settings.filterSlope = clampedParameter(kParameterGlobalFilterSlope);
         settings.dirty = clampedParameter(kParameterGlobalDirty);
+        settings.reverse = clampedParameter(kParameterGlobalReverse) >= 0.5f;
         settings.maxVoices = static_cast<std::uint8_t>(clampedParameter(kParameterMaxVoices));
         settings.activeBank = static_cast<std::uint8_t>(
             clampedParameter(kParameterActiveBank) - parameterRanges::activeBank.minimum);

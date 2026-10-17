@@ -9,8 +9,8 @@ Actions use the [pad context menu](PAD-CONTEXT-MENU.md) without settling
 - **Export WAV...** writes the complete stored sample. Disable it for an empty
   pad or when no Save dialog is available.
 - **Export Processed WAV...** writes the selected region with per-pad Gain, Pan,
-  Tune and ADSR applied.
-  Disable it when Export is disabled or sanitized region, ADSR and Gain/Pan/Tune settings
+  Tune, Direction and ADSR applied; Reverse flips the whole source before trimming.
+  Disable it when Export is disabled or sanitized region, ADSR and Gain/Pan/Tune/Direction settings
   are all defaults.
 - **Import WAV...** replaces the clicked pad only after a successful decode and
   resets playback and mixer settings to defaults. Failure or cancellation changes nothing.
@@ -18,12 +18,11 @@ Actions use the [pad context menu](PAD-CONTEXT-MENU.md) without settling
 Raw Export excludes cut points, ADSR, velocity, global gain, monitoring,
 playback mode, and voice management. Processed Export uses the existing
 one-shot region and automatic-release semantics at full velocity and unity
-global gain; it includes per-pad Gain/Pan/Tune, region, and ADSR. Render at the stored source rate and
+global gain; it includes per-pad Gain/Pan/Tune/Direction, region, and ADSR. Render at the stored source rate and
 reuse shared DSP behavior so offline output cannot drift from playback.
 
-Imported audio continues through existing embedded per-pad project state. The
-source path is an action input, not durable state: projects must restore after
-the original file is moved or deleted.
+Imported audio embeds in per-pad project state; projects restore after source
+files move or disappear. File paths are transient action inputs.
 
 ## Dependency-free WAV contract
 

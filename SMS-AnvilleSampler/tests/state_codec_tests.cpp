@@ -7,6 +7,7 @@
 #include "PadColorState.hpp"
 #include "CaptureActionProtocol.hpp"
 #include "PlaybackRequest.hpp"
+#include "PadDirectionRequest.hpp"
 
 #include <cmath>
 #include <cstdint>
@@ -140,7 +141,7 @@ void legacyStateFixtures()
           std::abs(mixer.pan - 0.375f) < 1.0e-6f &&
           std::abs(mixer.tuneSemitones + 11.5f) < 1.0e-6f &&
           mixer.lowpass == 0.0f && mixer.highpass == 0.0f &&
-          mixer.filterSlope == 1.0f && mixer.dirty == 0.0f,
+          mixer.filterSlope == 1.0f && mixer.dirty == 0.0f && mixer.reverse == 0.0f,
           "legacy MX1 values restore and newer effects default to bypass");
 }
 
@@ -304,15 +305,21 @@ void playbackAndMixerRejectMalformedFields()
         "MX2;1e999;0;0;0;0;0;0", "MX2;0;0;0;0;0;0",
         "MX2;0;0;0;0;0;0;0;1", "MX2;0;0;0;0;0;0;0junk",
     };
+    const char* const invalidMx3[] = {
+        "MX3;nan;0;0;0;0;0;0;0", "MX3;0;inf;0;0;0;0;0;0",
+        "MX3;0;0;0;0;0;0;0", "MX3;0;0;0;0;0;0;0;0;1",
+        "MX3;0;0;0;0;0;0;0;0junk", "MX3;0;0;0;0;0;0;0;nan",
+        "MX3;0;0;0;0;0;0;0;1e999",
+    };
     sms::dsp::SampleMixerSettings mixer;
     const auto setMixerSentinel = [&] {
-        mixer = {-7.0f, 0.25f, 6.0f, 0.2f, 0.3f, 2.0f, 1.0f};
+        mixer = {-7.0f, 0.25f, 6.0f, 0.2f, 0.3f, 2.0f, 1.0f, 1.0f};
     };
     const auto mixerSentinelPreserved = [&] {
         check(mixer.gainDecibels == -7.0f && mixer.pan == 0.25f &&
               mixer.tuneSemitones == 6.0f && mixer.lowpass == 0.2f &&
               mixer.highpass == 0.3f && mixer.filterSlope == 2.0f &&
-              mixer.dirty == 1.0f,
+              mixer.dirty == 1.0f && mixer.reverse == 1.0f,
               "failed MX decode preserves destination settings");
     };
     for (const char* const invalid : invalidMx1) {
@@ -327,14 +334,34 @@ void playbackAndMixerRejectMalformedFields()
               "MX2 rejects non-finite, overflow, missing, extra and trailing fields");
         mixerSentinelPreserved();
     }
+    for (const char* const invalid : invalidMx3) {
+        setMixerSentinel();
+        check(!midichopper::plugin::decodeMixerSettings(invalid, mixer),
+              "MX3 rejects non-finite, overflow, missing, extra and trailing fields");
+        mixerSentinelPreserved();
+    }
+    check(midichopper::plugin::decodeMixerSettings(
+              "MX3;0;0;0;0;0;0;0;0.49", mixer) && mixer.reverse == 0.0f,
+          "MX3 normalizes reverse values below the boolean threshold to forward");
+    check(midichopper::plugin::decodeMixerSettings(
+              "MX3;0;0;0;0;0;0;0;0.5", mixer) && mixer.reverse == 1.0f,
+          "MX3 normalizes reverse values at the boolean threshold to reverse");
     check(midichopper::plugin::decodeMixerSettings(
               "MX2;-90;2;48;2;-1;8;1.5", mixer) &&
           mixer.gainDecibels == sms::dsp::kMinimumSampleGainDecibels &&
           mixer.pan == sms::dsp::kMaximumSamplePan &&
           mixer.tuneSemitones == sms::dsp::kMaximumTuneSemitones &&
           mixer.lowpass == 1.0f && mixer.highpass == 0.0f &&
-          mixer.filterSlope == 2.0f && mixer.dirty == 1.0f,
+          mixer.filterSlope == 2.0f && mixer.dirty == 1.0f && mixer.reverse == 0.0f,
           "finite out-of-range MX2 values clamp to mixer limits");
+    mixer.reverse = 1.0f;
+    check(midichopper::plugin::decodeMixerSettings("MX2;0;0;0;0;0;1;0", mixer) &&
+          mixer.reverse == 0.0f,
+          "older MX2 states always restore forward playback");
+    mixer.reverse = 1.0f;
+    check(midichopper::plugin::decodeMixerSettings("MX1;0;0;0", mixer) &&
+          mixer.reverse == 0.0f,
+          "older MX1 states always restore forward playback");
 }
 
 void editorStateRoundTrip()
@@ -386,7 +413,9 @@ void mixerStateRoundTrip()
     original.highpass = 0.2f;
     original.filterSlope = 2.0f;
     original.dirty = 1.0f;
+    original.reverse = 1.0f;
     const std::string encoded = midichopper::plugin::encodeMixerSettings(original);
+    check(encoded.rfind("MX3;", 0U) == 0U, "mixer settings use the MX3 state version");
     sms::dsp::SampleMixerSettings decoded;
     check(midichopper::plugin::decodeMixerSettings(encoded.c_str(), decoded),
           "sample mixer settings decode");
@@ -399,16 +428,17 @@ void mixerStateRoundTrip()
     check(decoded.lowpass == original.lowpass &&
           decoded.highpass == original.highpass &&
           decoded.filterSlope == original.filterSlope &&
-          decoded.dirty == original.dirty,
+          decoded.dirty == original.dirty && decoded.reverse == original.reverse,
           "mixer effects round-trip");
     check(!midichopper::plugin::decodeMixerSettings("MX1;broken", decoded) &&
           !midichopper::plugin::decodeMixerSettings("MX2;0;0;0;0;0;1", decoded) &&
+          !midichopper::plugin::decodeMixerSettings("MX3;0;0;0;0;0;1;0", decoded) &&
           !midichopper::plugin::decodeMixerSettings("SP1;0;0;0", decoded),
           "malformed and wrong-version mixer state is rejected");
 
     check(midichopper::plugin::decodeMixerSettings("MX2;0;0;0;0;0;0;0", decoded) &&
-          decoded.filterSlope == 0.0f,
-          "new-session mixer state defaults to 6 dB slope");
+          decoded.filterSlope == 0.0f && decoded.reverse == 0.0f,
+          "MX2 mixer state defaults to 6 dB slope and forward playback");
     check(midichopper::plugin::decodeMixerSettings("MX1;-90;2;48", decoded),
           "finite out-of-range mixer state decodes safely");
     check(decoded.gainDecibels == sms::dsp::kMinimumSampleGainDecibels &&
@@ -442,13 +472,15 @@ void editorSnapshotProtocolRoundTrip()
     reply.playback.attackSeconds = 0.125f;
     reply.mixer.pan = -0.5f;
     reply.mixer.dirty = 1.0f;
+    reply.mixer.reverse = 1.0f;
     const auto encoded = plugin::encodeEditorSnapshotReply(reply);
     plugin::EditorSnapshotReply decoded;
     check(encoded.size() < 8192U && plugin::decodeEditorSnapshotReply(encoded, decoded) &&
           decoded.request.sequence == reply.request.sequence &&
           decoded.waveform.frames == reply.waveform.frames &&
           decoded.waveform.minimum[0] == -1.0f && decoded.playback.start == 0.25f &&
-          decoded.playback.attackSeconds == 0.125f && decoded.mixer.pan == -0.5f && decoded.mixer.dirty == 1.0f,
+          decoded.playback.attackSeconds == 0.125f && decoded.mixer.pan == -0.5f && decoded.mixer.dirty == 1.0f &&
+          decoded.mixer.reverse == 1.0f,
           "one bounded reply carries coherent waveform, playback and mixer values");
     check(!plugin::decodeEditorSnapshotReply(encoded + "|", decoded) &&
           !plugin::decodeEditorSnapshotReply(encoded.substr(0, encoded.rfind('|')), decoded) &&
@@ -725,8 +757,41 @@ void captureActionsRejectRestoredOrMalformedState()
 
 } // namespace
 
+void padDirectionRequestRoundTrip()
+{
+    using namespace midichopper::plugin;
+    PadDirectionRequest request;
+    request.pad = 63U;
+    request.playback = {0.3f, 0.8f, 0.125f, 0.25f, 0.6f, 0.5f};
+    request.mixer.reverse = 1.0f;
+    request.mixer.pan = -0.25f;
+    const auto encoded = encodePadDirectionRequest(request);
+    PadDirectionRequest decoded;
+    check(decodePadDirectionRequest(encoded, decoded) && decoded.pad == 63U &&
+          decoded.playback.start == request.playback.start &&
+          decoded.playback.end == request.playback.end &&
+          decoded.playback.attackSeconds == request.playback.attackSeconds &&
+          decoded.mixer.reverse == 1.0f && decoded.mixer.pan == -0.25f,
+          "direction action round-trips paired cuts, ADSR and mixer settings");
+    const auto reject = [&](const std::string& invalid) {
+        check(!decodePadDirectionRequest(invalid, decoded) && decoded.pad == 63U &&
+              decoded.playback.start == request.playback.start && decoded.mixer.reverse == 1.0f,
+              "malformed direction action preserves destination");
+    };
+    reject("");
+    reject("DR2;0|SP1;0;1;0;0;1;0|MX3;0;0;0;0;0;0;0;1");
+    reject("DR1;64|SP1;0;1;0;0;1;0|MX3;0;0;0;0;0;0;0;1");
+    reject("DR1;-1|SP1;0;1;0;0;1;0|MX3;0;0;0;0;0;0;0;1");
+    reject(encoded + "|extra");
+    reject(encoded + std::string("\0extra", 6));
+    reject("DR1;0|SP1;nan;1;0;0;1;0|MX3;0;0;0;0;0;0;0;1");
+    reject("DR1;0|SP1;0;1;0;0;1;0|MX3;0;0;0;0;0;0;0;inf");
+    reject(std::string(513U, 'x'));
+}
+
 int main()
 {
+    padDirectionRequestRoundTrip();
     using namespace midichopper::plugin;
     legacyStateFixtures();
     check(decodePadColorIndex("0", 6) == 0 &&

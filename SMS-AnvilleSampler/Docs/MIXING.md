@@ -1,9 +1,31 @@
 # Pad and global mixing
 
-The main PLAY view has a **Global Mixer**: Pan and Dirty, then Tune, Lowpass,
+The main PLAY view has a **Global Mixer**: Direction, Pan and Dirty, then Tune, Lowpass,
 and Highpass. ARM hides it. **SAMPLE EDITOR** has a **Pad Mixer** for the selected
-pad: Gain and Pan beside Dirty, Tune, Lowpass, and Highpass, with a divider
+pad: Direction, Gain and Pan beside Dirty, Tune, Lowpass, and Highpass, with a divider
 between Pan and Dirty. Each mixer places Slope below the filters.
+
+**Direction** is one button showing ◀ | ▶. Click anywhere on it to toggle
+Reverse (left arrow) or Forward (right arrow); the active arrow lights in the
+theme accent color. Each pad saves its own direction, defaulting to Forward.
+Older projects also load Forward. Reverse flips the entire waveform in Sample
+Editor and mirrors the cut points, preserving the selected raw audio region:
+Start 20% / End 70% becomes Start 30% / End 80%. Flipping a playing pad takes
+effect immediately at the corresponding mirrored position: one-third becomes
+two-thirds. Playback continues from the same source position in the opposite
+direction, without restarting ADSR or filters, including an existing release.
+One Shot finishes once and ignores note-off; Gate repeats until note-off and
+release finish. Cut Point Editor and Split Sample always show and preview the
+original, unflipped audio. Direction never modifies stored audio.
+
+**Global Direction** is a saved master toggle. It combines with each pad's
+setting: Reverse on both means Forward playback. Toggling it immediately turns
+all active pads at their current source positions, preserving envelopes,
+release tails, filters, and polyphony in One Shot and Gate. New triggers also
+use the master setting. Pad directions and cut points stay saved independently;
+Sample Editor shows the combined waveform and mirrored cuts. Its pad arrows
+show the pad's own setting. Raw previews, monitoring, and per-pad exports are
+unaffected by Global Direction.
 
 The vertical faders at the window edges are available in every view. **IN**
 sets the monitored input level; **OUT** sets sample playback and raw-preview

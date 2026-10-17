@@ -37,6 +37,7 @@
 #include "EditorSnapshotSession.hpp"
 #include "PlaybackIndicator.hpp"
 #include "PlaybackRequest.hpp"
+#include "PadDirectionRequest.hpp"
 #include "MixerValueEntry.hpp"
 #include "WaveformDetailSession.hpp"
 #include "ChopEditorProtocol.hpp"
@@ -551,6 +552,22 @@ protected:
             changed = fGlobalDirty != value;
             fGlobalDirty = value;
             break;
+        case kParameterGlobalReverse: {
+            const bool reverse = value >= 0.5f;
+            changed = fGlobalReverse != reverse;
+            if (changed) {
+                fGlobalReverse = reverse;
+                const auto now = std::chrono::steady_clock::now();
+                fWaveformDetail.setReversed(fEditorMode && !fChopEditor.active() &&
+                    effectiveSampleReverse(), now);
+                if (fEditorSettingsPad == fSelectedPad && fWaveform.pad ==
+                    static_cast<std::uint32_t>(fSelectedPad))
+                    fPlaybackIndicator.flipDirection(fSelectedPad, fWaveform.frames,
+                        displayEditorSettings(), now);
+                fDragTarget = WaveformEditTarget::none;
+            }
+            break;
+        }
         case kParameterMaxVoices: {
             const int maxVoices = std::clamp(static_cast<int>(std::lround(value)),
                 static_cast<int>(parameterRanges::maxVoices.minimum),
@@ -841,6 +858,8 @@ protected:
             requestRepaint();
         }
         fChopEditor.idle(now);
+        fWaveformDetail.setReversed(fEditorMode && !fChopEditor.active() &&
+            effectiveSampleReverse(), now);
         if (fEditorSnapshot.pending() && now >= fEditorSnapshotRetryDeadline)
             sendEditorSnapshotRequest(now);
         if (fWaveformDetail.requestDue(now))
@@ -949,10 +968,11 @@ protected:
                 sms::ui::ContextMenuItemKind::action, index == fSelectedSkin,
                 -1, false, index == 0U};
         }
+        const auto editorSettings = displayEditorSettings();
         const midichopper::ui::ViewState view{
             fArm, fRecordMode, fFixedLength, fPlaybackMode, fMonitor,
             fStartPad, fPreRoll, fBaseNote, fMidiBankMode, fGain, fMonitorGain, fGlobalPan, fGlobalTune,
-            fGlobalLowpass, fGlobalHighpass, fGlobalFilterSlope, fGlobalDirty,
+            fGlobalLowpass, fGlobalHighpass, fGlobalFilterSlope, fGlobalDirty, fGlobalReverse,
             fMaxVoices, fBank, fLayout,
             fSelectedPad, fCurrentPad, fPadPress.pad(), fClearArmed, fMenuOpen,
             fPadContextMenuOpen, fPadContextMenu,
@@ -964,7 +984,7 @@ protected:
             fEditorMode, fChopEditor.active(), fChopEditor.split(), fEditorAuditionMode,
             fAnyPlaybackActive, fHasWaveform,
             fInputLevels, fOutputLevels, fPadState, fPadStatus, fPadColors,
-            fEditorSettings, fMixerSettings, fWaveform, fPlaybackIndicator.position(),
+            editorSettings, fMixerSettings, fWaveform, fPlaybackIndicator.position(),
             std::span<const sms::audio::WaveformSummary>{
                 fChopEditor.waveforms().data(), fChopEditor.waveforms().size()},
             std::span<const std::int64_t>{
@@ -1216,6 +1236,11 @@ protected:
                     togglePlayStop();
                     return true;
                 }
+                if (midichopper::ui::isTarget(
+                        clicked, midichopper::ui::InteractiveType::padDirection)) {
+                    flipSampleDirection();
+                    return true;
+                }
                 if ((midichopper::ui::isTarget(clicked,
                          midichopper::ui::InteractiveType::mixerKnob) ||
                      midichopper::ui::isTarget(clicked,
@@ -1306,7 +1331,7 @@ protected:
                     fDragTarget = static_cast<WaveformEditTarget>(clicked.index);
                     fDragStartX = x;
                     fDragStartY = y;
-                    fDragStartSettings = fEditorSettings;
+                    fDragStartSettings = displayEditorSettings();
                     return true;
                 }
                 constexpr std::array sliderTargets{
@@ -1338,6 +1363,13 @@ protected:
                     clicked, midichopper::ui::InteractiveType::playStop)) {
                 fPlayButtonPressCaptured = true;
                 togglePlayStop();
+                return true;
+            }
+            if (midichopper::ui::isTarget(
+                    clicked, midichopper::ui::InteractiveType::globalDirection)) {
+                editParameter(kParameterGlobalReverse, true);
+                setControlValue(kParameterGlobalReverse, fGlobalReverse ? 0.0f : 1.0f);
+                editParameter(kParameterGlobalReverse, false);
                 return true;
             }
             if ((midichopper::ui::isTarget(clicked,
@@ -1728,9 +1760,14 @@ protected:
         }
         if (midichopper::ui::isTarget(
                 hovered, midichopper::ui::InteractiveType::regionHandle)) {
+            auto displayed = displayEditorSettings();
             sms::ui::waveform::adjustRegionByWheel(
-                fEditorSettings, static_cast<WaveformEditTarget>(hovered.index), delta,
+                displayed, static_cast<WaveformEditTarget>(hovered.index), delta,
                 fWaveform.frames, uiLayout::editorWaveform, fWaveformDetail.viewport());
+            fEditorSettings = midichopper::ui::sampleEditorLocalEdit(
+                fEditorSettings, displayed, fGlobalReverse,
+                static_cast<WaveformEditTarget>(hovered.index) == WaveformEditTarget::regionStart,
+                static_cast<WaveformEditTarget>(hovered.index) == WaveformEditTarget::regionEnd);
             commitEditorSettings();
             requestRepaint();
             return true;
@@ -2061,6 +2098,7 @@ private:
     float fGlobalHighpass = 0.0f;
     float fGlobalFilterSlope = 0.0f;
     float fGlobalDirty = 0.0f;
+    bool fGlobalReverse = false;
     int fMaxVoices;
     bool fAnyPlaybackActive = false;
     bool fPlayButtonPressCaptured = false;
@@ -2191,6 +2229,7 @@ private:
                     sms::ui::ContextMenuItemKind::action &&
                 padMenuActionEnabled(kPadMenuEntries[index].action);
         const auto envelope = envelopeGraphGeometry();
+        const auto editorSettings = displayEditorSettings();
         midichopper::ui::InteractionContext context;
         context.editorMode = fEditorMode;
         context.chopEditorMode = fChopEditor.active();
@@ -2219,7 +2258,7 @@ private:
         context.padContextMenuEnabled = menuEnabled;
         context.padColorMenu = fPadColorMenu;
         context.padColorMenuItemCount = static_cast<int>(kPadColorMenuItemCount);
-        context.editorSettings = &fEditorSettings;
+        context.editorSettings = &editorSettings;
         context.envelope = &envelope;
         context.chopWaveforms = fChopEditor.waveforms();
         context.chopOffsets = fChopEditor.offsets();
@@ -2455,7 +2494,7 @@ private:
                settings.attackSeconds != 0.0f || settings.decaySeconds != 0.0f ||
                settings.sustainLevel != 1.0f || settings.releaseSeconds != 0.0f ||
                mixer.gainDecibels != 0.0f || mixer.pan != 0.0f ||
-               mixer.tuneSemitones != 0.0f;
+               mixer.tuneSemitones != 0.0f || mixer.reverse != 0.0f;
     }
 
     [[nodiscard]] bool padMenuActionEnabled(const PadMenuAction action) const noexcept
@@ -2845,10 +2884,19 @@ private:
         return sms::ui::BankedPadLayout(fLayout);
     }
 
+    [[nodiscard]] bool effectiveSampleReverse() const noexcept
+    {
+        return midichopper::ui::sampleDisplayReversed(fMixerSettings.reverse >= 0.5f,
+                                                     fGlobalReverse);
+    }
+
+    [[nodiscard]] sms::dsp::SamplePlaybackSettings displayEditorSettings() const noexcept
+    { return midichopper::ui::sampleEditorSettings(fEditorSettings, fGlobalReverse); }
+
     sms::ui::waveform::EnvelopeGeometry envelopeGraphGeometry() const noexcept
     {
         return sms::ui::waveform::envelopeGeometry(uiLayout::envelopeGraph, fWaveform,
-                                                   fEditorSettings);
+                                                   displayEditorSettings());
     }
 
     void setLocalStatus(const char* status)
@@ -2962,8 +3010,9 @@ private:
     {
         const bool shouldLoop = loop.value_or(fEditorAuditionPad == pad
             ? fEditorAuditionLoop : fPlaybackMode >= 0.5f);
-        if (fPlaybackIndicator.start(pad, fEditorSettingsPad, fEditorSettings,
-                                     std::chrono::steady_clock::now(), shouldLoop) && fEditorMode)
+        if (fPlaybackIndicator.start(pad, fEditorSettingsPad, displayEditorSettings(),
+                                     std::chrono::steady_clock::now(), shouldLoop,
+                                     false) && fEditorMode)
             requestRepaint();
     }
 
@@ -2977,7 +3026,7 @@ private:
     void updateLocalPlayhead(const std::chrono::steady_clock::time_point now)
     {
         if (fPlaybackIndicator.update(now, fSelectedPad, fHasWaveform, fWaveform,
-                fEditorSettings, fMixerSettings, fGlobalTune) && fEditorMode)
+                displayEditorSettings(), fMixerSettings, fGlobalTune) && fEditorMode)
             requestRepaint();
     }
 
@@ -3034,14 +3083,18 @@ private:
     {
         if (!fEditorSnapshot.readyFor(fSelectedPad))
             return;
+        const bool retainViewport = fEditorSnapshot.localEdit() &&
+            fWaveform.pad == fEditorSnapshot.waveform().pad &&
+            fWaveform.frames == fEditorSnapshot.waveform().frames;
         fWaveform = fEditorSnapshot.waveform();
-        fWaveformDetail.reset(fWaveform.frames);
+        if (!retainViewport)
+            fWaveformDetail.reset(fWaveform.frames);
         fHasWaveform = fWaveform.frames != 0U;
         fEditorSettings = fEditorSnapshot.playback();
         fEditorSettingsPad = fSelectedPad;
         fMixerSettings = fEditorSnapshot.mixer();
         fMixerSettingsPad = fSelectedPad;
-        fPlaybackIndicator.acceptSettings(fSelectedPad, fEditorSettings,
+        fPlaybackIndicator.acceptSettings(fSelectedPad, displayEditorSettings(),
                                           std::chrono::steady_clock::now());
         fEditorSnapshot.complete();
     }
@@ -3193,9 +3246,33 @@ private:
         refreshPendingEditorSnapshot();
     }
 
+    void flipSampleDirection()
+    {
+        if (!hasSelectedPad() || fEditorSettingsPad != fSelectedPad ||
+            fMixerSettingsPad != fSelectedPad)
+            return;
+        const auto now = std::chrono::steady_clock::now();
+        fEditorSettings = midichopper::ui::mirrorSampleRegion(fEditorSettings);
+        fMixerSettings.reverse = fMixerSettings.reverse >= 0.5f ? 0.0f : 1.0f;
+        fMixerSettings = sms::dsp::sanitize(fMixerSettings);
+        fEditorSettingsPad = fMixerSettingsPad = fSelectedPad;
+        fWaveformDetail.setReversed(effectiveSampleReverse(), now);
+        fPlaybackIndicator.flipDirection(fSelectedPad, fWaveform.frames, displayEditorSettings(), now);
+        fEditorSnapshot.beginLocalEdit(fSelectedPad, fEditorSettings, fMixerSettings);
+#if DISTRHO_PLUGIN_WANT_STATE
+        const std::string encoded = midichopper::plugin::encodePadDirectionRequest({
+            static_cast<std::uint32_t>(fSelectedPad), fEditorSettings, fMixerSettings});
+        setState("pad_direction_request", encoded.c_str());
+        sendEditorSnapshotRequest(now);
+#endif
+        requestRepaint();
+    }
+
     void commitMixerSettings()
     {
         fMixerSettings = sms::dsp::sanitize(fMixerSettings);
+        fWaveformDetail.setReversed(fEditorMode && !fChopEditor.active() &&
+            effectiveSampleReverse(), std::chrono::steady_clock::now());
         fMixerSettingsPad = fSelectedPad;
 #if DISTRHO_PLUGIN_WANT_STATE
         const std::string encoded = sms::state::encodeSampleMixerSettings(fMixerSettings);
@@ -3209,7 +3286,7 @@ private:
     {
         // A queued snapshot predating this local edit must not overwrite it.
         if (fEditorSnapshot.pending()) {
-            fEditorSnapshot.begin(fSelectedPad);
+            fEditorSnapshot.beginLocalEdit(fSelectedPad, fEditorSettings, fMixerSettings);
             fEditorSnapshotRetryDeadline = std::chrono::steady_clock::now();
         }
     }
@@ -3570,23 +3647,29 @@ private:
 
     void updateEditorDrag(const float x, const float y)
     {
-        if (fDragTarget == WaveformEditTarget::regionStart ||
-            fDragTarget == WaveformEditTarget::regionEnd) {
+        auto displayed = displayEditorSettings();
+        const bool regionEdited = fDragTarget == WaveformEditTarget::regionStart ||
+                                  fDragTarget == WaveformEditTarget::regionEnd;
+        if (regionEdited) {
             sms::ui::waveform::updateRegion(
-                fEditorSettings, fDragTarget, x, uiLayout::editorWaveform,
+                displayed, fDragTarget, x, uiLayout::editorWaveform,
                 fWaveformDetail.viewport());
         } else if (fDragTarget >= WaveformEditTarget::attackSlider &&
                    fDragTarget <= WaveformEditTarget::releaseSlider) {
             const int slider = static_cast<int>(fDragTarget) -
                                static_cast<int>(WaveformEditTarget::attackSlider);
             sms::ui::waveform::updateEnvelopeSlider(
-                fEditorSettings, fDragTarget, x, uiLayout::editorSlider(slider));
+                displayed, fDragTarget, x, uiLayout::editorSlider(slider));
         } else if (fDragTarget >= WaveformEditTarget::attackNode &&
                    fDragTarget <= WaveformEditTarget::releaseNode) {
             sms::ui::waveform::updateEnvelopeNode(
-                fEditorSettings, fDragStartSettings, fDragTarget, {x, y},
+                displayed, fDragStartSettings, fDragTarget, {x, y},
                 {fDragStartX, fDragStartY}, envelopeGraphGeometry());
         }
+        fEditorSettings = midichopper::ui::sampleEditorLocalEdit(
+            fEditorSettings, displayed, fGlobalReverse,
+            fDragTarget == WaveformEditTarget::regionStart,
+            fDragTarget == WaveformEditTarget::regionEnd);
         commitEditorSettings();
         requestRepaint();
     }

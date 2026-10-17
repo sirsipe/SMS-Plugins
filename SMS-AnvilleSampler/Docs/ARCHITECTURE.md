@@ -1,7 +1,6 @@
 # SMS-Anville Sampler architecture
 
-- `src/core`: `SamplerEngine` orchestrates capture, voices, pad publication,
-  and logical capacity. `SampleStoragePool` owns PCM, capture reserve, block
+- `src/core`: `SamplerEngine` manages capture, voices, pad publication, and capacity. `SampleStoragePool` owns PCM, capture reserve, block
   maps, immutable imports, resampling, and bounded reclamation.
 - `src/plugin`: `MidichopperPlugin` adapts DPF parameters, audio, MIDI, state,
   and lifecycle. `PadWorkflows` owns serialized file/clipboard/cut/split actions;
@@ -10,7 +9,7 @@
   `MidichopperInteraction` resolves gestures and `MidichopperView` draws.
   `ChopEditorController` owns cut/split sessions; `EditorSnapshotSession` matches
   waveform/settings replies. `WaveformDetailSession` owns zoom/detail requests,
-  `PlaybackIndicator` owns playhead timing, and `MixerValueEntry` owns text editing.
+  `PlaybackIndicator` displays host source positions, and `MixerValueEntry` owns text editing.
 - `Common-Src` provides framework-neutral DSP, codecs, audio handoff, geometry.
   `Common-UI` provides shared controls, pads, waveform editing and DPF rendering.
 
@@ -19,11 +18,10 @@ See [Skins](SKINS.md) for discovery and image replacement.
 
 ## MIDI mapping
 
-Saved `midi_bank_mode` selects two mappings. All Banks maps four gapless pages
-from the base note. Note-on updates the active bank; note-off does not. Layout
-changes regroup slots without changing notes.
+`midi_bank_mode` selects two mappings. All Banks maps four gapless pages
+from the base note. Note-on updates the active bank; note-off does not. Layouts regroup slots without changing notes.
 Playback note-on advances a hidden output encoding the global pad index in
-alternating halves of its range. Both views follow bank, MIDI labels, and last-played selection.
+alternating halves of its range. Views follow bank, MIDI labels, and last-played selection.
 An appended hidden output reports whether any pad or raw preview is active.
 Transient `play_stop_request` toggles audition/Stop All at block boundaries.
 `PlaybackRequest.hpp` preserves legacy integers and adds Play, Loop, looping
@@ -35,9 +33,6 @@ MIDI notes 0–127. UI notes and labels use the engine mapping. Selected Bank re
 with `active_bank` choosing its target, and retains the released fixed 16-slot
 bank organization.
 
-Keyboard focus/repeat/overlay routing follows the
-[plugin guide](../README.md#general-controls) and `MidichopperInteraction.hpp`.
-
 ## Capture model
 
 Arm targets the first empty visible pad (first pad when full); idle selection
@@ -47,31 +42,31 @@ boundaries and advance through Bank D. Selected Bank skips hidden slots;
 All Banks uses contiguous pages. Note-off does not affect capture. Disarming or
 Finalize publishes the last slice.
 
-The pre-roll ring holds up to 100 ms. At a boundary, history starts the new
+Pre-roll ring holds up to 100 ms. At a boundary, history starts the new
 slice and is trimmed from the previous one. Fixed mode records the chosen
 duration after each note-on.
 
 ## Real-time behavior
 
-The preallocated stereo pool supports 64 pads and about eight minutes at the
-host rate. Any pad can use all free blocks; clearing returns them to every bank.
+Preallocated stereo pool supports 64 pads and about eight minutes. Any pad can use all free blocks; clearing returns them to every bank.
 `process()` pulls
 sample-offset MIDI without a fixed event cap or allocation, locking, I/O, or
 exceptions. Each pad is one voice, with a global limit of
 1–16 simultaneous voices and deterministic oldest-voice stealing.
-Saved `input_monitor` values are Off=0, On=1, Auto=2. The adapter resolves Auto
-against Arm before passing the engine's boolean monitor gate each block.
+`input_monitor` values are Off=0, On=1, Auto=2. The adapter resolves Auto against Arm each block.
 Playback uses linear interpolation for source-rate conversion and semitone
 varispeed. Per-pad region/ADSR and mixer settings are non-destructive; global
 volume/pan/tune combine during playback. Active voices refresh mixer,
-ADSR, and End atomics per block; Start remains fixed until retrigger.
-Triggers latch playback mode. Gate loops Start/End through note-off and ADSR
+ADSR, and cuts per block; one-shot Start stays fixed until retrigger.
+Triggers latch pad direction/mode; Global Reverse turns all voices. Editor requests atomically mirror
+Start/End, active cursor and orientation without restarting ADSR/filters. Reverse
+maps playback i to raw N−1−i before effects, preserving PCM; cut/split stays raw. Gate loops Start/End through note-off and ADSR
 release. Arm cuts Gate voices. Editor Loop repeats until stopped; Play auditions once.
-Loop boundaries preserve fractional overshoot and interpolate toward Start
-without resetting ADSR or filters. Only one-shot voices schedule an automatic
-end fade and cap Release to half the region duration. End edits wrap within the
-new range.
-The filter and Dirty processing contract is in [Mixing](../../Docs/AI/MIXING.md).
+Loops preserve fractional overshoot, seam interpolation, ADSR and filters in
+either direction. Only one-shot voices schedule an automatic
+end fade and cap Release to half the region duration. Loop cut edits keep an
+in-range cursor; otherwise they wrap its fractional position into the new range.
+Filter and Dirty follow [Mixing](../../Docs/AI/MIXING.md).
 
 Pad transfers commit retained immutable audio at block boundaries; unrelated
 audio continues and host reads never wait. See
@@ -83,7 +78,7 @@ stage affected PCM and validate generations before atomic commit. Recording,
 resets, audio, and settings changes invalidate stale plans. Structure actions
 stay within the active visible bank/page.
 
-Four outputs report peaks; redraws cap at 30 FPS at LED boundaries. Host hard
+Four outputs report peaks; LED redraws cap at 30 FPS. Host hard
 bypass cannot be metered.
 
 ## Project state
@@ -94,15 +89,13 @@ Durable restoration stages per-pad desired updates without waiting for
 processing; published reads include them, and the next block commits them.
 
 Cut/ADSR and mixer states are versioned. Import resets both; rechopping preserves
-mixers on non-empty results and clears empty-pad settings. The UI retains
-waveform/settings snapshots until a matching sequenced reply arrives, rejecting
-stale same-pad replies and retrying failures. DSP sends 128-bin min/max summaries
+mixers on non-empty results and clears empty-pad settings. The UI retains waveform/settings snapshots until matching sequenced replies,
+rejecting stale replies and retrying failures. DSP sends 128-bin min/max summaries
 through LV2 DPF state or the bounded VST3 direct-access bus. Zoom/pan requests
 range/sequence-checked detail from retained storage on the control worker.
 Both editors reproject range-tagged cached extrema through
 `waveform::visibleSummary`, filling uncovered bins from the whole-source overview
-until matching detail arrives. Pad/editor changes reset zoom and cache. See
-[editor detail](../../Docs/AI/CHOP-EDITOR.md).
+until matching detail arrives. Pad/editor changes reset zoom and cache. [Editor detail](../../Docs/AI/CHOP-EDITOR.md).
 
 `pad_color_01..64` saves slot palette indices. Zero/unavailable indices mean no
 tint; colors stay with slots through sample edits and moves.
@@ -111,7 +104,7 @@ tint; colors stay with slots through sample edits and moves.
 `pad_file_request` carries an action, pad, and UTF-8 path. VST3 queues transient transfers on an instance-owned worker; LV2 executes
 them through its required host worker. Busy/status states contain small messages, while a hidden
 output signals completion where wrapper state callbacks cannot return status
-to the UI. The VST3 bus carries no PCM. DPF's VST3 initial state transfer does
+to the UI. VST3 bus excludes PCM. DPF's VST3 initial state transfer does
 not filter DSP-only state keys and may send Base64 pad PCM to a newly opened UI.
 
 ## Validation

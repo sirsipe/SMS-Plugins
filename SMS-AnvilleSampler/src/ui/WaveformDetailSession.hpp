@@ -1,6 +1,7 @@
 #pragma once
 
 #include "EditorSnapshotSession.hpp"
+#include "SampleWaveform.hpp"
 #include "WaveformViewport.hpp"
 
 #include <chrono>
@@ -29,6 +30,15 @@ public:
     [[nodiscard]] bool setScrollPosition(const float position, const Time now) noexcept
     { return scheduleIfChanged(fViewport.setScrollPosition(position), now); }
 
+    void setReversed(const bool reverse, const Time now) noexcept
+    {
+        if (fReverse == reverse)
+            return;
+        fReverse = reverse;
+        ++fSequence; // Replies for the previous orientation cannot finish this request.
+        static_cast<void>(scheduleIfChanged(true, now));
+    }
+
     void reset(const std::uint64_t frames = 0U) noexcept
     {
         ++fSequence;
@@ -49,19 +59,21 @@ public:
         }
         if (firstPad < 0)
             return std::nullopt;
+        const auto source = sampleSourceViewport(fViewport, fReverse);
         fRequest = waveformDetailRequest(fRequest, fSequence,
-            static_cast<std::uint32_t>(firstPad), padCount, fViewport.start, fViewport.end);
+            static_cast<std::uint32_t>(firstPad), padCount, source.start, source.end);
         fDeadline = now + std::chrono::milliseconds(250);
         return fRequest;
     }
 
     [[nodiscard]] bool accept(const plugin::WaveformDetailReply& reply) noexcept
     {
+        const auto source = sampleSourceViewport(fViewport, fReverse);
         if (reply.request.sequence != fRequest.sequence ||
             reply.request.sequence != fSequence ||
             reply.request.firstPad != fRequest.firstPad ||
             reply.request.padCount != fRequest.padCount ||
-            reply.request.start != fViewport.start || reply.request.end != fViewport.end ||
+            reply.request.start != source.start || reply.request.end != source.end ||
             !fViewport.zoomed())
             return false;
         fDetail = {reply.waveform, reply.request.start, reply.request.end};
@@ -86,6 +98,7 @@ private:
     std::uint64_t fSequence = 0U;
     bool fReady = false;
     bool fDirty = false;
+    bool fReverse = false;
     Time fDeadline{};
 };
 

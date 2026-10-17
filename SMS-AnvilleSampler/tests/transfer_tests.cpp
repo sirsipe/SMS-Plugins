@@ -151,15 +151,21 @@ bool same(sms::dsp::SampleMixerSettings a, sms::dsp::SampleMixerSettings b)
 {
     return a.gainDecibels == b.gainDecibels && a.pan == b.pan &&
            a.tuneSemitones == b.tuneSemitones && a.lowpass == b.lowpass &&
-           a.highpass == b.highpass && a.filterSlope == b.filterSlope && a.dirty == b.dirty;
+           a.highpass == b.highpass && a.filterSlope == b.filterSlope && a.dirty == b.dirty &&
+        a.reverse == b.reverse;
 }
 
 // The callback uses only fixed arrays and atomics. Every block has the same
 // exact oracle, including a note-on at frame 7 and note-off at frame 51.
 class AudioHarness {
 public:
-    explicit AudioHarness(SamplerEngine& sampler, bool recording = false)
-        : sampler_(sampler), recording_(recording)
+    explicit AudioHarness(SamplerEngine& sampler, bool recording = false,
+                          bool holdVoice = false,
+                          void (*beforeSecondProcess)(void*) = nullptr,
+                          void* beforeSecondProcessContext = nullptr)
+        : sampler_(sampler), recording_(recording), holdVoice_(holdVoice),
+          beforeSecondProcess_(beforeSecondProcess),
+          beforeSecondProcessContext_(beforeSecondProcessContext)
     {
         auto settings = sampler.settings();
         settings.monitorInput = true;
@@ -173,6 +179,9 @@ public:
             blockLimit.store(16);
         }
         sampler.setSettings(settings);
+        sms::dsp::SampleMixerSettings reverse;
+        reverse.reverse = 1.0f;
+        sampler.setPadMixerSettings(15U, reverse);
         sampler.setControlDispatcher(this, dispatch);
         dispatcher.activate();
         worker_ = std::thread([this] { run(); });
@@ -231,6 +240,8 @@ private:
         const std::array<midichopper::MidiEvent, 2> notes{{
             {7, 51, 127, midichopper::MidiEventType::NoteOn},
             {51, 51, 0, midichopper::MidiEventType::NoteOff}}};
+        const midichopper::MidiEvent heldNote{7, 51, 127,
+                                               midichopper::MidiEventType::NoteOn};
         const midichopper::MidiEvent capture{11, 36, 127, midichopper::MidiEventType::NoteOn};
         allocation_probe::audioThread = true;
         while (!stopping_.load()) {
@@ -240,12 +251,19 @@ private:
                 std::this_thread::yield();
                 continue;
             }
+            if (block == 1U && beforeSecondProcess_) {
+                const auto callback = beforeSecondProcess_;
+                beforeSecondProcess_ = nullptr;
+                callback(beforeSecondProcessContext_);
+            }
             sampler_.process(inputLeft.data(), inputRight.data(),
                              outputLeft.data(), outputRight.data(), kFrames,
-                             recording_ ? (block == 0 ? &capture : nullptr) : notes.data(),
-                             recording_ ? (block == 0 ? 1 : 0) : 2);
+                             recording_ ? (block == 0 ? &capture : nullptr)
+                           : holdVoice_ ? (block == 0 ? &heldNote : nullptr) : notes.data(),
+                recording_ || holdVoice_ ? (block == 0 ? 1 : 0) : 2);
             for (std::uint32_t frame = 0; frame < kFrames; ++frame) {
-                const bool voice = !recording_ && frame >= 7 && frame < 51;
+                const bool voice = !recording_ && (holdVoice_
+                    ? block != 0U || frame >= 7U : frame >= 7U && frame < 51U);
                 const float expectedLeft = inputLeft[frame] + (voice ? 0.125f : 0.0f);
                 const float expectedRight = inputRight[frame] + (voice ? -0.25f : 0.0f);
                 if (std::abs(outputLeft[frame] - expectedLeft) > 1.0e-6f ||
@@ -259,6 +277,9 @@ private:
 
     SamplerEngine& sampler_;
     bool recording_;
+    bool holdVoice_;
+    void (*beforeSecondProcess_)(void*) = nullptr;
+    void* beforeSecondProcessContext_ = nullptr;
     std::atomic<bool> stopping_{false};
     std::thread worker_;
 };
@@ -294,7 +315,7 @@ void transferContinuity(const PadData& source)
         sms::dsp::SampleMixerSettings mixer;
         mixer.gainDecibels = -6.0f; mixer.pan = 0.25f;
         mixer.tuneSemitones = -3.0f; mixer.lowpass = 0.125f;
-        mixer.highpass = 0.25f; mixer.filterSlope = 2; mixer.dirty = 1;
+        mixer.highpass = 0.25f; mixer.filterSlope = 2; mixer.dirty = 1; mixer.reverse = 1;
         engine.setPadPlaybackSettings(0, playback);
         engine.setPadMixerSettings(0, mixer);
         sms::dsp::SamplePlaybackSettings copiedPlayback;
@@ -341,6 +362,23 @@ void transferContinuity(const PadData& source)
     }
     check(audio.captures >= 30, "heavy operations dispatch capture/commit commands");
     audio.stop();
+}
+
+void globalReverseAudioCallbackNoAlloc()
+{
+    SamplerEngine engine(kRate, 1.0);
+    setPerformancePad(engine);
+    AudioHarness audio(engine, false, true, [](void* const context) {
+        auto& sampler = *static_cast<SamplerEngine*>(context);
+        auto settings = sampler.settings();
+        settings.reverse = true;
+        sampler.setSettings(settings);
+    }, &engine);
+    await([&] { return audio.blocks.load() >= 4U; },
+          "global reverse callback transition processes several blocks");
+    check(engine.settings().reverse,
+          "global reverse EngineSettings transition applies on the audio owner");
+    audio.stop(); // The harness checks unchanged constant audio and no callback allocation/deletion.
 }
 
 void retainedSnapshotsAndStalePlans()
@@ -735,9 +773,9 @@ void suspendedHostRestore()
         playback[pad].sustainLevel = static_cast<float>(pad + 1) / 64;
         mixers[pad].pan = static_cast<float>(pad) / 128;
         mixers[pad].gainDecibels = -static_cast<float>(pad % 12);
+        mixers[pad].reverse = pad == 5U ? 1.0f : 0.0f;
         check(engine.restorePad(pad, &sources[pad]), "queue suspended-host pad PCM without callback");
-        engine.restorePadPlaybackSettings(pad, playback[pad]);
-        engine.restorePadMixerSettings(pad, mixers[pad]);
+        engine.restorePadEditorSettings(pad, playback[pad], mixers[pad]);
     }
     const auto validate = [&] {
         PadData exported;
@@ -831,6 +869,7 @@ void concurrentDurablePublication()
     sms::dsp::SampleMixerSettings firstMixer, secondMixer;
     firstMixer.pan = -0.5f; firstMixer.gainDecibels = -3;
     secondMixer.pan = 0.5f; secondMixer.gainDecibels = -9;
+    firstMixer.reverse = 1.0f;
     check(engine.importPad(0, first, false, &firstPlayback, &firstMixer), "install durable reader baseline");
     setPerformancePad(engine);
     AudioHarness audio(engine);
@@ -854,6 +893,9 @@ void concurrentDurablePublication()
             check((same(playback, firstPlayback) || same(playback, secondPlayback)) &&
                   (same(mixer, firstMixer) || same(mixer, secondMixer)),
                   "durable settings state snapshot is coherent during mailbox consumption");
+            check((same(playback, firstPlayback) && same(mixer, firstMixer)) ||
+                  (same(playback, secondPlayback) && same(mixer, secondMixer)),
+                  "editor playback and mixer settings publish as one durable revision");
             reads.fetch_add(1);
         }
     });
@@ -861,8 +903,8 @@ void concurrentDurablePublication()
     for (unsigned revision = 0; revision < 128; ++revision) {
         const bool firstRevision = revision % 2 == 0;
         check(engine.restorePad(0, firstRevision ? &first : &second), "queue active durable PCM revision");
-        engine.restorePadPlaybackSettings(0, firstRevision ? firstPlayback : secondPlayback);
-        engine.restorePadMixerSettings(0, firstRevision ? firstMixer : secondMixer);
+        engine.restorePadEditorSettings(0, firstRevision ? firstPlayback : secondPlayback,
+                                        firstRevision ? firstMixer : secondMixer);
     }
     finished.store(true);
     reader.join();
@@ -928,6 +970,7 @@ int main(int argc, char** argv)
     concurrentDurablePublication();
     pendingRestoreLifecycle();
     transferContinuity(sample(1500000));
+    globalReverseAudioCallbackNoAlloc();
     retainedSnapshotsAndStalePlans();
     recordingContinuity();
     if (argc == 2) transferContinuity(readOptionalWav(argv[1]));

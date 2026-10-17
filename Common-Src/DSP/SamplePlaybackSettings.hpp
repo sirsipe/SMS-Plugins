@@ -37,4 +37,15 @@ struct SamplePlaybackSettings {
     return value;
 }
 
+/** Mirror a region across the whole source without changing envelope settings. */
+[[nodiscard]] inline SamplePlaybackSettings mirroredRegion(
+    const SamplePlaybackSettings& requested) noexcept
+{
+    auto value = sanitize(requested);
+    const float start = value.start;
+    value.start = 1.0f - value.end;
+    value.end = 1.0f - start;
+    return sanitize(value);
+}
+
 } // namespace sms::dsp

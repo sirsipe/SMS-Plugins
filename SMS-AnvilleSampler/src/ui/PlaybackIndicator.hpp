@@ -12,7 +12,7 @@
 
 namespace midichopper::ui {
 
-/** UI-local playhead estimation between host position notifications. */
+/** Host-authoritative playhead with optional estimation for a known forward voice. */
 class PlaybackIndicator {
 public:
     using Clock = std::chrono::steady_clock;
@@ -28,6 +28,10 @@ public:
             if (pad != fPad)
                 fLoopStart = -1.0f;
             fLoop = loop;
+            // DSP reports playback coordinates in either source orientation.
+            // Mixer edits cannot tell us the orientation of an already sounding voice.
+            fPredict = false;
+            fAwaitingSettings = false;
             fPosition = value;
             fPad = static_cast<int>(std::floor(value)) - 1;
             fFraction = value - std::floor(value);
@@ -44,12 +48,14 @@ public:
 
     [[nodiscard]] bool start(const int pad, const int settingsPad,
                             const sms::dsp::SamplePlaybackSettings& settings,
-                            const Time now, const bool loop = false) noexcept
+                            const Time now, const bool loop = false,
+                            const bool predictForward = true) noexcept
     {
         if (pad < 0 || pad >= static_cast<int>(kPadCount) ||
             (fActive && fPad == pad && now - fStarted < std::chrono::milliseconds(150)))
             return false;
         fLoop = loop;
+        fPredict = predictForward;
         fPad = pad;
         fAwaitingSettings = settingsPad != pad;
         fFraction = fAwaitingSettings ? 0.0f : sms::dsp::sanitize(settings).start;
@@ -57,7 +63,10 @@ public:
         fActive = true;
         fTick = fStarted = now;
         fClearDeadline = {};
-        updatePosition();
+        if (fPredict)
+            updatePosition();
+        else
+            fPosition = 0.0f;
         return true;
     }
 
@@ -65,7 +74,7 @@ public:
     {
         fActive = false;
         fAwaitingSettings = false;
-        if (holdFinal && fPad >= 0) {
+        if (holdFinal && fPad >= 0 && fPosition > 0.0f) {
             fFraction = std::min(fFraction, 0.985f);
             updatePosition();
             fClearDeadline = now + std::chrono::milliseconds(100);
@@ -79,13 +88,39 @@ public:
     void acceptSettings(const int pad, const sms::dsp::SamplePlaybackSettings& settings,
                         const Time now) noexcept
     {
-        if (!fAwaitingSettings || fPad != pad)
+        if (!fPredict || !fAwaitingSettings || fPad != pad)
             return;
         fFraction = sms::dsp::sanitize(settings).start;
         fLoopStart = fFraction;
         updatePosition();
         fAwaitingSettings = false;
         fTick = now;
+    }
+
+    /** Mirror the sounding cursor without starting a new voice or resetting timing. */
+    void flipDirection(const int pad, const std::uint32_t frames,
+                       const sms::dsp::SamplePlaybackSettings& settings,
+                       const Time now) noexcept
+    {
+        if (!fActive || fPad != pad || fPosition <= 0.0f || frames == 0U)
+            return;
+        const auto playback = sms::dsp::sanitize(settings);
+        const double frame = 1.0 / frames;
+        const double start = playback.start;
+        const double end = std::max(static_cast<double>(playback.end), start + frame);
+        double mirrored = 1.0 - frame - static_cast<double>(fFraction);
+        if (fLoop && (mirrored < start || mirrored >= end)) {
+            const double length = end - start;
+            mirrored = start + std::fmod(std::fmod(mirrored - start, length) + length, length);
+        } else if (!fLoop) {
+            mirrored = std::clamp(mirrored, start, std::max(start, end - frame));
+        }
+        fFraction = static_cast<float>(mirrored);
+        fLoopStart = playback.start;
+        fPredict = false;
+        fAwaitingSettings = false;
+        fTick = now;
+        updatePosition();
     }
 
     /** Returns whether the displayed position needs a repaint. */
@@ -102,7 +137,7 @@ public:
             }
             return false;
         }
-        if (fAwaitingSettings || fPad != selectedPad || !hasWaveform ||
+        if (!fPredict || fAwaitingSettings || fPad != selectedPad || !hasWaveform ||
             waveform.frames == 0U || waveform.sampleRate <= 1.0) {
             fTick = now;
             return false;
@@ -140,6 +175,7 @@ private:
 
     float fPosition = 0.0f;
     bool fActive = false;
+    bool fPredict = true;
     bool fLoop = false;
     bool fAwaitingSettings = false;
     int fPad = -1;

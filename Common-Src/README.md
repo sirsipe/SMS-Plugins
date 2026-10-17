@@ -6,10 +6,10 @@ This directory contains dependency-light C++20 components that are reusable by
 multiple SMS audio plug-ins. It deliberately has no dependency on DPF, LV2, a
 host, or a specific plug-in's state model.
 
-- `DSP/SamplePlaybackSettings.hpp`: sanitized, non-destructive sample region
-  and ADSR value type.
+- `DSP/SamplePlaybackSettings.hpp`: sanitized sample region/ADSR and
+  non-destructive region mirroring.
 - `DSP/SampleMixerSettings.hpp`: sanitized per-sample gain, stereo balance, and
-  semitone tune, filter, and dirty-mode settings.
+  semitone tune, filter, dirty-mode, and playback direction settings.
 - `DSP/ColorEffects.hpp`: allocation-free per-voice stereo filters and 26.04 kHz,
   12-bit mono source conversion.
 - `DSP/AdsrEnvelope.hpp`: allocation-free per-voice linear ADSR processor with
@@ -30,7 +30,7 @@ host, or a specific plug-in's state model.
   callback is idle, or at a block boundary while it is running.
 - `State/SamplePlaybackSettingsCodec.hpp`: versioned settings serialization.
 - `State/SampleMixerSettingsCodec.hpp`: versioned mixer-settings serialization;
-  MX1 pad states load with the new effects off.
+  MX3 saves direction; MX1/MX2 load Forward, and MX1 effects default off.
 - `UI/Geometry.hpp`: renderer-independent rectangles and reusable pad-grid
   layout/hit testing.
 

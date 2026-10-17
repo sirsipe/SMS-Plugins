@@ -63,6 +63,8 @@ enum class InteractiveType : int {
     clearAction,
     menuSkins,
     skinItem,
+    padDirection,
+    globalDirection,
 };
 
 class PadPressTracker {
@@ -502,6 +504,8 @@ interactiveTargetAt(const sms::ui::Point point, const InteractionContext& contex
             if (uiLayout::editorSlider(slider).contains(point))
                 return target(InteractiveType::envelopeSlider, slider);
         }
+        if (uiLayout::padDirection.contains(point))
+            return target(InteractiveType::padDirection);
         for (int slider = 0; slider < 7; ++slider) {
             if (slider != 5 && uiLayout::mixerValueLabel(slider).contains(point))
                 return target(InteractiveType::mixerValueLabel, slider);
@@ -553,6 +557,8 @@ interactiveTargetAt(const sms::ui::Point point, const InteractionContext& contex
     }
     if (uiLayout::monitor.contains(point))
         return target(InteractiveType::monitor);
+    if (!context.armed && uiLayout::globalDirection.contains(point))
+        return target(InteractiveType::globalDirection);
     for (int knob = 1; !context.armed && knob < 7; ++knob) {
         if (knob != 5 && uiLayout::globalMixerValueLabel(knob).contains(point))
             return target(InteractiveType::globalMixerValueLabel, knob);

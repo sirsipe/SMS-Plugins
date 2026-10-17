@@ -67,6 +67,7 @@ struct EngineSettings {
     float filterSlope = 0.0f;
     float dirty = 0.0f;
     std::uint8_t maxVoices = 1U;
+    bool reverse = false; // master orientation combines with each pad's direction
 };
 
 struct PadMetadata {
@@ -188,6 +189,11 @@ public:
         const sms::dsp::SamplePlaybackSettings& settings);
     void restorePadMixerSettings(std::uint32_t pad,
         const sms::dsp::SampleMixerSettings& settings);
+    /** Sample Editor direction action: publish both settings and turn an active
+     * voice at its current source position, without retriggering its envelope. */
+    void restorePadEditorSettings(std::uint32_t pad,
+        const sms::dsp::SamplePlaybackSettings& playback,
+        const sms::dsp::SampleMixerSettings& mixer);
     /** Audio-owner: publish staged durable state at the next block; no allocation/free. */
     void applyPendingState() noexcept;
     [[nodiscard]] bool stateRestoreFailed() const noexcept
@@ -289,6 +295,8 @@ private:
         bool replaceAudio = false;
         bool replacePlayback = false;
         bool replaceMixer = false;
+        bool redirectActiveVoice = false;
+        bool activeReverse = false; // editor action's target, independent of later durable mixer edits
         sms::dsp::SamplePlaybackSettings playback{};
         sms::dsp::SampleMixerSettings mixer{};
     };
@@ -306,6 +314,7 @@ private:
         const sms::dsp::SamplePlaybackSettings& settings) noexcept;
     void setPadMixerSettingsDirect(std::uint32_t pad,
         const sms::dsp::SampleMixerSettings& settings) noexcept;
+    void redirectPadVoice(std::uint32_t pad, bool reverse) noexcept;
     enum class VoiceMode : std::uint8_t { OneShot, Gated, Loop };
     std::uint32_t auditionPad_ = kPadCount;
     struct Pad {
@@ -320,6 +329,7 @@ private:
         bool held = false;
         bool playing = false;
         VoiceMode voiceMode = VoiceMode::OneShot;
+        bool voiceReverse = false; // latched at trigger; mixer edits affect the next voice
         std::uint64_t voiceOrder = 0;
         double playPosition = 0.0;
         double playStep = 1.0;
@@ -356,6 +366,7 @@ private:
         std::atomic<float> mixerHighpass{0.0f};
         std::atomic<float> mixerFilterSlope{0.0f};
         std::atomic<float> mixerDirty{0.0f};
+        std::atomic<float> mixerReverse{0.0f};
         Pad() = default;
         Pad(const Pad&) = delete;
         Pad& operator=(const Pad&) = delete;

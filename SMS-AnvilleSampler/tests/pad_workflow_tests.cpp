@@ -65,7 +65,8 @@ bool sameMixer(const sms::dsp::SampleMixerSettings& a,
 {
     return a.gainDecibels == b.gainDecibels && a.pan == b.pan &&
         a.tuneSemitones == b.tuneSemitones && a.lowpass == b.lowpass &&
-        a.highpass == b.highpass && a.filterSlope == b.filterSlope && a.dirty == b.dirty;
+        a.highpass == b.highpass && a.filterSlope == b.filterSlope && a.dirty == b.dirty &&
+        a.reverse == b.reverse;
 }
 
 void checkSettingsReply(const Observer& observer, const SamplerEngine& engine,

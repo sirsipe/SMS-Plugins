@@ -15,7 +15,7 @@ Tested: **REAPER**, **Ardour**, **Carla**.
 - Control with any MIDI controller.
 - Capture/chop input or load samples into pads.
 - Waveform editing and splitting.
-- Pad/global mixer/FX: Gain, Pan, Dirty, Tune (Varispeed), and Lowpass/Highpass with 6/12/24 dB slopes; separate monitor and playback levels.
+- Pad/global mixer/FX: per-pad Forward/Reverse, Gain, Pan, Dirty, Tune (Varispeed), and Lowpass/Highpass with 6/12/24 dB slopes; independent monitor/playback levels.
 - Sample specific amplitude envelope; Attack, Decay, Sustain, Release.
 - Layouts: 2x4, 3x4, or 4x4 pads; four shared/unique MIDI banks; pad colors.
 - VST3 presets store samples/settings across supported DAWs: Ardour presets also
@@ -62,11 +62,11 @@ Layouts match your controller and preserve samples.
 [mixing guide](Docs/MIXING.md). The selection button cycles through **Play on
 Select**, **Loop on Select**, and Off (unpressed **Play on Select**). Play auditions
 the selected sample once; Loop repeats its Start/End region after the mouse is
-released. These editor modes work independently of the main playback mode.
+released. Live Start/End edits preserve ADSR. Editor modes are independent of the main playback mode.
 Changing selection replaces the audition; turning it off or leaving the editor
 stops it. **Play/Stop** plays the selected occupied pad when idle or immediately cuts all
 playing samples. With Loop on Select enabled, editor Play/Stop and Space also start a loop.
-The button shows a play triangle or stop square. ARM hides the global mixer.
+Play/Stop shows triangle/square icons. ARM hides the global mixer.
 The edge faders remain visible: **IN** controls monitoring, **OUT** controls
 samples/previews.
 
@@ -107,7 +107,7 @@ images, colors, labels and pulsing logo halo.
 
 - Monitor cycles through Off, On, and Auto; Auto is On when ARMed and Off otherwise.
 
-- Max Voices limits simultaneous pads. At the limit, a new trigger stops the
+- Max Voices limits simultaneous pads. At capacity, a new trigger stops the
 oldest voice; set it to one for monophonic playback.
 
 - **Gate** loops a pad's Start/End region while its MIDI note or mouse press is

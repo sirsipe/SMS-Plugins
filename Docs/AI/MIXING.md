@@ -1,8 +1,20 @@
 # Mixing implementation
 
-Pad mixer settings are stored in `SampleMixerSettings`. The `MX2` codec saves
-gain, pan, tune, lowpass, highpass, slope, and Dirty. `MX1` pad states still load;
-their new effects default to off and slope to 12 dB/octave. New pads and global
+Pad mixer settings are stored in `SampleMixerSettings`. The `MX3` codec saves
+gain, pan, tune, lowpass, highpass, slope, Dirty, and reverse (0=Forward, 1=Reverse).
+`MX1` and `MX2` pad states load Forward; `MX1` effects default to off and slope
+to 12 dB/octave. Direction is a saved per-pad mixer setting, transported through
+existing `pad_mix_01..64` states and editor snapshots; host parameter IDs stay fixed.
+See [playback](../../SMS-AnvilleSampler/Docs/ARCHITECTURE.md#real-time-behavior)
+for voice latching, live editor flips, and playback-coordinate boundaries.
+Transient `pad_direction_request` carries the desired playback/mixer settings
+together. Its mailbox commit mirrors an active voice without retriggering;
+durable setting restores retain next-trigger direction latching.
+Appended `global_reverse` (default Forward) combines with pad direction by XOR.
+`setSettings` turns every active voice only when its master value changes;
+new triggers and live pad actions use the combined direction. Stored pad cuts
+remain local; playback and editor display mirror them under the master toggle.
+Raw previews and per-pad exports exclude the master. New pads and global
 controls default to a 6 dB/octave slope. Global effect
 parameters are appended after the released host parameter IDs.
 

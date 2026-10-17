@@ -34,6 +34,7 @@ struct ViewState {
     float globalHighpass = 0.0f;
     float globalFilterSlope = 0.0f;
     float globalDirty = 0.0f;
+    bool globalReverse = false;
     int maxVoices = 1;
     int bank = 0;
     int layout = 0;

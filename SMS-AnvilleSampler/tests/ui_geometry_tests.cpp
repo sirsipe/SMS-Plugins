@@ -6,6 +6,7 @@
 #include "EditorSnapshotSession.hpp"
 #include "MixerValueEntry.hpp"
 #include "PlaybackIndicator.hpp"
+#include "SampleWaveform.hpp"
 #include "EditorAuditionMode.hpp"
 #include "WaveformDetailSession.hpp"
 #include "DSP/SamplePlaybackSettings.hpp"
@@ -463,6 +464,30 @@ void interactionTargets()
                   interaction::InteractiveType::globalMixerValueLabel, knob),
               "main view exposes each global mixer value label");
     }
+    for (const float fraction : {0.05f, 0.25f, 0.5f, 0.75f, 0.95f}) {
+        check(interaction::isTarget(interaction::interactiveTargetAt(
+                  {layout::globalDirection.x + layout::globalDirection.width * fraction,
+                   layout::globalDirection.y + layout::globalDirection.height * 0.5f}, context),
+                  interaction::InteractiveType::globalDirection),
+              "global direction arrows, divider, and margins share one toggle target");
+    }
+    check(layout::globalDirection.width == layout::padDirection.width &&
+          layout::globalDirection.height == layout::padDirection.height &&
+          layout::globalDirection.x >= layout::sidePanel.x &&
+          layout::globalDirection.x + layout::globalDirection.width < layout::globalMixerKnob(1).x &&
+          layout::globalMixerKnob(1).x + layout::globalMixerKnob(1).width <
+              layout::globalMixerKnob(6).x &&
+          layout::globalMixerKnob(6).x + layout::globalMixerKnob(6).width <=
+              layout::sidePanel.x + layout::sidePanel.width &&
+          layout::globalMixerKnob(2).x == 994.0f &&
+          layout::globalMixerKnob(3).x == 1068.0f &&
+          layout::globalMixerKnob(4).x == 1142.0f,
+          "global mixer top row is Reverse, Pan, Dirty while the bottom row stays fixed");
+    context.armed = true;
+    check(!interaction::isTarget(interaction::interactiveTargetAt(
+              center(layout::globalDirection), context), interaction::InteractiveType::globalDirection),
+          "global direction follows the mixer visibility when capture is armed");
+    context.armed = false;
     check(layout::globalMixerKnob(0).width == 0.0f &&
           layout::globalMixerKnob(1).y < layout::globalMixerKnob(2).y &&
           layout::globalMixerKnob(6).y == layout::globalMixerKnob(1).y &&
@@ -608,6 +633,28 @@ void interactionTargets()
                   interaction::InteractiveType::mixerValueLabel, slider),
               "sample editor exposes each mixer value label");
     }
+    for (const float fraction : {0.05f, 0.25f, 0.5f, 0.75f, 0.95f}) {
+        check(interaction::isTarget(interaction::interactiveTargetAt(
+                  {layout::padDirection.x + layout::padDirection.width * fraction,
+                   layout::padDirection.y + layout::padDirection.height * 0.5f}, context),
+                  interaction::InteractiveType::padDirection),
+              "both arrows, divider, and margins belong to one direction toggle");
+    }
+    check(layout::padDirection.x >= layout::mainPanel.x &&
+          layout::padDirection.width == 42.0f && layout::padDirection.height == 34.0f &&
+          layout::padDirection.y >= layout::mixerKnob(0).y &&
+          layout::padDirection.y + layout::padDirection.height <=
+              layout::mixerKnob(0).y + layout::mixerKnob(0).height &&
+          layout::padDirection.x + layout::padDirection.width < layout::mixerKnob(0).x &&
+          layout::mixerKnob(0).x + layout::mixerKnob(0).width < layout::mixerKnob(1).x,
+          "direction is the leftmost pad control without overlapping Gain or Pan");
+    check(!interaction::isTarget(interaction::interactiveTargetAt(
+              {layout::padDirection.x - 1.0f, layout::padDirection.y + 10.0f}, context),
+              interaction::InteractiveType::padDirection) &&
+          !interaction::isTarget(interaction::interactiveTargetAt(
+              {layout::padDirection.x + 10.0f, layout::padDirection.y - 1.0f}, context),
+              interaction::InteractiveType::padDirection),
+          "direction hit testing rejects points outside the control");
     check(layout::mixerKnob(0).y == layout::mixerKnob(1).y &&
           layout::mixerKnob(1).y == layout::mixerKnob(6).y &&
           layout::mixerKnob(6).y == layout::mixerKnob(2).y &&
@@ -626,6 +673,10 @@ void interactionTargets()
           "mixer controls remain separate from ADSR controls");
 
     context.editorMode = false;
+    check(!interaction::isTarget(
+              interaction::interactiveTargetAt(center(layout::padDirection), context),
+              interaction::InteractiveType::padDirection),
+          "direction control belongs only to the sample editor");
     context.chopEditorMode = true;
     std::array<sms::audio::WaveformSummary, 3> chopWaveforms{};
     for (auto& waveform : chopWaveforms) {
@@ -775,14 +826,43 @@ void editorSnapshotCollection()
     reply.waveform.frames = 96000U;
     reply.playback.start = 0.5f;
     reply.mixer.pan = -0.25f;
+    reply.mixer.reverse = 1.0f;
     check(session.accept(reply) && session.readyFor(7) &&
           session.waveform().frames == 96000U && session.playback().start == 0.5f &&
-          session.mixer().pan == -0.25f && !session.accept(reply),
+          session.mixer().pan == -0.25f && session.mixer().reverse == 1.0f &&
+          !session.accept(reply),
           "matching integrated reply commits all controls once");
     session.complete();
     check(!session.pending() && !session.accept(reply), "completed sample requests ignore late retry replies");
     session.begin(8);
     check(!session.accept(reply) && !session.readyFor(8), "pad navigation rejects an earlier integrated reply");
+    session.beginLocalEdit(7, playback, mixer);
+    reply.request = session.request();
+    reply.waveform = waveform;
+    reply.playback = midichopper::ui::mirrorSampleRegion(playback);
+    reply.mixer = mixer;
+    check(!session.accept(reply) && session.pending() && !session.readyFor(7),
+          "optimistic marker edits reject same-sequence snapshots made before audio commits");
+    reply.playback = playback;
+    reply.mixer.reverse = 1.0f;
+    check(!session.accept(reply),
+          "optimistic direction edits reject an old orientation despite matching markers");
+    reply.mixer = mixer;
+    reply.mixer.gainDecibels = 3.0f;
+    check(!session.accept(reply),
+          "a coherent direction reply must also preserve the desired effects settings");
+    reply.mixer = mixer;
+    const auto previousLocal = reply;
+    auto reverseMixer = mixer;
+    reverseMixer.reverse = 1.0f;
+    session.beginLocalEdit(7, midichopper::ui::mirrorSampleRegion(playback),
+                           reverseMixer);
+    check(!session.accept(previousLocal), "rapid direction clicks invalidate earlier snapshot sequences");
+    reply.request = session.request();
+    reply.playback = midichopper::ui::mirrorSampleRegion(playback);
+    reply.mixer.reverse = 1.0f;
+    check(session.accept(reply) && session.localEdit() && session.readyFor(7),
+          "a coherent reply confirms the most recent optimistic direction and markers");
     midichopper::ui::EditorSnapshotSession reopened;
     reopened.begin(8);
     check(reopened.request().sequence != session.request().sequence,
@@ -1547,6 +1627,185 @@ void waveformVisibleSummary()
           "an empty overview remains safe while waiting for a source snapshot");
 }
 
+void sampleWaveformOrientation()
+{
+    using namespace midichopper::ui;
+    using namespace sms::ui::waveform;
+    sms::audio::WaveformSummary raw;
+    raw.pad = 7U;
+    raw.frames = 4096U;
+    raw.sampleRate = 1000.0;
+    raw.minimum[3] = -0.875f;
+    raw.maximum[3] = 0.75f;
+    raw.minimum[119] = -0.25f;
+    raw.maximum[119] = 0.5f;
+    const auto reverse = sampleDisplaySummary(raw, true);
+    check(reverse.minimum[124] == -0.875f && reverse.maximum[124] == 0.75f &&
+          reverse.minimum[8] == -0.25f && reverse.maximum[8] == 0.5f &&
+          reverse.frames == raw.frames && reverse.sampleRate == raw.sampleRate &&
+          reverse.pad == raw.pad,
+          "reverse display flips asymmetric full-source extrema and preserves metadata");
+    check(sampleDisplaySummary(reverse, true).minimum == raw.minimum &&
+          sampleDisplaySummary(reverse, true).maximum == raw.maximum &&
+          sampleDisplaySummary(raw, false).maximum == raw.maximum,
+          "direction toggles are reversible while raw display stays original");
+    const Viewport display{4096U, 512U, 1536U};
+    const auto source = sampleSourceViewport(display, true);
+    check(source.start == 2560U && source.end == 3584U &&
+          sampleSourceViewport(source, true).start == display.start &&
+          sampleSourceViewport(display, false).start == display.start,
+          "asymmetric zoom intervals mirror around the complete source before trimming");
+    CachedDetail rawDetail{raw, source.start, source.end};
+    rawDetail.waveform.frames = 1024U;
+    rawDetail.waveform.minimum.fill(0.0f);
+    rawDetail.waveform.maximum.fill(0.0f);
+    rawDetail.waveform.minimum[9] = -0.625f;
+    rawDetail.waveform.maximum[9] = 0.875f;
+    const auto visible = sampleVisibleSummary(raw, display, &rawDetail, true);
+    check(visible.minimum[118] == -0.625f && visible.maximum[118] == 0.875f &&
+          visible.maximum[9] == 0.0f && rawDetail.waveform.maximum[9] == 0.875f &&
+          rawDetail.start == source.start,
+          "zoomed detail reverses bins into display coordinates without changing raw cache");
+    const Viewport panned{4096U, 1024U, 2048U};
+    const auto pannedSource = sampleSourceViewport(panned, true);
+    const auto expected = sampleDisplaySummary(visibleSummary(raw, pannedSource, &rawDetail), true);
+    const auto actual = sampleVisibleSummary(raw, panned, &rawDetail, true);
+    check(actual.minimum == expected.minimum && actual.maximum == expected.maximum,
+          "reverse panning reprojects retained detail coverage and coarse source fallback");
+    const auto rawDisplay = sampleVisibleSummary(raw, source, &rawDetail, false);
+    check(rawDisplay.minimum == rawDetail.waveform.minimum &&
+          rawDisplay.maximum[9] == 0.875f,
+          "cut and split raw displays retain original summary and detail orientation");
+    auto oddSource = raw;
+    oddSource.frames = 1003U;
+    const Viewport deep{1003U, 19U, 38U};
+    CachedDetail oddDetail{rawDetail.waveform, 965U, 984U};
+    oddDetail.waveform.frames = 19U;
+    const auto deepDisplay = sampleVisibleSummary(oddSource, deep, &oddDetail, true);
+    check(deepDisplay.minimum[118] == -0.625f && deepDisplay.maximum[118] == 0.875f &&
+          deepDisplay.frames == 19U,
+          "odd-length sources retain exact requested detail bins at deep reverse zoom");
+    sms::dsp::SamplePlaybackSettings settings;
+    settings.start = 0.2f;
+    settings.end = 0.7f;
+    settings.attackSeconds = 0.1f;
+    settings.decaySeconds = 0.2f;
+    settings.releaseSeconds = 0.3f;
+    const sms::ui::Rect bounds{0.0f, 0.0f, 400.0f, 100.0f};
+    const auto forwardEnvelope = envelopeGeometry(bounds, raw, settings);
+    const auto mirroredSettings = mirrorSampleRegion(settings);
+    const auto restoredSettings = mirrorSampleRegion(mirroredSettings);
+    const auto reverseEnvelope = envelopeGeometry(bounds, reverse, mirroredSettings);
+    check(std::abs(mirroredSettings.start - 0.3f) < 1.0e-6f &&
+          std::abs(mirroredSettings.end - 0.8f) < 1.0e-6f &&
+          nearestRegionHandle(120.0f, bounds, mirroredSettings) == EditTarget::regionStart &&
+          nearestRegionHandle(320.0f, bounds, mirroredSettings) == EditTarget::regionEnd &&
+          std::abs(restoredSettings.start - settings.start) < 1.0e-6f &&
+          std::abs(restoredSettings.end - settings.end) < 1.0e-6f &&
+          mirroredSettings.attackSeconds == settings.attackSeconds &&
+          mirroredSettings.decaySeconds == settings.decaySeconds &&
+          mirroredSettings.sustainLevel == settings.sustainLevel &&
+          mirroredSettings.releaseSeconds == settings.releaseSeconds &&
+          std::abs(forwardEnvelope.attackX - reverseEnvelope.attackX) < 1.0e-4f &&
+          std::abs(forwardEnvelope.decayX - reverseEnvelope.decayX) < 1.0e-4f &&
+          std::abs(forwardEnvelope.releaseX - reverseEnvelope.releaseX) < 1.0e-4f,
+          "direction flips mirror Start/End, restore on a second flip, and preserve ADSR settings");
+    settings.start = 0.125f;
+    settings.end = 0.5f;
+    const auto selected = mirrorSampleRegion(settings);
+    const auto selectedRaw = sampleSourceViewport({4096U,
+        static_cast<std::uint64_t>(selected.start * raw.frames),
+        static_cast<std::uint64_t>(selected.end * raw.frames)}, true);
+    check(selected.start == 0.5f && selected.end == 0.875f &&
+          selectedRaw.start == 512U && selectedRaw.end == 2048U,
+          "asymmetric mirrored cuts preserve the same raw audio interval");
+}
+
+void globalReverseProjection()
+{
+    using namespace midichopper::ui;
+    using namespace sms::ui::waveform;
+    sms::dsp::SamplePlaybackSettings local;
+    local.start = 0.125f;
+    local.end = 0.5f;
+    local.attackSeconds = 0.1f;
+    local.decaySeconds = 0.2f;
+    local.sustainLevel = 0.7f;
+    local.releaseSeconds = 0.3f;
+    sms::dsp::SampleMixerSettings mixer;
+    for (const bool pad : {false, true}) {
+        for (const bool master : {false, true}) {
+            mixer.reverse = pad ? 1.0f : 0.0f;
+            check(sampleDisplayReversed(mixer.reverse >= 0.5f, master) == (pad != master),
+                  "global Reverse XORs every pad's saved direction");
+            const auto displayed = sampleEditorSettings(local, master);
+            const auto persisted = sampleEditorSettings(displayed, master);
+            check(displayed.start == (master ? 0.5f : 0.125f) &&
+                  displayed.end == (master ? 0.875f : 0.5f) &&
+                  persisted.start == local.start && persisted.end == local.end &&
+                  displayed.attackSeconds == local.attackSeconds &&
+                  displayed.decaySeconds == local.decaySeconds &&
+                  displayed.sustainLevel == local.sustainLevel &&
+                  displayed.releaseSeconds == local.releaseSeconds &&
+                  local.start == 0.125f && local.end == 0.5f &&
+                  mixer.reverse == (pad ? 1.0f : 0.0f),
+                  "master display projection preserves saved local cuts, pad direction, and ADSR");
+        }
+    }
+    const sms::ui::Rect bounds{0.0f, 0.0f, 400.0f, 100.0f};
+    Viewport viewport;
+    viewport.reset(4096U);
+    auto displayed = sampleEditorSettings(local, true);
+    check(nearestRegionHandle(200.0f, bounds, displayed, viewport) == EditTarget::regionStart &&
+          nearestRegionHandle(350.0f, bounds, displayed, viewport) == EditTarget::regionEnd,
+          "master-reversed marker hit testing uses the effective interval");
+    updateRegion(displayed, EditTarget::regionStart, 240.0f, bounds, viewport);
+    const auto dragged = sampleEditorSettings(displayed, true);
+    check(dragged.start == local.start && std::abs(dragged.end - 0.4f) < 1.0e-6f &&
+          dragged.attackSeconds == local.attackSeconds,
+          "dragging displayed Start under master Reverse persists the corresponding local End");
+    displayed = sampleEditorSettings(local, true);
+    adjustRegionByWheel(displayed, EditTarget::regionEnd, 1.0f, 4096U, bounds, viewport);
+    const auto wheeled = sampleEditorSettings(displayed, true);
+    check(wheeled.start < local.start && wheeled.end == local.end,
+          "wheeling displayed End under master Reverse updates the local Start in the opposite direction");
+    const auto padFlipped = mirrorSampleRegion(local);
+    const auto padFlippedDisplay = sampleEditorSettings(padFlipped, true);
+    check(padFlippedDisplay.start == local.start && padFlippedDisplay.end == local.end &&
+          !sampleDisplayReversed(true, true),
+          "an explicit pad flip while master Reverse is on mirrors local cuts and cancels effective reversal");
+    local.start = 0.2f;
+    local.end = 0.7f;
+    displayed = sampleEditorSettings(local, true);
+    updateEnvelopeSlider(displayed, EditTarget::attackSlider, 200.0f, bounds);
+    const auto envelopeEdited = sampleEditorLocalEdit(local, displayed, true, false, false);
+    check(envelopeEdited.start == local.start && envelopeEdited.end == local.end &&
+          envelopeEdited.attackSeconds == displayed.attackSeconds &&
+          envelopeEdited.attackSeconds != local.attackSeconds,
+          "ADSR edits under master Reverse preserve non-binary saved cuts exactly");
+    for (const bool master : {false, true}) {
+        for (const auto edge : {EditTarget::regionStart, EditTarget::regionEnd}) {
+            displayed = sampleEditorSettings(local, master);
+            updateRegion(displayed, edge, edge == EditTarget::regionStart ? 144.0f : 256.0f,
+                         bounds, viewport);
+            const bool startEdited = edge == EditTarget::regionStart;
+            const auto dragEdit = sampleEditorLocalEdit(local, displayed, master,
+                                                       startEdited, !startEdited);
+            const bool editsLocalStart = startEdited != master;
+            check(editsLocalStart ? (dragEdit.end == local.end && dragEdit.start != local.start)
+                                 : (dragEdit.start == local.start && dragEdit.end != local.end),
+                  "region dragging changes only its mapped local boundary with master on or off");
+            displayed = sampleEditorSettings(local, master);
+            adjustRegionByWheel(displayed, edge, 1.0f, 4096U, bounds, viewport);
+            const auto wheelEdit = sampleEditorLocalEdit(local, displayed, master,
+                                                        startEdited, !startEdited);
+            check(editsLocalStart ? (wheelEdit.end == local.end && wheelEdit.start != local.start)
+                                 : (wheelEdit.start == local.start && wheelEdit.end != local.end),
+                  "region wheel edits preserve the other non-binary saved boundary exactly");
+        }
+    }
+}
+
 void waveformDetailSession()
 {
     using namespace std::chrono_literals;
@@ -1623,6 +1882,40 @@ void waveformDetailSession()
           !session.request(7, 1U, false, now + 2050ms) &&
           !session.requestDue(now + 3s),
           "hidden editors cancel detail retries");
+
+    session.reset(4096U);
+    check(session.zoom(2.0f, 25.0f, bounds, now + 4s),
+          "orientation tests use an asymmetric display range");
+    const auto forward = session.request(7, 1U, true, now + 4050ms);
+    check(forward && forward->start == 768U && forward->end == 1792U,
+          "forward detail uses its displayed source range");
+    midichopper::plugin::WaveformDetailReply original{*forward, {}};
+    original.waveform.frames = 1024U;
+    original.waveform.maximum[4] = 0.75f;
+    check(session.accept(original), "forward detail becomes a raw retained cache");
+    session.setReversed(true, now + 4100ms);
+    check(session.viewport().start == 768U && session.viewport().end == 1792U &&
+          session.detail()->start == 768U && session.detail()->end == 1792U &&
+          session.detail()->waveform.maximum[4] == 0.75f && !session.accept(original),
+          "direction toggles retain display range and raw cache but reject old replies");
+    const auto reversed = session.request(7, 1U, true, now + 4150ms);
+    check(reversed && reversed->start == 2304U && reversed->end == 3328U &&
+          reversed->sequence != forward->sequence,
+          "reverse detail fetches the mirrored full-source interval");
+    midichopper::plugin::WaveformDetailReply mirrored{*reversed, {}};
+    mirrored.waveform.frames = 1024U;
+    mirrored.waveform.maximum[8] = 0.875f;
+    check(session.accept(mirrored) && session.detail()->start == 2304U &&
+          session.detail()->waveform.maximum[8] == 0.875f,
+          "reverse detail replies remain tagged and stored in raw coordinates");
+    session.setReversed(false, now + 4200ms);
+    const auto rawEditor = session.request(7, 3U, true, now + 4250ms);
+    check(rawEditor && rawEditor->start == 768U && rawEditor->end == 1792U &&
+          rawEditor->padCount == 3U && !session.accept(mirrored),
+          "raw cut editor requests original coordinates and rejects reverse-mode replies");
+    const auto rawSplit = session.request(7, 1U, true, now + 4300ms);
+    check(rawSplit && rawSplit->start == 768U && rawSplit->end == 1792U,
+          "raw split editor also requests the original source interval");
 }
 
 void editorAuditionModes()
@@ -1691,22 +1984,72 @@ void playbackIndicator()
     check(indicator.update(now + 6500ms, 7, true, waveform, playback, mixer, 0.0f) &&
           std::abs(indicator.position() - 8.25f) < 1.0e-5f,
           "looping estimation remains active across several complete cycles");
-    indicator.acceptHostPosition(8.6f, now + 7s, true);
-    check(indicator.position() == 8.6f &&
-          indicator.update(now + 7300ms, 7, true, waveform, playback, mixer, 0.0f) &&
-          std::abs(indicator.position() - 8.4f) < 1.0e-5f,
-          "authoritative host position corrections continue wrapping gated or looped voices");
     auto editedPlayback = playback;
     editedPlayback.start = 0.5f;
     editedPlayback.end = 0.7f;
     check(indicator.update(now + 7750ms, 7, true, waveform, editedPlayback, mixer, 0.0f) &&
-          std::abs(indicator.position() - 8.4f) < 1.0e-5f,
+          std::abs(indicator.position() - 8.6f) < 1.0e-5f,
           "loop estimation retains voice Start until retrigger and follows live End edits");
-    indicator.acceptHostPosition(0.0f, now + 8s, true);
+    indicator.acceptHostPosition(8.6f, now + 8s, true);
+    check(indicator.position() == 8.6f &&
+          !indicator.update(now + 8300ms, 7, true, waveform, playback, mixer, 0.0f) &&
+          indicator.position() == 8.6f,
+          "DSP positions disable direction assumptions between host notifications");
+    mixer.reverse = 1.0f;
+    check(!indicator.update(now + 8400ms, 7, true, waveform, playback, mixer, 0.0f) &&
+          indicator.position() == 8.6f,
+          "passive mixer settings cannot replace an explicit active-direction action");
+    indicator.acceptHostPosition(8.7f, now + 8500ms, true);
+    check(indicator.position() == 8.7f &&
+          !indicator.update(now + 8600ms, 7, true, waveform, playback, mixer, 0.0f) &&
+          indicator.position() == 8.7f,
+          "reverse voices retain increasing DSP display positions without mirroring the playhead");
+    indicator.acceptHostPosition(0.0f, now + 9s, true);
     check(indicator.position() == 0.0f &&
-          !indicator.update(now + 9s, 7, true, waveform, playback, mixer, 0.0f),
+          !indicator.update(now + 10s, 7, true, waveform, playback, mixer, 0.0f),
           "host Stop immediately overrides an estimated loop");
+    check(indicator.start(7, 7, playback, now + 11s, true, false) &&
+          indicator.position() == 0.0f &&
+          !indicator.update(now + 11500ms, 7, true, waveform, playback, mixer, 0.0f),
+          "unknown voice direction waits for DSP position instead of guessing from settings");
+    indicator.acceptSettings(7, playback, now + 11600ms);
+    check(indicator.position() == 0.0f,
+          "settings snapshots cannot create a guessed playhead for unknown voice direction");
+    indicator.acceptHostPosition(8.7f, now + 11700ms, true);
+    indicator.stop(true, now + 11800ms);
+    check(indicator.position() == 8.7f &&
+          indicator.update(now + 11900ms, 7, true, waveform, playback, mixer, 0.0f) &&
+          indicator.position() == 0.0f,
+          "DSP-driven positions retain the existing final-position hold and clear timing");
 
+    sms::dsp::SamplePlaybackSettings cut;
+    cut.start = 0.125f;
+    cut.end = 0.5f;
+    const auto mirroredCut = midichopper::ui::mirrorSampleRegion(cut);
+    indicator.acceptHostPosition(8.0f + 1.0f / 3.0f, now + 12s, true);
+    const float beforeFlip = indicator.position();
+    indicator.flipDirection(6, 3000U, mirroredCut, now + 12010ms);
+    check(indicator.position() == beforeFlip,
+          "direction action leaves another sounding pad's cursor untouched");
+    indicator.flipDirection(7, 3000U, mirroredCut, now + 12020ms);
+    check(std::abs(indicator.position() - (8.0f + 2.0f / 3.0f - 1.0f / 3000.0f)) < 2.0e-6f &&
+          indicator.pad() == 7 &&
+          !indicator.update(now + 12030ms, 7, true, waveform, mirroredCut, mixer, 0.0f),
+          "active one-third cursor mirrors near two-thirds using the last source frame without retrigger");
+    indicator.flipDirection(7, 3000U, cut, now + 12040ms);
+    check(std::abs(indicator.position() - beforeFlip) < 2.0e-6f,
+          "two immediate direction flips restore the same active source position");
+    indicator.stop(true, now + 12050ms);
+    const float held = indicator.position();
+    indicator.flipDirection(7, 3000U, mirroredCut, now + 12060ms);
+    check(indicator.position() == held &&
+          indicator.update(now + 12150ms, 7, true, waveform, cut, mixer, 0.0f) &&
+          indicator.position() == 0.0f,
+          "direction action cannot resurrect a stopped voice or reset its final hold deadline");
+    indicator.acceptHostPosition(8.1f, now + 13s);
+    indicator.flipDirection(7, 1000U, mirroredCut, now + 13010ms);
+    check(indicator.position() <= 8.875f && indicator.position() >= 8.5f,
+          "a nonlooping cursor outside an edited interval clamps into the mirrored cuts");
 }
 
 void mixerValueEntry()
@@ -1756,6 +2099,8 @@ int main()
     chopEditorWorkflow();
     splitEditorWorkflow();
     waveformVisibleSummary();
+    sampleWaveformOrientation();
+    globalReverseProjection();
     waveformDetailSession();
     editorAuditionModes();
     playbackIndicator();

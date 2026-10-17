@@ -13,6 +13,7 @@
 #include "MidichopperInteraction.hpp"
 #include "PadLayout.hpp"
 #include "Parameters.hpp"
+#include "SampleWaveform.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -268,6 +269,43 @@ private:
         text(centerX, bounds.y + 56.0f, enabled ? "ON" : "OFF", nullptr);
     }
 
+    void drawDirectionToggle(const sms::ui::Rect bounds, const InteractiveType type,
+                             const bool reverse)
+    {
+        const auto& colors = sms::ui::dpf::theme();
+        canvas_.beginPath();
+        canvas_.roundedRect(bounds.x, bounds.y, bounds.width, bounds.height, 5.0f);
+        canvas_.fillPaint(canvas_.linearGradient(bounds.x, bounds.y, bounds.x,
+            bounds.y + bounds.height, colors.shadow, colors.recess));
+        canvas_.fill();
+        canvas_.strokeColor(hovered(type)
+            ? colors.controlAccent : colors.recessEdge);
+        canvas_.strokeWidth(1.5f);
+        canvas_.stroke();
+        const float middleX = bounds.x + bounds.width * 0.5f;
+        canvas_.beginPath();
+        canvas_.moveTo(middleX, bounds.y + 4.0f);
+        canvas_.lineTo(middleX, bounds.y + bounds.height - 4.0f);
+        canvas_.strokeColor(colors.recessEdge);
+        canvas_.strokeWidth(1.0f);
+        canvas_.stroke();
+        for (int arrow = 0; arrow < 2; ++arrow) {
+            const float centerX = bounds.x + bounds.width * (arrow == 0 ? 0.25f : 0.75f);
+            const float centerY = bounds.y + bounds.height * 0.5f;
+            const float direction = arrow == 0 ? -1.0f : 1.0f;
+            const float arrowWidth = bounds.width * 0.095f;
+            const float arrowHeight = bounds.height * 0.18f;
+            canvas_.beginPath();
+            canvas_.moveTo(centerX + direction * arrowWidth, centerY);
+            canvas_.lineTo(centerX - direction * arrowWidth, centerY - arrowHeight);
+            canvas_.lineTo(centerX - direction * arrowWidth, centerY + arrowHeight);
+            canvas_.closePath();
+            canvas_.fillColor((arrow == 0) == reverse
+                ? colors.controlAccent : colors.contentSecondary.withAlpha(0.5f));
+            canvas_.fill();
+        }
+    }
+
     void drawSlopeSlider(const sms::ui::Rect bounds, const InteractiveType type,
                          const float slope)
     {
@@ -311,6 +349,8 @@ private:
                           DGL_NAMESPACE::NanoVG::ALIGN_TOP);
         canvas_.fillColor(colors.contentSecondary);
         text(994.0f, uiLayout::globalMixerLabelY, "GLOBAL MIXER", nullptr);
+        drawDirectionToggle(uiLayout::globalDirection, InteractiveType::globalDirection,
+                            state_.globalReverse);
         char pan[24];
         char tune[24];
         char low[16];
@@ -636,12 +676,19 @@ private:
                       'A' + bankForGlobalPad(state_.selectedPad),
                       localPadForGlobalPad(state_.selectedPad) + 1);
         text(46.0f, 120.0f, heading, nullptr);
+        const bool reverse = sampleDisplayReversed(state_.mixerSettings.reverse >= 0.5f,
+                                                   state_.globalReverse);
+        const auto displayWaveform = sampleDisplaySummary(state_.waveform, reverse);
+        const sms::ui::waveform::CachedDetail displayDetail{
+            sampleVisibleSummary(state_.waveform, state_.waveformViewport,
+                state_.waveformDetail, reverse),
+            state_.waveformViewport.start, state_.waveformViewport.end};
         sms::ui::dpf::drawWaveformEditor(canvas_, uiLayout::editorWaveform,
-            state_.waveform, state_.hasWaveform, state_.editorSettings,
+            displayWaveform, state_.hasWaveform, state_.editorSettings,
             hovered(InteractiveType::regionHandle)
                 ? static_cast<sms::ui::waveform::EditTarget>(state_.hoveredTarget.index)
                 : sms::ui::waveform::EditTarget::none,
-            state_.waveformDetail, state_.waveformViewport);
+            &displayDetail, state_.waveformViewport);
         drawViewportControls(uiLayout::editorZoom, uiLayout::editorScroll);
 
         const int playbackPad = state_.playbackPosition > 0.0f
@@ -722,6 +769,8 @@ private:
                           DGL_NAMESPACE::NanoVG::ALIGN_TOP);
         canvas_.fillColor(colors.contentSecondary);
         text(46.0f, 570.0f, "PAD MIXER", nullptr);
+        drawDirectionToggle(uiLayout::padDirection, InteractiveType::padDirection,
+                            state_.mixerSettings.reverse >= 0.5f);
         char gain[24];
         char pan[24];
         char tune[24];

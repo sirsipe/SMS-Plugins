@@ -299,6 +299,37 @@ void encodeAndRender()
           std::abs(mixed.stereo[2] - 1.5f) < 1.0e-5f && mixed.stereo[1] == 0.0f,
           "processed render applies gain, stereo balance, and varispeed tune");
 
+    mixer.reverse = 1.0f;
+    const auto reversed = sms::audio::renderProcessedStereo(source, fullRegion, mixer);
+    check(reversed.frames == 3U && std::abs(reversed.stereo[0] - 3.0f) < 1.0e-5f &&
+          std::abs(reversed.stereo[2] - 2.0f) < 1.0e-5f && reversed.stereo[1] == 0.0f,
+          "processed reverse export matches playback direction, gain, pan and varispeed");
+    fullRegion.start = 1.0f / 6.0f;
+    // Keep the normalized marker just below 4/6 so float rounding does not
+    // ceil the exclusive End to frame 5.
+    fullRegion.end = std::nextafter(4.0f / 6.0f, 0.0f);
+    mixer = {};
+    mixer.reverse = 1.0f;
+    mixer.tuneSemitones = -12.0f;
+    const auto trimmedReverse = sms::audio::renderProcessedStereo(source, fullRegion, mixer);
+    check(trimmedReverse.frames == 6U && trimmedReverse.stereo[0] == 5.0f &&
+          trimmedReverse.stereo[2] == 4.5f && trimmedReverse.stereo[4] == 4.0f &&
+          trimmedReverse.stereo[6] == 3.5f && trimmedReverse.stereo[8] == 3.0f &&
+          trimmedReverse.stereo[10] == 3.0f && trimmedReverse.stereo[11] == 30.0f &&
+          source.stereo.front() == 1.0f,
+          "asymmetric reverse export flips the full source before applying trim and tune");
+    auto reversedSource = source;
+    for (std::uint32_t frame = 0U; frame < source.frames; ++frame) {
+        const auto sourceFrame = source.frames - 1U - frame;
+        reversedSource.stereo[frame * 2U] = source.stereo[sourceFrame * 2U];
+        reversedSource.stereo[frame * 2U + 1U] = source.stereo[sourceFrame * 2U + 1U];
+    }
+    mixer.reverse = 0.0f;
+    const auto flippedForward = sms::audio::renderProcessedStereo(reversedSource, fullRegion, mixer);
+    check(flippedForward.frames == trimmedReverse.frames &&
+          flippedForward.stereo == trimmedReverse.stereo,
+          "processed reverse render matches forward render of the physically reversed full source");
+
     check(sms::audio::hasWavExtension("sample.WAV") &&
           !sms::audio::hasWavExtension("sample.aiff") &&
           !sms::audio::hasAnyExtension("folder.name/sample") &&

@@ -4,9 +4,10 @@ Right-click a pad in Play or Sample Editor:
 
 - **Import WAV...** replaces that pad and resets its cut points, mixer, and ADSR.
 - **Export WAV...** writes the complete stored sample without processing.
-- **Export Processed...** writes the selected region with Gain, Pan, Tune
-  varispeed, and ADSR applied. It is disabled while all editor controls use
-  their defaults.
+- **Export Processed...** writes the selected region with per-pad Gain, Pan, Tune
+  varispeed, Forward/Reverse direction, and ADSR applied. It is disabled while all editor controls use
+  their defaults. Reverse flips the whole source before applying Start/End.
+  Global Mixer settings are excluded.
 
 Import accepts mono or stereo WAV files up to eight minutes long, subject to
 free sampler storage: 16-, 24-, or
