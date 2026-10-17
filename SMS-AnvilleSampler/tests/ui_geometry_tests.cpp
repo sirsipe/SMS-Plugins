@@ -469,7 +469,7 @@ void interactionTargets()
                   {layout::globalDirection.x + layout::globalDirection.width * fraction,
                    layout::globalDirection.y + layout::globalDirection.height * 0.5f}, context),
                   interaction::InteractiveType::globalDirection),
-              "global direction arrows, divider, and margins share one toggle target");
+              "global direction arrows and margins share one toggle target");
     }
     check(layout::globalDirection.width == layout::padDirection.width &&
           layout::globalDirection.height == layout::padDirection.height &&
@@ -638,7 +638,7 @@ void interactionTargets()
                   {layout::padDirection.x + layout::padDirection.width * fraction,
                    layout::padDirection.y + layout::padDirection.height * 0.5f}, context),
                   interaction::InteractiveType::padDirection),
-              "both arrows, divider, and margins belong to one direction toggle");
+              "both arrows and margins belong to one direction toggle");
     }
     check(layout::padDirection.x >= layout::mainPanel.x &&
           layout::padDirection.width == 42.0f && layout::padDirection.height == 34.0f &&

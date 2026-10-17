@@ -282,26 +282,19 @@ private:
             ? colors.controlAccent : colors.recessEdge);
         canvas_.strokeWidth(1.5f);
         canvas_.stroke();
-        const float middleX = bounds.x + bounds.width * 0.5f;
-        canvas_.beginPath();
-        canvas_.moveTo(middleX, bounds.y + 4.0f);
-        canvas_.lineTo(middleX, bounds.y + bounds.height - 4.0f);
-        canvas_.strokeColor(colors.recessEdge);
-        canvas_.strokeWidth(1.0f);
-        canvas_.stroke();
+        const float centerY = bounds.y + bounds.height * 0.5f;
+        const float direction = reverse ? -1.0f : 1.0f;
+        const float arrowWidth = bounds.width * 0.11f;
+        const float arrowHeight = bounds.height * 0.18f;
+        canvas_.fillColor(reverse
+            ? colors.controlAccent : colors.contentSecondary.withAlpha(0.5f));
         for (int arrow = 0; arrow < 2; ++arrow) {
-            const float centerX = bounds.x + bounds.width * (arrow == 0 ? 0.25f : 0.75f);
-            const float centerY = bounds.y + bounds.height * 0.5f;
-            const float direction = arrow == 0 ? -1.0f : 1.0f;
-            const float arrowWidth = bounds.width * 0.095f;
-            const float arrowHeight = bounds.height * 0.18f;
+            const float centerX = bounds.x + bounds.width * (arrow == 0 ? 0.37f : 0.63f);
             canvas_.beginPath();
             canvas_.moveTo(centerX + direction * arrowWidth, centerY);
             canvas_.lineTo(centerX - direction * arrowWidth, centerY - arrowHeight);
             canvas_.lineTo(centerX - direction * arrowWidth, centerY + arrowHeight);
             canvas_.closePath();
-            canvas_.fillColor((arrow == 0) == reverse
-                ? colors.controlAccent : colors.contentSecondary.withAlpha(0.5f));
             canvas_.fill();
         }
     }

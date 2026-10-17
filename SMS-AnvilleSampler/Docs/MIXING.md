@@ -5,9 +5,9 @@ and Highpass. ARM hides it. **SAMPLE EDITOR** has a **Pad Mixer** for the select
 pad: Direction, Gain and Pan beside Dirty, Tune, Lowpass, and Highpass, with a divider
 between Pan and Dirty. Each mixer places Slope below the filters.
 
-**Direction** is one button showing ◀ | ▶. Click anywhere on it to toggle
-Reverse (left arrow) or Forward (right arrow); the active arrow lights in the
-theme accent color. Each pad saves its own direction, defaulting to Forward.
+**Direction** shows dim ▶▶ for Forward and lit ◀◀ for Reverse in the theme
+accent color. Click anywhere on it to toggle. Each pad saves its own direction,
+defaulting to Forward.
 Older projects also load Forward. Reverse flips the entire waveform in Sample
 Editor and mirrors the cut points, preserving the selected raw audio region:
 Start 20% / End 70% becomes Start 30% / End 80%. Flipping a playing pad takes
