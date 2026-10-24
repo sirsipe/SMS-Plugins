@@ -877,6 +877,122 @@ void bank_and_layout_mapping() {
     check(e.padMetadata(12).active, "restoring the layout reveals preserved pad audio");
 }
 
+void hold_release_after_bank_switch()
+{
+    using namespace midichopper;
+    for (const auto mode : {MidiBankMode::SelectedBank, MidiBankMode::AllBanks})
+      for (const std::uint8_t layout : {8U, 12U, 16U})
+        for (const float releaseSeconds : {0.0f, 0.004f}) {
+            SamplerEngine engine(1000.0, 1.0);
+            auto settings = engine.settings();
+            settings.monitorInput = false;
+            settings.playbackMode = PlaybackMode::Hold;
+            settings.midiBankMode = mode;
+            settings.padsPerBank = layout;
+            settings.maxVoices = 2U;
+            engine.setSettings(settings);
+            const auto otherPad = bankStride(layout, mode) + 1U;
+            PadData source;
+            source.sampleRate = 1000.0;
+            source.frames = 32U;
+            source.stereo.resize(64U);
+            for (std::size_t frame = 0U; frame < 32U; ++frame) {
+                source.stereo[frame * 2U] = 0.25f;
+                source.stereo[frame * 2U + 1U] = -0.5f;
+            }
+            check(engine.importPad(0U, source) && engine.importPad(otherPad, source),
+                  "import Hold bank-switch sources");
+            sms::dsp::SamplePlaybackSettings playback;
+            playback.releaseSeconds = releaseSeconds;
+            engine.setPadPlaybackSettings(0U, playback);
+            std::array<float, 35> left{}, right{};
+            const MidiEvent on{0U, 36U, 127U, MidiEventType::NoteOn};
+            engine.process(nullptr, nullptr, left.data(), right.data(), left.size(), &on, 1U);
+            check(engine.padMetadata(0U).active, "Hold survives its first loop seam");
+
+            settings.activeBank = 1U;
+            engine.setSettings(settings);
+            engine.process(nullptr, nullptr, left.data(), right.data(), 1U);
+            close(left[0], 0.25f, "switching banks keeps the held voice playing");
+            close(right[0], -0.5f, "switching banks preserves held stereo output");
+            const auto otherNote = static_cast<std::uint8_t>(midiNoteForPad(otherPad, 36U, mode));
+            const MidiEvent otherOn{0U, otherNote, 127U, MidiEventType::NoteOn};
+            engine.process(nullptr, nullptr, left.data(), right.data(), 1U, &otherOn, 1U);
+
+            const MidiEvent off{2U, 36U, 0U, MidiEventType::NoteOff};
+            engine.process(nullptr, nullptr, left.data(), right.data(), 8U, &off, 1U);
+            for (std::size_t frame = 0U; frame < 8U; ++frame) {
+                const float heldLevel = frame < 2U ? 1.0f : releaseSeconds == 0.0f
+                    ? 0.0f : std::max(0.0f, 1.0f - static_cast<float>(frame - 2U) / 4.0f);
+                close(left[frame], 0.25f * (1.0f + heldLevel),
+                      "bank-switched note-off preserves exact offset and full ADSR release");
+                close(right[frame], -0.5f * (1.0f + heldLevel),
+                      "bank-switched release preserves stereo and unrelated voice");
+            }
+            check(!engine.padMetadata(0U).active && engine.padMetadata(otherPad).active,
+                  "release stops original bank's Hold and preserves another held note");
+            const MidiEvent otherOff{0U, otherNote, 0U, MidiEventType::NoteOff};
+            engine.process(nullptr, nullptr, left.data(), right.data(), 1U, &otherOff, 1U);
+            check(!engine.anyPlaybackActive(), "both bank-switched holds release completely");
+        }
+}
+
+void hold_note_ownership()
+{
+    using namespace midichopper;
+    SamplerEngine engine(1000.0, 1.0);
+    auto settings = engine.settings();
+    settings.monitorInput = false;
+    settings.playbackMode = PlaybackMode::Hold;
+    settings.midiBankMode = MidiBankMode::SelectedBank;
+    settings.maxVoices = 2U;
+    engine.setSettings(settings);
+    PadData source;
+    source.sampleRate = 1000.0;
+    source.frames = 32U;
+    source.stereo.assign(64U, 0.25f);
+    check(engine.importPad(0U, source) && engine.importPad(16U, source),
+          "import MIDI ownership sources");
+    float left[2]{}, right[2]{};
+    const MidiEvent on{0U, 36U, 127U, MidiEventType::NoteOn};
+    const MidiEvent off{0U, 36U, 0U, MidiEventType::NoteOff};
+    engine.process(nullptr, nullptr, left, right, 1U, &on, 1U);
+    settings.activeBank = 1U;
+    engine.setSettings(settings);
+    engine.process(nullptr, nullptr, left, right, 1U, &on, 1U);
+    check(engine.padMetadata(0U).active && engine.padMetadata(16U).active,
+          "one shared MIDI note can own Hold voices across banks");
+    engine.process(nullptr, nullptr, left, right, 1U, &off, 1U);
+    check(!engine.anyPlaybackActive(), "note-off releases every matching shared-bank Hold");
+
+    engine.process(nullptr, nullptr, left, right, 1U, &on, 1U);
+    settings.baseNote = 60U;
+    settings.padsPerBank = 8U;
+    settings.midiBankMode = MidiBankMode::AllBanks;
+    settings.playbackMode = PlaybackMode::OneShot;
+    engine.setSettings(settings);
+    engine.process(nullptr, nullptr, left, right, 1U, &off, 1U);
+    check(!engine.anyPlaybackActive(),
+          "Hold retains note ownership across base-note, layout and mode changes");
+
+    settings.baseNote = 36U;
+    settings.padsPerBank = 16U;
+    settings.midiBankMode = MidiBankMode::SelectedBank;
+    settings.playbackMode = PlaybackMode::Hold;
+    engine.setSettings(settings);
+    engine.process(nullptr, nullptr, left, right, 1U, &on, 1U);
+    settings.baseNote = 60U;
+    settings.midiBankMode = MidiBankMode::AllBanks;
+    engine.setSettings(settings);
+    const MidiEvent replacementOn{0U, 76U, 127U, MidiEventType::NoteOn};
+    const MidiEvent replacementOff{0U, 76U, 0U, MidiEventType::NoteOff};
+    engine.process(nullptr, nullptr, left, right, 1U, &replacementOn, 1U);
+    engine.process(nullptr, nullptr, left, right, 1U, &off, 1U);
+    check(engine.padMetadata(16U).active, "old note-off cannot release a replacement Hold");
+    engine.process(nullptr, nullptr, left, right, 1U, &replacementOff, 1U);
+    check(!engine.anyPlaybackActive(), "replacement Hold releases with its new note");
+}
+
 void all_bank_midi_mapping() {
     midichopper::SamplerEngine defaultEngine(1000.0, 1.0);
     check(midichopper::kDefaultMidiBankMode == midichopper::MidiBankMode::AllBanks &&
@@ -3074,6 +3190,8 @@ int main() {
     pad_structure_edits();
     full_bank_and_undo();
     bank_and_layout_mapping();
+    hold_release_after_bank_switch();
+    hold_note_ownership();
     all_bank_midi_mapping();
     capture_target_selection();
     completed_capture_retargeting();

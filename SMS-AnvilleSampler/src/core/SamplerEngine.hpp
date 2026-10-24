@@ -329,6 +329,7 @@ private:
         bool held = false;
         bool playing = false;
         VoiceMode voiceMode = VoiceMode::OneShot;
+        std::int16_t triggerNote = -1; // MIDI ownership survives bank/mapping changes; -1 for auditions.
         bool voiceReverse = false; // latched at trigger; mixer edits affect the next voice
         std::uint64_t voiceOrder = 0;
         double playPosition = 0.0;
@@ -413,7 +414,8 @@ private:
     void handleEvent(const MidiEvent& event) noexcept;
     void writeRecordFrame(std::uint32_t frame, float left, float right) noexcept;
     void startVoice(std::uint32_t pad, std::uint8_t velocity,
-                    VoiceMode mode = VoiceMode::OneShot) noexcept;
+                    VoiceMode mode = VoiceMode::OneShot,
+                    std::int16_t triggerNote = -1) noexcept;
     void stopVoice(std::uint32_t pad) noexcept;
     void hardStopVoice(std::uint32_t pad) noexcept;
     void refreshActiveVoiceSettings(std::uint32_t pad) noexcept;

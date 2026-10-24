@@ -13,8 +13,7 @@
 - `Common-Src` provides framework-neutral DSP, codecs, audio handoff, geometry.
   `Common-UI` provides shared controls, pads, waveform editing and DPF rendering.
 
-Skins use per-instance scopes; selection stays outside DSP/project state.
-See [Skins](SKINS.md) for discovery and image replacement.
+Skins use per-instance scopes outside DSP/project state. [Skins](SKINS.md) covers discovery and images.
 
 ## MIDI mapping
 
@@ -23,7 +22,7 @@ from the base note. Note-on updates the active bank; note-off does not. Layouts 
 Playback note-on advances a hidden output encoding the global pad index in
 alternating halves of its range. Views follow bank, MIDI labels, and last-played selection.
 An appended hidden output reports whether any pad or raw preview is active.
-Transient `play_stop_request` toggles audition/Stop All at block boundaries.
+`play_stop_request` toggles audition/Stop All at block boundaries.
 `PlaybackRequest.hpp` preserves legacy integers and adds Play, Loop, looping
 toggle, and Stop Audition through one atomic command. UI-local Play/Loop/Off
 replaces previous auditions within the voice limit. MIDI retrigger takes ownership;
@@ -32,6 +31,8 @@ All Banks limits the effective base note to 64 so every layout remains within
 MIDI notes 0–127. UI notes and labels use the engine mapping. Selected Bank reuses one range,
 with `active_bank` choosing its target, and retains the released fixed 16-slot
 bank organization.
+Hold voices retain their triggering MIDI note; note-off releases matching voices
+across bank, layout, base-note, and mapping changes. Retriggering replaces that ownership.
 
 ## Capture model
 
@@ -54,8 +55,8 @@ sample-offset MIDI without a fixed event cap or allocation, locking, I/O, or
 exceptions. Each pad is one voice, with a global limit of
 1–16 simultaneous voices and deterministic oldest-voice stealing.
 `input_monitor` values are Off=0, On=1, Auto=2. The adapter resolves Auto against Arm each block.
-Playback uses linear interpolation for source-rate conversion and semitone
-varispeed. Per-pad region/ADSR and mixer settings are non-destructive; global
+Playback linearly interpolates source-rate conversion and semitone
+varispeed. Per-pad region/ADSR and mixers are non-destructive; global
 volume/pan/tune combine during playback. Active voices refresh mixer,
 ADSR, and cuts per block; one-shot Start stays fixed until retrigger.
 Triggers latch pad direction/mode; Global Reverse turns enabled pads. Editor requests atomically mirror
@@ -69,9 +70,7 @@ in-range cursor; otherwise they wrap its fractional position into the new range.
 Filter and Dirty follow [Mixing](../../Docs/AI/MIXING.md).
 
 Pad transfers commit retained immutable audio at block boundaries; unrelated
-audio continues and host reads never wait. See
-[storage handoff](../../Docs/AI/PAD-STORAGE.md) for ownership, reserve, conflicts,
-lifecycle, and tests.
+audio continues and host reads never wait. [Storage handoff](../../Docs/AI/PAD-STORAGE.md).
 
 Collapse Gap moves descriptors/settings without copying PCM. Split and cut edits
 stage affected PCM and validate generations before atomic commit. Recording,
@@ -84,7 +83,6 @@ bypass cannot be metered.
 ## Project state
 
 Pad state stores versioned, CRC-checked PCM16 as Base64; decoding validates it.
-Empty pads use empty values.
 Durable restoration stages per-pad desired updates without waiting for
 processing; published reads include them, and the next block commits them.
 

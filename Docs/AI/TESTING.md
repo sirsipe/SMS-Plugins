@@ -29,7 +29,7 @@ Filter with `ctest --test-dir build --output-on-failure -R NAME`:
 | `ui-message-bus` | Bounded VST3 message ordering, independent view cursors, explicit gap reporting on wrap, and large replies |
 | `wav-codec` | WAV formats, chunk/truncation/header/nonfinite validation, file actions, offline render, real-time access gate |
 
-Rebuild affected targets and run all tests after code changes. Long-audio test:
+Rebuild affected targets; run all tests. Long-audio test:
 
 ```bash
 ./build/anvillesampler_transfer_tests "/path/to/long-sample.wav"
@@ -77,7 +77,9 @@ Checks:
   modes and compare recorded output for timing/pre-roll changes.
 - Playback: verify notes/banks, voice limits and stereo. Hold and editor loops
   repeat ADSR each pass; edit all stages live. Hold note-off uses full Release
-  across seams without retriggering; zero Release stops immediately. One Shot
+  across seams without retriggering; zero Release stops immediately. In shared
+  MIDI bank mode, hold a pad, switch banks, then release: the original pad must
+  stop after Release while other held notes continue. One Shot
   ends once. Toggle pad/global Reverse during overlapping voices in both modes;
   check immediate turns, preserved ADSR/filters/tails, mirrored cuts/cursor,
   pad arrows and restoration. Cut/split stays raw. Cycle editor Play on Select →
@@ -115,19 +117,19 @@ Checks:
 ## UI interaction tooling
 
 The [Dev Container](../../.devcontainer/devcontainer.json) supplies display `:1`,
-noVNC (port 6080), dummy JACK, software Mesa and UI tools. `desktop-health` checks
-services, JACK, OpenGL, D-Bus and FileChooser. After image/portal changes, run
-`desktop-health --dialogs` to exercise Open/Save. Avoid concurrent mouse input.
+noVNC (6080), dummy JACK, software Mesa and UI tools. Run `desktop-health`;
+after image/portal changes, use `desktop-health --dialogs` to exercise Open/Save.
+Avoid concurrent mouse input.
 
-`bash .devcontainer/scripts/test-plugin.sh` builds VST3/LV2, runs CTest and
-`lv2info`, launches LV2 in Carla, clicks ARM, and captures the plug-in window in
-ignored `build/gui-test/`. VNC becomes 1920x1080; `--keep-open` enables further interaction. `screenshot-window WINDOW_ID OUTPUT.png` captures one window; resolve it again
-after relaunch/resize.
+`bash .devcontainer/scripts/test-plugin.sh` builds VST3/LV2, runs CTest/`lv2info`,
+launches Carla LV2, clicks ARM, and captures to ignored `build/gui-test/`.
+VNC becomes 1920x1080; `--keep-open` enables interaction.
+`screenshot-window WINDOW_ID OUTPUT.png` captures one window; resolve IDs after relaunch/resize.
 
-Inspect screenshots before sharing; exclude private data and unrelated windows.
+Inspect screenshots before sharing; exclude private data/unrelated windows.
 
 VST3:
 `carla-single native vst3 "$PWD/build/bin/SMS-AnvilleSampler.vst3"` on this desktop. Import a WAV; open Sample Editor and switch pads; check waveform/settings. Exercise Split Sample or Adjust Cut Points. Then save,
 close, delete the source WAV, reload, and compare audio and editor values.
 
-Report host, rate/buffer, results, skips. CI covers CTest/`lv2info` only.
+Report host, rate/buffer, results/skips. CI: CTest/`lv2info`.

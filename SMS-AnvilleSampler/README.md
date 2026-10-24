@@ -16,7 +16,8 @@ _A live stereo chopping sampler._ See [Releases](https://github.com/sirsipe/SMS-
 [<img src="Docs/main-view.png" alt="Default Skin Main View">](Docs/main-view.png)
 
 #### Bundled Skins
-*Skins can be freely customized, see [skins](Docs/SKINS.md).*
+**Hamburger → Skin** offers **Anville Graffiti** and **Finnish Dream** and remembers
+your choice. Default uses no skin. See [customization](Docs/SKINS.md).
 
 | Finnish Dream | Anville Graffiti |
 | --- | --- |
@@ -26,7 +27,7 @@ Captures: v0.0.12.
 
 **VST3 is preferred** for faster GUI loading and more comprehensive testing. LV2 is mostly AI-tested, and Windows VST3 has had minimal testing.
 
-Tested in: **REAPER**, **Ardour**, **Carla**. (But all DAW supporting VST3 should work.)
+Tested in **REAPER**, **Ardour**, **Carla**.
 
 - MIDI control; capture/chop input or load samples into pads.
 - Waveform editing and splitting.
@@ -34,7 +35,6 @@ Tested in: **REAPER**, **Ardour**, **Carla**. (But all DAW supporting VST3 shoul
 - Per-sample ADSR.
 - 2x4, 3x4, or 4x4 pads; four shared/unique MIDI banks; pad colors.
 - VST3 presets transfer samples/settings between Ardour and REAPER; Carla lacks support.
-- Create [custom skins](Docs/SKINS.md).
 
 > v1.0.0+ is incompatible with alpha sessions (v0.0.1–v0.9.9). Alpha releases were removed from GitHub to avoid confusion.
 
@@ -139,12 +139,13 @@ Right-click for **Split Sample**; following samples shift right without being ov
 
 - Monitor cycles Off, On, and Auto (on when ARMed).
 
-- Max Voices limits simultaneous pads; a new trigger stops the oldest at
-capacity. Set it to one for monophonic playback.
+- Max Voices limits simultaneous pads, stealing the oldest at capacity;
+one gives monophonic playback.
 
 - **Hold** loops Start/End while its MIDI note or mouse press is held. Release
 starts the ADSR fade; looping continues until it ends. ARM stops Hold; **One Shot**
-ignores note-off.
+ignores note-off. Switching banks while holding keeps playback running; releasing
+the note still releases its original pad, including in shared MIDI bank mode.
 
 - Pre-roll moves boundaries earlier for late taps; Fixed mode records one fixed
 length slice per note-on.
@@ -163,22 +164,6 @@ length slice per note-on.
 
 - Stereo LEDs show raw input/final output.
 
-## Skins
-
-Default uses no skin. **Hamburger → Skin** offers bundled **Anville Graffiti**
-and **Finnish Dream**, remembering your choice. 
-
-Skins can be freely customized, see [skins](Docs/SKINS.md).
-
-### Skin: Default
- [<img src="Docs/main-view.png" alt="Default Skin">](Docs/main-view.png) 
-
-### Skin: Finnish Dream
-[<img src="Docs/main-view-finnish-dream.png" alt="Finnish Dream">](Docs/main-view-finnish-dream.png)
-
-### Skin: Anville Graffiti
-[<img src="Docs/main-view-anville-graffiti.png" alt="Anville Graffiti">](Docs/main-view-anville-graffiti.png)
- 
 ## Vision, Contributions, License
 
 Development/testing: [Contributing](../CONTRIBUTING.md).
@@ -208,8 +193,7 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-The VST3 and LV2 bundles are produced under `build/bin`. Install them for the
-current user with:
+VST3/LV2 bundles appear under `build/bin`. Install for the current user:
 
 ```bash
 mkdir -p ~/.lv2

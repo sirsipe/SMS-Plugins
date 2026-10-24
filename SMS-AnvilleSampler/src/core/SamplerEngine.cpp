@@ -611,12 +611,13 @@ void SamplerEngine::writeRecordFrame(std::uint32_t, float left, float right) noe
 }
 
 void SamplerEngine::startVoice(std::uint32_t pad, std::uint8_t velocity,
-                               const VoiceMode mode) noexcept {
+                               const VoiceMode mode, const std::int16_t triggerNote) noexcept {
     if (pad >= kPadCount || !pads_[pad].occupied.load(std::memory_order_acquire)) return;
     auto& p = pads_[pad];
     if (auditionPad_ == pad)
         auditionPad_ = kPadCount;
     p.voiceMode = mode;
+    p.triggerNote = triggerNote;
     if (!p.playing)
         enforceVoiceLimit(pad);
     const auto frameCount = p.publishedFrames.load(std::memory_order_acquire);
@@ -686,6 +687,7 @@ void SamplerEngine::hardStopVoice(const std::uint32_t pad) noexcept {
         auditionPad_ = kPadCount;
     auto& voice = pads_[pad];
     voice.playing = false;
+    voice.triggerNote = -1;
     voice.held = false;
     voice.voiceOrder = 0;
     voice.releaseFromEnd = false;
@@ -853,10 +855,23 @@ void SamplerEngine::handleEvent(const MidiEvent& event) noexcept {
         }
         return; // note identity and note-off do not affect sequential capture
     }
+    if (!on) {
+        if (chopMidiPreview_.active)
+            return;
+        // Selected Bank reuses notes: release their original voices rather
+        // than resolving the note against the currently visible bank.
+        for (std::uint32_t pad = 0U; pad < kPadCount; ++pad) {
+            const auto& voice = pads_[pad];
+            if (voice.playing && voice.voiceMode == VoiceMode::Hold &&
+                voice.triggerNote == event.note)
+                stopVoice(pad);
+        }
+        return;
+    }
     const auto pad = noteToPad(event.note);
     if (pad >= kPadCount) return;
     if (chopMidiPreview_.active) {
-        if (!on || pad < chopMidiPreview_.firstPad)
+        if (pad < chopMidiPreview_.firstPad)
             return;
         const auto previewPad = pad - chopMidiPreview_.firstPad;
         if (previewPad >= chopMidiPreview_.previewPadCount)
@@ -870,9 +885,8 @@ void SamplerEngine::handleEvent(const MidiEvent& event) noexcept {
         }
         return;
     }
-    if (on) startVoice(pad, event.velocity, settings_.playbackMode == PlaybackMode::Hold
-        ? VoiceMode::Hold : VoiceMode::OneShot);
-    else if (pads_[pad].voiceMode == VoiceMode::Hold) stopVoice(pad);
+    startVoice(pad, event.velocity, settings_.playbackMode == PlaybackMode::Hold
+        ? VoiceMode::Hold : VoiceMode::OneShot, event.note);
 }
 
 void SamplerEngine::process(const float* inputLeft, const float* inputRight,
