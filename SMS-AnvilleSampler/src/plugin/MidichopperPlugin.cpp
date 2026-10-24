@@ -505,7 +505,7 @@ protected:
             const auto pad = index - kMixerStateOffset;
             state.key = kPadMixerStateKeys[pad].c_str();
             state.label = "Pad Sample Mixer Settings";
-            state.defaultValue = "MX3;0;0;0;0;0;0;0;0";
+            state.defaultValue = "MX4;0;0;0;0;0;0;0;0;1";
             state.hints = 0;
         } else if (index == kPadStructureRequestState) {
             state.key = kPadStructureRequestKey;

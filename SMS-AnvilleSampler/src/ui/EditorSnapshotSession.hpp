@@ -55,6 +55,7 @@ public:
         // matching control-worker snapshot is made. Keep optimistic controls
         // until a retry confirms the final combined edit.
         if (fLocalEdit && (reply.mixer.reverse != fLocalMixer.reverse ||
+            reply.mixer.globalMixer != fLocalMixer.globalMixer ||
             std::abs(reply.playback.start - fLocalPlayback.start) > 1.0e-6f ||
             std::abs(reply.playback.end - fLocalPlayback.end) > 1.0e-6f ||
             reply.playback.attackSeconds != fLocalPlayback.attackSeconds ||

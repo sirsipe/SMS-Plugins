@@ -62,7 +62,8 @@ Layouts match your controller and preserve samples.
 [mixing guide](Docs/MIXING.md). The selection button cycles through **Play on
 Select**, **Loop on Select**, and Off (unpressed **Play on Select**). Play auditions
 the selected sample once; Loop repeats its Start/End region after the mouse is
-released. Live Start/End edits preserve ADSR. Editor modes are independent of the main playback mode.
+released, repeating ADSR each pass with live edits. Editor modes are independent
+of the main playback mode.
 Changing selection replaces the audition; turning it off or leaving the editor
 stops it. **Play/Stop** plays the selected occupied pad when idle or immediately cuts all
 playing samples. With Loop on Select enabled, editor Play/Stop and Space also start a loop.

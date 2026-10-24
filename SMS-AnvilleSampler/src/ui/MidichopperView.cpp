@@ -269,8 +269,7 @@ private:
         text(centerX, bounds.y + 56.0f, enabled ? "ON" : "OFF", nullptr);
     }
 
-    void drawDirectionToggle(const sms::ui::Rect bounds, const InteractiveType type,
-                             const bool reverse)
+    void drawToggleFrame(const sms::ui::Rect bounds, const InteractiveType type)
     {
         const auto& colors = sms::ui::dpf::theme();
         canvas_.beginPath();
@@ -282,6 +281,13 @@ private:
             ? colors.controlAccent : colors.recessEdge);
         canvas_.strokeWidth(1.5f);
         canvas_.stroke();
+    }
+
+    void drawDirectionToggle(const sms::ui::Rect bounds, const InteractiveType type,
+                             const bool reverse)
+    {
+        const auto& colors = sms::ui::dpf::theme();
+        drawToggleFrame(bounds, type);
         const float centerY = bounds.y + bounds.height * 0.5f;
         const float direction = reverse ? -1.0f : 1.0f;
         const float arrowWidth = bounds.width * 0.11f;
@@ -297,6 +303,33 @@ private:
             canvas_.closePath();
             canvas_.fill();
         }
+    }
+
+    void drawGlobalMixerToggle()
+    {
+        const auto& colors = sms::ui::dpf::theme();
+        const auto bounds = uiLayout::padGlobalMixer;
+        const bool enabled = state_.mixerSettings.globalMixer >= 0.5f;
+        drawToggleFrame(bounds, InteractiveType::padGlobalMixer);
+        const float centerX = bounds.x + bounds.width * 0.5f;
+        const float centerY = bounds.y + bounds.height * 0.5f;
+        canvas_.strokeColor(enabled
+            ? colors.controlAccent : colors.contentSecondary.withAlpha(0.5f));
+        canvas_.strokeWidth(2.4f);
+        canvas_.beginPath();
+        canvas_.arc(centerX, centerY, 9.0f, -0.7853982f, 3.9269908f,
+                    DGL_NAMESPACE::NanoVG::CW);
+        canvas_.stroke();
+        canvas_.beginPath();
+        canvas_.moveTo(centerX, centerY - 11.0f);
+        canvas_.lineTo(centerX, centerY);
+        canvas_.stroke();
+        canvas_.fontFace(NANOVG_DEJAVU_SANS_TTF);
+        canvas_.fontSize(9.0f);
+        canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_CENTER |
+                          DGL_NAMESPACE::NanoVG::ALIGN_TOP);
+        canvas_.fillColor(colors.contentSecondary);
+        text(centerX, uiLayout::mixerKnob(4).y - 1.0f, "GLOBAL MIXER", nullptr);
     }
 
     void drawSlopeSlider(const sms::ui::Rect bounds, const InteractiveType type,
@@ -670,7 +703,7 @@ private:
                       localPadForGlobalPad(state_.selectedPad) + 1);
         text(46.0f, 120.0f, heading, nullptr);
         const bool reverse = sampleDisplayReversed(state_.mixerSettings.reverse >= 0.5f,
-                                                   state_.globalReverse);
+            sampleGlobalReverse(state_.globalReverse, state_.mixerSettings.globalMixer));
         const auto displayWaveform = sampleDisplaySummary(state_.waveform, reverse);
         const sms::ui::waveform::CachedDetail displayDetail{
             sampleVisibleSummary(state_.waveform, state_.waveformViewport,
@@ -805,6 +838,15 @@ private:
             4, "HIGHPASS", state_.mixerSettings.highpass, 0.0f, 1.0f, high);
         drawSlopeSlider(uiLayout::mixerKnob(5), InteractiveType::mixerKnob,
             state_.mixerSettings.filterSlope);
+        canvas_.beginPath();
+        canvas_.moveTo(uiLayout::padGlobalMixerSeparator.x,
+                        uiLayout::padGlobalMixerSeparator.y);
+        canvas_.lineTo(uiLayout::padGlobalMixerSeparator.x,
+            uiLayout::padGlobalMixerSeparator.y + uiLayout::padGlobalMixerSeparator.height);
+        canvas_.strokeColor(colors.recessEdge);
+        canvas_.strokeWidth(1.5f);
+        canvas_.stroke();
+        drawGlobalMixerToggle();
     }
 
     void drawChopEditor()

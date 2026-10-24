@@ -7,6 +7,10 @@
 
 namespace midichopper::ui {
 
+[[nodiscard]] constexpr bool sampleGlobalReverse(const bool globalReverse,
+                                                const float globalMixer) noexcept
+{ return globalReverse && globalMixer >= 0.5f; }
+
 [[nodiscard]] constexpr bool sampleDisplayReversed(const bool padReverse,
                                                   const bool globalReverse) noexcept
 { return padReverse != globalReverse; }

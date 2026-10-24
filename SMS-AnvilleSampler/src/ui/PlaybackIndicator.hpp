@@ -147,7 +147,8 @@ public:
         const auto playback = sms::dsp::sanitize(settings);
         const auto mixer = sms::dsp::sanitize(mixerSettings);
         const double tuneRatio = std::exp2(
-            static_cast<double>(mixer.tuneSemitones + globalTune) / 12.0);
+            static_cast<double>(mixer.tuneSemitones +
+                (mixer.globalMixer >= 0.5f ? globalTune : 0.0f)) / 12.0);
         if (fLoop) {
             // Like the voice, retain Start until retrigger while following live End edits.
             if (fLoopStart < 0.0f)

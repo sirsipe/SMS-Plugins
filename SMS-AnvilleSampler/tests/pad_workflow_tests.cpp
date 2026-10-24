@@ -66,7 +66,7 @@ bool sameMixer(const sms::dsp::SampleMixerSettings& a,
     return a.gainDecibels == b.gainDecibels && a.pan == b.pan &&
         a.tuneSemitones == b.tuneSemitones && a.lowpass == b.lowpass &&
         a.highpass == b.highpass && a.filterSlope == b.filterSlope && a.dirty == b.dirty &&
-        a.reverse == b.reverse;
+        a.reverse == b.reverse && a.globalMixer == b.globalMixer;
 }
 
 void checkSettingsReply(const Observer& observer, const SamplerEngine& engine,
@@ -144,6 +144,7 @@ void clipboardSnapshotAndReplies()
     engine.setPadPlaybackSettings(0, playback);
     auto mixer = engine.padMixerSettings(0);
     mixer.gainDecibels = -6;
+    mixer.globalMixer = 0.0f;
     engine.setPadMixerSettings(0, mixer);
     workflows.handlePadClipboardRequest(encodePadClipboardRequest(PadClipboardAction::copy, 0));
     check(observer.available && observer.clipboardResult == PadClipboardResultCode::copied,
@@ -155,7 +156,7 @@ void clipboardSnapshotAndReplies()
     sms::dsp::SampleMixerSettings actualMixer;
     check(engine.exportPublishedPad(1, restored, &actualPlayback, &actualMixer) &&
           restored.stereo == original.stereo && actualPlayback.start == playback.start &&
-          actualMixer.gainDecibels == mixer.gainDecibels,
+          sameMixer(actualMixer, mixer),
           "paste retains copy-time PCM and settings after source clear");
     check(observer.clipboardResult == PadClipboardResultCode::pasted &&
           !observer.latest(kWaveformDataKey).empty() &&
@@ -191,6 +192,7 @@ void clipboardEmptyAndSamePadReplies()
     auto sourceMixer = engine.padMixerSettings(0);
     sourceMixer.gainDecibels = -4.0f;
     sourceMixer.pan = 0.25f;
+    sourceMixer.globalMixer = 0.0f;
     engine.setPadMixerSettings(0, sourceMixer);
     workflows.handlePadClipboardRequest(encodePadClipboardRequest(PadClipboardAction::copy, 0));
     check(observer.clipboardResult == PadClipboardResultCode::copied && observer.available,

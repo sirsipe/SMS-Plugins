@@ -36,7 +36,7 @@ void checkPadSettingsCleared(const midichopper::SamplerEngine& engine,
           mixer.gainDecibels == 0.0f && mixer.pan == 0.0f &&
           mixer.tuneSemitones == 0.0f && mixer.lowpass == 0.0f &&
           mixer.highpass == 0.0f && mixer.filterSlope == 0.0f &&
-          mixer.dirty == 0.0f && mixer.reverse == 0.0f, message);
+          mixer.dirty == 0.0f && mixer.reverse == 0.0f && mixer.globalMixer == 1.0f, message);
 }
 
 void retained_storage_reserve_and_bounded_reclamation() {
@@ -1433,7 +1433,7 @@ void gated_loop_release_and_edits()
         sms::dsp::SamplePlaybackSettings region;
         region.start = 0.25f;
         region.end = 0.75f;
-        region.releaseSeconds = 0.008f; // longer than two turns; no one-shot cap
+        region.releaseSeconds = 0.008f; // full note-off tail is longer than two turns
         engine.setPadPlaybackSettings(0U, region);
         const MidiEvent events[] = {
             {0U, 36U, 127U, MidiEventType::NoteOn},
@@ -1446,8 +1446,11 @@ void gated_loop_release_and_edits()
         for (std::size_t frame = 0U; frame < left.size(); ++frame) {
             const bool restarted = retrigger && frame >= 11U;
             const auto phase = restarted ? frame - 11U : frame;
-            const float gain = restarted || frame < 7U ? 1.0f
-                : frame < 15U ? static_cast<float>(15U - frame) / 8.0f : 0.0f;
+            constexpr float heldGain[]{1.0f, 1.0f, 1.0f, 0.5f};
+            // Note-off interrupts the second pass's fade at half level, then
+            // releases from that level for the complete configured eight frames.
+            const float gain = restarted || frame < 7U ? heldGain[phase % 4U]
+                : frame < 15U ? static_cast<float>(15U - frame) / 16.0f : 0.0f;
             const float position = static_cast<float>(phase % 4U);
             const float expected = (reverse ? 6.0f - position : 3.0f + position) * gain;
             close(left[frame], expected, "Gate release crosses seams and retrigger resets cursor/envelope");
@@ -1518,8 +1521,8 @@ void live_loop_region_edits()
             mixer.tuneSemitones = -12.0f;
             engine.setPadMixerSettings(0U, mixer);
             sms::dsp::SamplePlaybackSettings displayed;
-            displayed.attackSeconds = 0.008f;
-            displayed.releaseSeconds = 0.008f;
+            // Keep ADSR neutral so this matrix isolates live cut geometry;
+            // repeating_live_envelopes checks envelope timing across turns.
             const auto edit = [&](const float start, const float end) {
                 displayed.start = start;
                 displayed.end = end;
@@ -1537,20 +1540,17 @@ void live_loop_region_edits()
             engine.process(nullptr, nullptr, left, right, 3U,
                            audition ? nullptr : &on, audition ? 0U : 1U);
             // Cursor is now 2.5. Start alone changes the next seam and turn,
-            // while the ongoing attack and in-range cursor must continue.
-            unsigned elapsed = 3U;
+            // while the in-range cursor must continue.
             const auto expect = [&](const auto& positions) {
                 engine.process(nullptr, nullptr, left, right, positions.size());
                 for (std::size_t frame = 0U; frame < positions.size(); ++frame) {
                     const float sample = padReverse != globalReverse
                         ? 8.0f - positions[frame] : 1.0f + positions[frame];
-                    const float gain = std::min(static_cast<float>(elapsed + frame) / 8.0f, 1.0f);
-                    close(left[frame], sample * gain,
-                          "loop edits refresh both cuts without restarting cursor or ADSR");
-                    close(right[frame], -10.0f * sample * gain,
+                    close(left[frame], sample,
+                          "loop edits refresh both cuts without restarting the cursor");
+                    close(right[frame], -10.0f * sample,
                           "edited loop retains stereo and fractional seam interpolation");
                 }
-                elapsed += positions.size();
                 check(engine.anyPlaybackActive(), "boundary edit keeps loop running");
             };
             edit(0.25f, 0.875f); // [2, 7)
@@ -1569,9 +1569,8 @@ void live_loop_region_edits()
                 const MidiEvent off{0U, 36U, 0U, MidiEventType::NoteOff};
                 engine.process(nullptr, nullptr, left, right, 8U, &off, 1U);
                 for (unsigned frame = 0U; frame < 8U; ++frame) {
-                    const float sample = padReverse != globalReverse ? 1.0f : 8.0f;
-                    close(left[frame], sample * static_cast<float>(8U - frame) / 8.0f,
-                          "Gate release continues looping through edited cuts");
+                    close(left[frame], 0.0f, "zero-release Gate stops immediately after edited cuts");
+                    close(right[frame], 0.0f, "zero-release edited Gate stops both channels");
                 }
             }
             check(!engine.anyPlaybackActive(), "edited loop still stops normally");
@@ -1796,9 +1795,9 @@ void live_editor_flip_preserves_voice()
     const MidiEvent offs[]{{0U, 36U, 0U, MidiEventType::NoteOff},
                            {0U, 37U, 0U, MidiEventType::NoteOff}};
     engine.process(nullptr, nullptr, left, right, 2U, offs, 2U);
-    close(left[0], 1.0f, "coalesced double flip resumes forward with the existing release level");
-    close(left[1], 0.75f, "double flip preserves cursor progression and release phase");
-    close(right[0], -10.0f, "live flip keeps stereo frame pairing during release");
+    close(left[0], 0.75f, "coalesced double flip resumes forward with the existing release level");
+    close(left[1], 0.5625f, "double flip preserves cursor progression and release phase");
+    close(right[0], -7.5f, "live flip keeps stereo frame pairing during release");
     engine.process(nullptr, nullptr, left, right, 2U);
     check(!engine.anyPlaybackActive(), "live-flipped voices finish their original release tails");
 }
@@ -2243,7 +2242,9 @@ void independent_pad_audition()
             std::array<float, 10> left{}, right{};
             engine.process(nullptr, nullptr, left.data(), right.data(), left.size(), &off, 1U);
             for (std::size_t frame = 0U; frame < left.size(); ++frame) {
-                const float envelope = frame == 0U ? 0.0f : 0.5f;
+                constexpr float loopEnvelope[]{0.0f, 0.5f, 0.5f, 0.25f};
+                const float envelope = loop ? loopEnvelope[frame % 4U]
+                    : frame == 0U ? 0.0f : 0.5f;
                 const float phase = static_cast<float>(frame % 4U);
                 const float sample = loop || frame < 4U
                     ? (reverse ? 6.0f - phase : 3.0f + phase) : 0.0f;
@@ -2547,6 +2548,212 @@ void live_sample_editor_updates() {
           "extending End resumes a voice that entered its automatic release");
     check(extended.playbackPosition() > 1.0f,
           "extended voice keeps advancing its waveform playhead");
+}
+
+void repeating_live_envelopes() {
+    using namespace midichopper;
+    for (const bool audition : {false, true})
+      for (const bool reverse : {false, true}) {
+        SamplerEngine engine(1000.0, 1.0);
+        auto settings = engine.settings();
+        settings.monitorInput = false;
+        settings.playbackMode = PlaybackMode::Gated;
+        engine.setSettings(settings);
+        PadData source;
+        source.sampleRate = 1000.0;
+        source.frames = 8U;
+        source.stereo.assign(16U, 1.0f);
+        check(engine.importPad(0U, source), "import repeating envelope source");
+        sms::dsp::SampleMixerSettings mixer;
+        mixer.reverse = reverse ? 1.0f : 0.0f;
+        engine.setPadMixerSettings(0U, mixer);
+        float left[16]{}, right[16]{};
+        const MidiEvent on{0U, 36U, 127U, MidiEventType::NoteOn};
+        if (audition) engine.auditionPad(0U, true);
+        engine.process(nullptr, nullptr, left, right, 1U,
+                       audition ? nullptr : &on, audition ? 0U : 1U);
+        close(left[0], 1.0f, "unshaped loop starts at unity");
+
+        sms::dsp::SamplePlaybackSettings playback;
+        playback.attackSeconds = 0.002f;
+        playback.decaySeconds = 0.002f;
+        playback.sustainLevel = 0.5f;
+        playback.releaseSeconds = 0.002f;
+        engine.restorePadPlaybackSettings(0U, playback);
+        engine.process(nullptr, nullptr, left, right, 7U);
+        close(left[0], 0.5f, "live sustain reaches current pass without retrigger");
+        close(left[6], 0.25f, "live release shapes current loop ending");
+        const auto expectPass = [&](const std::array<float, 8>& expected) {
+            engine.process(nullptr, nullptr, left, right, 8U);
+            for (std::size_t frame = 0U; frame < expected.size(); ++frame) {
+                close(left[frame], expected[frame], "each loop repeats the edited full ADSR shape");
+                close(right[frame], expected[frame], "loop envelope preserves stereo");
+            }
+            check(engine.anyPlaybackActive(), "automatic pass release keeps the loop alive");
+        };
+        expectPass({0.0f, 0.5f, 1.0f, 0.75f, 0.5f, 0.5f, 0.5f, 0.25f});
+        expectPass({0.0f, 0.5f, 1.0f, 0.75f, 0.5f, 0.5f, 0.5f, 0.25f});
+        playback.attackSeconds = 0.004f;
+        playback.decaySeconds = 0.0f;
+        playback.sustainLevel = 0.25f;
+        playback.releaseSeconds = 0.001f;
+        engine.restorePadPlaybackSettings(0U, playback);
+        expectPass({0.0f, 0.25f, 0.5f, 0.75f, 0.25f, 0.25f, 0.25f, 0.25f});
+    }
+
+    for (const unsigned beforeOff : {5U, 9U}) {
+        SamplerEngine engine(1000.0, 1.0);
+        auto settings = engine.settings();
+        settings.monitorInput = false;
+        settings.playbackMode = PlaybackMode::Gated;
+        engine.setSettings(settings);
+        PadData source;
+        source.sampleRate = 1000.0;
+        source.frames = 8U;
+        source.stereo.assign(16U, 1.0f);
+        check(engine.importPad(0U, source), "import multi-pass release source");
+        sms::dsp::SamplePlaybackSettings playback;
+        playback.releaseSeconds = 0.012f;
+        engine.setPadPlaybackSettings(0U, playback);
+        float left[16]{}, right[16]{};
+        const MidiEvent on{0U, 36U, 127U, MidiEventType::NoteOn};
+        engine.process(nullptr, nullptr, left, right, beforeOff, &on, 1U);
+        const MidiEvent off{0U, 36U, 0U, MidiEventType::NoteOff};
+        engine.process(nullptr, nullptr, left, right, 13U, &off, 1U);
+        const float releaseLevel = beforeOff == 5U ? 0.75f : 1.0f;
+        for (unsigned frame = 0U; frame < 12U; ++frame)
+            close(left[frame], releaseLevel * static_cast<float>(12U - frame) / 12.0f,
+                  "Gate note-off uses full Release and never retriggers at seams");
+        close(left[12], 0.0f, "Gate release ends in silence");
+        check(!engine.anyPlaybackActive(), "completed Gate release stops looping");
+    }
+}
+
+void sample_global_mixer_bypass() {
+    using namespace midichopper;
+    for (const auto mode : {PlaybackMode::OneShot, PlaybackMode::Gated}) {
+        SamplerEngine engine(48000.0, 0.1), reference(48000.0, 0.1);
+        auto settings = engine.settings();
+        settings.playbackMode = mode;
+        settings.monitorInput = true;
+        settings.monitorGain = 0.25f;
+        settings.gain = 0.5f;
+        reference.setSettings(settings);
+        settings.pan = 0.75f;
+        settings.tuneSemitones = 7.0f;
+        settings.lowpass = 0.6f;
+        settings.highpass = 0.3f;
+        settings.filterSlope = 2.0f;
+        settings.dirty = 1.0f;
+        settings.reverse = true;
+        engine.setSettings(settings);
+        PadData source;
+        source.sampleRate = 48000.0;
+        source.frames = 128U;
+        for (unsigned frame = 0U; frame < source.frames; ++frame) {
+            source.stereo.push_back(static_cast<float>(frame) / 128.0f);
+            source.stereo.push_back(-static_cast<float>(frame) / 256.0f);
+        }
+        sms::dsp::SampleMixerSettings mixer;
+        mixer.globalMixer = 0.0f;
+        mixer.gainDecibels = -6.0205999f;
+        mixer.pan = -0.25f;
+        mixer.tuneSemitones = -3.0f;
+        mixer.lowpass = 0.1f;
+        mixer.highpass = 0.05f;
+        for (auto* target : {&engine, &reference}) {
+            check(target->importPad(0U, source), "import bypass comparison source");
+            target->setPadMixerSettings(0U, mixer);
+            sms::dsp::SamplePlaybackSettings region;
+            region.start = 0.125f;
+            region.end = 0.75f;
+            target->setPadPlaybackSettings(0U, region);
+        }
+        float left[16]{}, right[16]{}, expectedLeft[16]{}, expectedRight[16]{};
+        float input[16];
+        std::fill_n(input, 16U, 0.5f);
+        const MidiEvent on{0U, 36U, 127U, MidiEventType::NoteOn};
+        engine.process(input, input, left, right, 16U, &on, 1U);
+        reference.process(input, input, expectedLeft, expectedRight, 16U, &on, 1U);
+        for (unsigned frame = 0U; frame < 16U; ++frame) {
+            close(left[frame], expectedLeft[frame], "bypass excludes all global mixer controls");
+            close(right[frame], expectedRight[frame], "bypass preserves pad effects, OUT and input monitoring");
+        }
+        settings.reverse = false;
+        settings.pan = -1.0f;
+        settings.tuneSemitones = -24.0f;
+        settings.dirty = 0.0f;
+        engine.setSettings(settings);
+        mixer.pan = 0.4f;
+        mixer.tuneSemitones = 3.0f;
+        mixer.dirty = 1.0f;
+        mixer.lowpass = 0.2f;
+        mixer.highpass = 0.1f;
+        mixer.filterSlope = 1.0f;
+        engine.restorePadMixerSettings(0U, mixer);
+        reference.restorePadMixerSettings(0U, mixer);
+        engine.process(input, input, left, right, 16U);
+        reference.process(input, input, expectedLeft, expectedRight, 16U);
+        for (unsigned frame = 0U; frame < 16U; ++frame) {
+            close(left[frame], expectedLeft[frame], "bypassed pad ignores live master changes");
+            close(right[frame], expectedRight[frame], "local mix and Dirty edits stay live while bypassed");
+        }
+    }
+
+    SamplerEngine engine(1000.0, 1.0);
+    auto settings = engine.settings();
+    settings.monitorInput = false;
+    settings.reverse = true;
+    settings.playbackMode = PlaybackMode::Gated;
+    engine.setSettings(settings);
+    check(engine.importPad(0U, loop_source()), "import live bypass turn source");
+    sms::dsp::SamplePlaybackSettings region;
+    region.start = 0.125f;
+    region.end = 0.625f;
+    engine.setPadPlaybackSettings(0U, region);
+    const MidiEvent on{0U, 36U, 127U, MidiEventType::NoteOn};
+    float left[4]{}, right[4]{};
+    engine.process(nullptr, nullptr, left, right, 2U, &on, 1U);
+    close(left[0], 5.0f, "default-enabled pad uses global Reverse with mirrored cuts");
+    sms::dsp::SampleMixerSettings mixer;
+    mixer.globalMixer = 0.0f;
+    engine.restorePadMixerSettings(0U, mixer);
+    engine.process(nullptr, nullptr, left, right, 2U);
+    close(left[0], 3.0f, "live bypass turns at the corresponding source frame");
+    close(left[1], 4.0f, "live bypass continues in local direction");
+    settings.reverse = false;
+    engine.setSettings(settings);
+    engine.process(nullptr, nullptr, left, right, 2U);
+    close(left[0], 5.0f, "master Reverse leaves bypassed active cursor unchanged");
+    close(left[1], 2.0f, "bypassed loop uses local cuts across the seam");
+    mixer.globalMixer = 1.0f;
+    engine.restorePadMixerSettings(0U, mixer);
+    engine.process(nullptr, nullptr, left, right, 2U);
+    close(left[0], 3.0f, "reenabling neutral master preserves cursor");
+    settings.reverse = true;
+    engine.setSettings(settings);
+    engine.process(nullptr, nullptr, left, right, 1U);
+    close(left[0], 5.0f, "reenabled pad follows subsequent master Reverse");
+
+    // A coalesced pad flip and master bypass can cancel each other's direction
+    // change. An intermediate turn would clamp away this final half-frame.
+    SamplerEngine coalesced(1000.0, 1.0);
+    settings.playbackMode = PlaybackMode::OneShot;
+    coalesced.setSettings(settings);
+    check(coalesced.importPad(0U, loop_source()), "import coalesced bypass source");
+    mixer = {};
+    mixer.tuneSemitones = -12.0f;
+    coalesced.setPadMixerSettings(0U, mixer);
+    float prefixLeft[15]{}, prefixRight[15]{};
+    coalesced.process(nullptr, nullptr, prefixLeft, prefixRight, 15U, &on, 1U);
+    mixer.reverse = 1.0f;
+    coalesced.restorePadEditorSettings(0U, {}, mixer);
+    mixer.globalMixer = 0.0f;
+    coalesced.restorePadMixerSettings(0U, mixer);
+    coalesced.process(nullptr, nullptr, left, right, 2U);
+    close(left[0], 1.0f, "coalesced flip and bypass preserve terminal source frame");
+    close(left[1], 0.0f, "cancelled direction changes preserve fractional one-shot timing");
+    check(!coalesced.anyPlaybackActive(), "coalesced bypass does not extend the voice");
 }
 
 void pad_replacement_hardening() {
@@ -2896,6 +3103,8 @@ int main() {
     arm_stops_gate_without_interrupting_capture();
     sample_mixer_and_varispeed();
     live_sample_editor_updates();
+    repeating_live_envelopes();
+    sample_global_mixer_bypass();
     pad_replacement_hardening();
     pad_clipboard_snapshot();
     fixed_duration();

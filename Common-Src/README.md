@@ -9,11 +9,11 @@ host, or a specific plug-in's state model.
 - `DSP/SamplePlaybackSettings.hpp`: sanitized sample region/ADSR and
   non-destructive region mirroring.
 - `DSP/SampleMixerSettings.hpp`: sanitized per-sample gain, stereo balance, and
-  semitone tune, filter, dirty-mode, and playback direction settings.
+  semitone tune, filter, dirty-mode, playback direction, and global mixer routing.
 - `DSP/ColorEffects.hpp`: allocation-free per-voice stereo filters and 26.04 kHz,
   12-bit mono source conversion.
 - `DSP/AdsrEnvelope.hpp`: allocation-free per-voice linear ADSR processor with
-  phase-preserving live setting updates.
+  phase-preserving live setting updates and explicit automatic-to-note-off release handoff.
 - `DSP/PeakMeter.hpp`: allocation-free stereo sample-peak follower with hold
   and release ballistics for live meters.
 - `Audio/WaveformSummary.hpp`: fixed-size stereo min/max reduction and compact
@@ -30,7 +30,7 @@ host, or a specific plug-in's state model.
   callback is idle, or at a block boundary while it is running.
 - `State/SamplePlaybackSettingsCodec.hpp`: versioned settings serialization.
 - `State/SampleMixerSettingsCodec.hpp`: versioned mixer-settings serialization;
-  MX3 saves direction; MX1/MX2 load Forward, and MX1 effects default off.
+  see the [mixing contract](../Docs/AI/MIXING.md) for fields and compatibility.
 - `UI/Geometry.hpp`: renderer-independent rectangles and reusable pad-grid
   layout/hit testing.
 

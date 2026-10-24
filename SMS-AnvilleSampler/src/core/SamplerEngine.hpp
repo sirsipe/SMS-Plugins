@@ -313,7 +313,7 @@ private:
     void setPadPlaybackSettingsDirect(std::uint32_t pad,
         const sms::dsp::SamplePlaybackSettings& settings) noexcept;
     void setPadMixerSettingsDirect(std::uint32_t pad,
-        const sms::dsp::SampleMixerSettings& settings) noexcept;
+        const sms::dsp::SampleMixerSettings& settings, bool redirectGlobal = true) noexcept;
     void redirectPadVoice(std::uint32_t pad, bool reverse) noexcept;
     enum class VoiceMode : std::uint8_t { OneShot, Gated, Loop };
     std::uint32_t auditionPad_ = kPadCount;
@@ -336,6 +336,7 @@ private:
         std::uint32_t voiceStartFrame = 0;
         std::uint32_t voiceEndFrame = 0;
         bool releaseFromEnd = false;
+        bool noteReleased = false;
         float velocityGain = 1.0f;
         float mixerGainLeft = 1.0f;
         float mixerGainRight = 1.0f;
@@ -367,6 +368,7 @@ private:
         std::atomic<float> mixerFilterSlope{0.0f};
         std::atomic<float> mixerDirty{0.0f};
         std::atomic<float> mixerReverse{0.0f};
+        std::atomic<float> mixerGlobalMixer{1.0f};
         Pad() = default;
         Pad(const Pad&) = delete;
         Pad& operator=(const Pad&) = delete;

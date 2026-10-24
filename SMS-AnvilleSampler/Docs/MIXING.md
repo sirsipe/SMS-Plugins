@@ -5,6 +5,20 @@ and Highpass. ARM hides it. **SAMPLE EDITOR** has a **Pad Mixer** for the select
 pad: Direction, Gain and Pan beside Dirty, Tune, Lowpass, and Highpass, with a divider
 between Pan and Dirty. Each mixer places Slope below the filters.
 
+After Highpass, a divider and **Global Mixer** power button control whether the
+selected pad uses global Direction, Pan, Dirty, Tune, Lowpass, and Highpass.
+It defaults to enabled, including in older projects, and saves with the pad.
+Bypassing takes effect during playback; pad controls and the separate OUT
+master fader remain active. With Global Direction reversed, toggling bypass
+also turns the playing sample at its current source position.
+
+All pad mixer and ADSR edits reach active playback on the next audio block.
+Gate and editor Loop repeat the ADSR shape on every Start/End pass, so edited
+Attack and Decay are heard on subsequent passes. Release fades each pass's end,
+capped to half the pass duration. Gate note-off instead uses the full Release
+from the current level and keeps looping through its tail without retriggering
+the envelope. One Shot plays its envelope once.
+
 **Direction** shows dim ▶▶ for Forward and lit ◀◀ for Reverse in the theme
 accent color. Click anywhere on it to toggle. Each pad saves its own direction,
 defaulting to Forward.
@@ -20,7 +34,7 @@ original, unflipped audio. Direction never modifies stored audio.
 
 **Global Direction** is a saved master toggle. It combines with each pad's
 setting: Reverse on both means Forward playback. Toggling it immediately turns
-all active pads at their current source positions, preserving envelopes,
+all active pads with Global Mixer enabled at their current source positions, preserving envelopes,
 release tails, filters, and polyphony in One Shot and Gate. New triggers also
 use the master setting. Pad directions and cut points stay saved independently;
 Sample Editor shows the combined waveform and mirrored cuts. Its pad arrows

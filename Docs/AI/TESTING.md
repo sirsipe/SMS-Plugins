@@ -75,15 +75,17 @@ Checks:
   pads; FINALIZE keeps the open slice. UNDO discards the open/last slice;
   confirmed CLEAR empties all banks. Repeat in VST3/LV2; check affected capture
   modes and compare recorded output for timing/pre-roll changes.
-- Playback: return to PLAY; verify expected notes/banks, voice limits, and stereo
-  output. Hold a Gate pad beyond several Start/End turns; release and check its
-  ADSR fade (zero Release stops immediately). One Shot still ends once. In both directions, toggle the Pad Mixer direction during each and confirm
-  the active voice turns immediately without restarting ADSR or filters. Check
-  mirrored cuts/cursor, pad-specific arrows and restoration. Repeat Global Reverse
-  with overlapping One Shot/Gate voices and mixed pad directions. Cut/split stays raw. In Sample
-  Editor cycle Play on Select → Loop on Select → Off; check pressed labels,
-  live Start/End edits across turns, replacement on selection, and stopping
-  on Off/Exit. Play/Stop and Space loop only in editor Loop mode.
+- Playback: verify notes/banks, voice limits and stereo. Gate and editor loops
+  repeat ADSR each pass; edit all stages live. Gate note-off uses full Release
+  across seams without retriggering; zero Release stops immediately. One Shot
+  ends once. Toggle pad/global Reverse during overlapping voices in both modes;
+  check immediate turns, preserved ADSR/filters/tails, mirrored cuts/cursor,
+  pad arrows and restoration. Cut/split stays raw. Cycle editor Play on Select →
+  Loop on Select → Off; check labels, live cuts, selection replacement and
+  stopping on Off/Exit. Editor Play/Stop and Space follow Loop mode. Bypass
+  Global Mixer with global pan/tune/Dirty/filters/Reverse active; check immediate
+  bypass, orientation and active local effects/OUT. Verify reenable, independent
+  pad flags, save/reload and copy/paste.
 - Skins: verify forced `skin` hides the selector; check halo/pulse,
   steady/disabled settings, logos, background/pad/panel opacity and resizing. Remove the default
   before testing collections. With named `skins` entries,

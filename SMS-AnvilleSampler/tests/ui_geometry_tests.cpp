@@ -639,7 +639,22 @@ void interactionTargets()
                    layout::padDirection.y + layout::padDirection.height * 0.5f}, context),
                   interaction::InteractiveType::padDirection),
               "both arrows and margins belong to one direction toggle");
+        check(interaction::isTarget(interaction::interactiveTargetAt(
+                  {layout::padGlobalMixer.x + layout::padGlobalMixer.width * fraction,
+                   layout::padGlobalMixer.y + layout::padGlobalMixer.height * 0.5f}, context),
+                  interaction::InteractiveType::padGlobalMixer),
+              "the power icon and margins belong to one Global Mixer toggle");
     }
+    check(layout::mixerKnob(4).x + layout::mixerKnob(4).width <
+              layout::padGlobalMixerSeparator.x &&
+          layout::padGlobalMixerSeparator.x < layout::padGlobalMixer.x &&
+          layout::padGlobalMixer.x + layout::padGlobalMixer.width <
+              layout::mainPanel.x + layout::mainPanel.width &&
+          layout::padGlobalMixer.width == layout::padDirection.width &&
+          layout::padGlobalMixer.height == layout::padDirection.height &&
+          layout::padGlobalMixer.y == layout::padDirection.y &&
+          !interaction::interactiveTargetAt(center(layout::padGlobalMixerSeparator), context).valid(),
+          "Global Mixer follows Highpass and an inert divider inside the panel");
     check(layout::padDirection.x >= layout::mainPanel.x &&
           layout::padDirection.width == 42.0f && layout::padDirection.height == 34.0f &&
           layout::padDirection.y >= layout::mixerKnob(0).y &&
@@ -673,6 +688,10 @@ void interactionTargets()
           "mixer controls remain separate from ADSR controls");
 
     context.editorMode = false;
+    check(!interaction::isTarget(
+              interaction::interactiveTargetAt(center(layout::padGlobalMixer), context),
+              interaction::InteractiveType::padGlobalMixer),
+          "Global Mixer bypass belongs only to the sample editor");
     check(!interaction::isTarget(
               interaction::interactiveTargetAt(center(layout::padDirection), context),
               interaction::InteractiveType::padDirection),
@@ -851,6 +870,10 @@ void editorSnapshotCollection()
     reply.mixer.gainDecibels = 3.0f;
     check(!session.accept(reply),
           "a coherent direction reply must also preserve the desired effects settings");
+    reply.mixer = mixer;
+    reply.mixer.globalMixer = 0.0f;
+    check(!session.accept(reply),
+          "optimistic mixer edits reject a stale per-pad global bypass setting");
     reply.mixer = mixer;
     const auto previousLocal = reply;
     auto reverseMixer = mixer;
@@ -1733,6 +1756,7 @@ void globalReverseProjection()
     local.sustainLevel = 0.7f;
     local.releaseSeconds = 0.3f;
     sms::dsp::SampleMixerSettings mixer;
+    check(mixer.globalMixer == 1.0f, "Global Mixer is enabled for a new sample");
     for (const bool pad : {false, true}) {
         for (const bool master : {false, true}) {
             mixer.reverse = pad ? 1.0f : 0.0f;
@@ -1750,6 +1774,15 @@ void globalReverseProjection()
                   local.start == 0.125f && local.end == 0.5f &&
                   mixer.reverse == (pad ? 1.0f : 0.0f),
                   "master display projection preserves saved local cuts, pad direction, and ADSR");
+            const bool bypassedMaster = sampleGlobalReverse(master, 0.0f);
+            const auto bypassed = sampleEditorSettings(local, bypassedMaster);
+            const auto bypassedEdit = sampleEditorLocalEdit(local, bypassed,
+                bypassedMaster, true, true);
+            check(!bypassedMaster && sampleGlobalReverse(master, 1.0f) == master &&
+                  sampleDisplayReversed(pad, bypassedMaster) == pad &&
+                  bypassed.start == local.start && bypassed.end == local.end &&
+                  bypassedEdit.start == local.start && bypassedEdit.end == local.end,
+                  "Global Mixer bypass excludes global Reverse from waveform, cuts, and edits");
         }
     }
     const sms::ui::Rect bounds{0.0f, 0.0f, 400.0f, 100.0f};
@@ -1947,6 +1980,14 @@ void playbackIndicator()
     playback.start = 0.25f;
     playback.end = 0.75f;
     sms::dsp::SampleMixerSettings mixer;
+    midichopper::ui::PlaybackIndicator bypassedIndicator;
+    auto bypassedMixer = mixer;
+    bypassedMixer.globalMixer = 0.0f;
+    check(bypassedIndicator.start(7, 7, playback, now) &&
+          bypassedIndicator.update(now + 100ms, 7, true, waveform, playback,
+              bypassedMixer, 12.0f) &&
+          std::abs(bypassedIndicator.position() - 8.35f) < 1.0e-5f,
+          "playhead prediction excludes global tuning for a bypassed sample");
     check(indicator.start(7, -1, playback, now) && indicator.position() == 8.0f,
           "audition starts at zero until coherent editor settings arrive");
     check(!indicator.update(now + 1s, 7, true, waveform, playback, mixer, 0.0f) &&

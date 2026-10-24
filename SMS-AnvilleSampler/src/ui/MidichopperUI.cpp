@@ -560,7 +560,8 @@ protected:
                 const auto now = std::chrono::steady_clock::now();
                 fWaveformDetail.setReversed(fEditorMode && !fChopEditor.active() &&
                     effectiveSampleReverse(), now);
-                if (fEditorSettingsPad == fSelectedPad && fWaveform.pad ==
+                if (fMixerSettings.globalMixer >= 0.5f &&
+                    fEditorSettingsPad == fSelectedPad && fWaveform.pad ==
                     static_cast<std::uint32_t>(fSelectedPad))
                     fPlaybackIndicator.flipDirection(fSelectedPad, fWaveform.frames,
                         displayEditorSettings(), now);
@@ -1241,6 +1242,11 @@ protected:
                     flipSampleDirection();
                     return true;
                 }
+                if (midichopper::ui::isTarget(
+                        clicked, midichopper::ui::InteractiveType::padGlobalMixer)) {
+                    toggleSampleGlobalMixer();
+                    return true;
+                }
                 if ((midichopper::ui::isTarget(clicked,
                          midichopper::ui::InteractiveType::mixerKnob) ||
                      midichopper::ui::isTarget(clicked,
@@ -1765,7 +1771,7 @@ protected:
                 displayed, static_cast<WaveformEditTarget>(hovered.index), delta,
                 fWaveform.frames, uiLayout::editorWaveform, fWaveformDetail.viewport());
             fEditorSettings = midichopper::ui::sampleEditorLocalEdit(
-                fEditorSettings, displayed, fGlobalReverse,
+                fEditorSettings, displayed, effectiveGlobalReverse(),
                 static_cast<WaveformEditTarget>(hovered.index) == WaveformEditTarget::regionStart,
                 static_cast<WaveformEditTarget>(hovered.index) == WaveformEditTarget::regionEnd);
             commitEditorSettings();
@@ -2884,14 +2890,20 @@ private:
         return sms::ui::BankedPadLayout(fLayout);
     }
 
+    [[nodiscard]] bool effectiveGlobalReverse() const noexcept
+    {
+        return midichopper::ui::sampleGlobalReverse(fGlobalReverse,
+                                                     fMixerSettings.globalMixer);
+    }
+
     [[nodiscard]] bool effectiveSampleReverse() const noexcept
     {
         return midichopper::ui::sampleDisplayReversed(fMixerSettings.reverse >= 0.5f,
-                                                     fGlobalReverse);
+                                                     effectiveGlobalReverse());
     }
 
     [[nodiscard]] sms::dsp::SamplePlaybackSettings displayEditorSettings() const noexcept
-    { return midichopper::ui::sampleEditorSettings(fEditorSettings, fGlobalReverse); }
+    { return midichopper::ui::sampleEditorSettings(fEditorSettings, effectiveGlobalReverse()); }
 
     sms::ui::waveform::EnvelopeGeometry envelopeGraphGeometry() const noexcept
     {
@@ -3265,6 +3277,21 @@ private:
         setState("pad_direction_request", encoded.c_str());
         sendEditorSnapshotRequest(now);
 #endif
+        requestRepaint();
+    }
+
+    void toggleSampleGlobalMixer()
+    {
+        if (!hasSelectedPad() || fEditorSettingsPad != fSelectedPad ||
+            fMixerSettingsPad != fSelectedPad)
+            return;
+        fMixerSettings.globalMixer = fMixerSettings.globalMixer >= 0.5f ? 0.0f : 1.0f;
+        const auto now = std::chrono::steady_clock::now();
+        if (fGlobalReverse)
+            fPlaybackIndicator.flipDirection(fSelectedPad, fWaveform.frames,
+                displayEditorSettings(), now);
+        fDragTarget = WaveformEditTarget::none;
+        commitMixerSettings();
         requestRepaint();
     }
 
@@ -3667,7 +3694,7 @@ private:
                 {fDragStartX, fDragStartY}, envelopeGraphGeometry());
         }
         fEditorSettings = midichopper::ui::sampleEditorLocalEdit(
-            fEditorSettings, displayed, fGlobalReverse,
+            fEditorSettings, displayed, effectiveGlobalReverse(),
             fDragTarget == WaveformEditTarget::regionStart,
             fDragTarget == WaveformEditTarget::regionEnd);
         commitEditorSettings();

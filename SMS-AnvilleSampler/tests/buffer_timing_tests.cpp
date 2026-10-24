@@ -261,12 +261,21 @@ void loopingPlaybackPartitions()
     constexpr std::array<float, 16> cycle{
         3, 3.75f, 4.5f, 5.25f, 6, 3.75f, 3.5f, 4.25f,
         5, 5.75f, 4.5f, 3.25f, 4, 4.75f, 5.5f, 5.25f};
+    // Three turns take 6, 5, and 5 output frames. The per-pass fade is
+    // capped to half a turn and rounded to three frames at this rate.
+    constexpr std::array<float, 16> heldGain{
+        1, 1, 1, 1, 2.0f / 3.0f, 1.0f / 3.0f,
+        1, 1, 1, 2.0f / 3.0f, 1.0f / 3.0f,
+        1, 1, 1, 2.0f / 3.0f, 1.0f / 3.0f};
     for (const std::uint32_t releaseFrames : {0U, 96U}) {
         Audio expected;
         for (std::uint32_t frame = 63U; frame < kFrames; ++frame) {
             const auto start = frame < 4140U ? 63U : 4140U;
             const auto stop = frame < 4140U ? 4103U : 7801U;
-            const float gain = frame < stop ? 1.0f
+            // Both note-offs land at the start of their pass's fade, at full
+            // level; their full 96-frame tails continue across every seam.
+            const float gain = frame < stop
+                ? (releaseFrames == 0U ? 1.0f : heldGain[(frame - start) % heldGain.size()])
                 : frame < stop + releaseFrames
                     ? static_cast<float>(stop + releaseFrames - frame) / releaseFrames
                     : 0.0f;

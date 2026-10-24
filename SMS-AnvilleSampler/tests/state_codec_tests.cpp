@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -141,7 +142,8 @@ void legacyStateFixtures()
           std::abs(mixer.pan - 0.375f) < 1.0e-6f &&
           std::abs(mixer.tuneSemitones + 11.5f) < 1.0e-6f &&
           mixer.lowpass == 0.0f && mixer.highpass == 0.0f &&
-          mixer.filterSlope == 1.0f && mixer.dirty == 0.0f && mixer.reverse == 0.0f,
+          mixer.filterSlope == 1.0f && mixer.dirty == 0.0f && mixer.reverse == 0.0f &&
+          mixer.globalMixer == 1.0f,
           "legacy MX1 values restore and newer effects default to bypass");
 }
 
@@ -311,15 +313,21 @@ void playbackAndMixerRejectMalformedFields()
         "MX3;0;0;0;0;0;0;0;0junk", "MX3;0;0;0;0;0;0;0;nan",
         "MX3;0;0;0;0;0;0;0;1e999",
     };
+    const char* const invalidMx4[] = {
+        "MX4;nan;0;0;0;0;0;0;0;1", "MX4;0;0;0;0;0;0;0;0;inf",
+        "MX4;0;0;0;0;0;0;0;0;1e999", "MX4;0;0;0;0;0;0;0;0",
+        "MX4;0;0;0;0;0;0;0;0;1;0", "MX4;0;0;0;0;0;0;0;0;1junk",
+        "MX4;0;0;0;0;0;0;0;0;nan",
+    };
     sms::dsp::SampleMixerSettings mixer;
     const auto setMixerSentinel = [&] {
-        mixer = {-7.0f, 0.25f, 6.0f, 0.2f, 0.3f, 2.0f, 1.0f, 1.0f};
+        mixer = {-7.0f, 0.25f, 6.0f, 0.2f, 0.3f, 2.0f, 1.0f, 1.0f, 0.0f};
     };
     const auto mixerSentinelPreserved = [&] {
         check(mixer.gainDecibels == -7.0f && mixer.pan == 0.25f &&
               mixer.tuneSemitones == 6.0f && mixer.lowpass == 0.2f &&
               mixer.highpass == 0.3f && mixer.filterSlope == 2.0f &&
-              mixer.dirty == 1.0f && mixer.reverse == 1.0f,
+              mixer.dirty == 1.0f && mixer.reverse == 1.0f && mixer.globalMixer == 0.0f,
               "failed MX decode preserves destination settings");
     };
     for (const char* const invalid : invalidMx1) {
@@ -340,6 +348,23 @@ void playbackAndMixerRejectMalformedFields()
               "MX3 rejects non-finite, overflow, missing, extra and trailing fields");
         mixerSentinelPreserved();
     }
+    for (const char* const invalid : invalidMx4) {
+        setMixerSentinel();
+        check(!midichopper::plugin::decodeMixerSettings(invalid, mixer),
+              "MX4 rejects non-finite, overflow, missing, extra and trailing fields");
+        mixerSentinelPreserved();
+    }
+    check(midichopper::plugin::decodeMixerSettings(
+              "MX4;0;0;0;0;0;0;0;0;0.49", mixer) && mixer.globalMixer == 0.0f,
+          "MX4 normalizes global mixer values below the boolean threshold to bypass");
+    check(midichopper::plugin::decodeMixerSettings(
+              "MX4;0;0;0;0;0;0;0;0;0.5", mixer) && mixer.globalMixer == 1.0f,
+          "MX4 normalizes global mixer values at the boolean threshold to enabled");
+    check(midichopper::plugin::decodeMixerSettings(
+              "MX4;0;0;0;0;0;0;0;0;-2", mixer) && mixer.globalMixer == 0.0f &&
+          midichopper::plugin::decodeMixerSettings(
+              "MX4;0;0;0;0;0;0;0;0;2", mixer) && mixer.globalMixer == 1.0f,
+          "MX4 normalizes finite out-of-range global mixer values");
     check(midichopper::plugin::decodeMixerSettings(
               "MX3;0;0;0;0;0;0;0;0.49", mixer) && mixer.reverse == 0.0f,
           "MX3 normalizes reverse values below the boolean threshold to forward");
@@ -415,7 +440,7 @@ void mixerStateRoundTrip()
     original.dirty = 1.0f;
     original.reverse = 1.0f;
     const std::string encoded = midichopper::plugin::encodeMixerSettings(original);
-    check(encoded.rfind("MX3;", 0U) == 0U, "mixer settings use the MX3 state version");
+    check(encoded.rfind("MX4;", 0U) == 0U, "mixer settings use the MX4 state version");
     sms::dsp::SampleMixerSettings decoded;
     check(midichopper::plugin::decodeMixerSettings(encoded.c_str(), decoded),
           "sample mixer settings decode");
@@ -428,8 +453,31 @@ void mixerStateRoundTrip()
     check(decoded.lowpass == original.lowpass &&
           decoded.highpass == original.highpass &&
           decoded.filterSlope == original.filterSlope &&
-          decoded.dirty == original.dirty && decoded.reverse == original.reverse,
+          decoded.dirty == original.dirty && decoded.reverse == original.reverse &&
+          decoded.globalMixer == 1.0f,
           "mixer effects round-trip");
+    original.globalMixer = 0.0f;
+    check(midichopper::plugin::decodeMixerSettings(
+              midichopper::plugin::encodeMixerSettings(original).c_str(), decoded) &&
+          decoded.globalMixer == 0.0f,
+          "bypassed global mixer round-trips");
+    for (const char* const legacy : {"MX1;0;0;0", "MX2;0;0;0;0;0;0;0",
+                                    "MX3;0;0;0;0;0;0;0;0"}) {
+        decoded.globalMixer = 0.0f;
+        check(midichopper::plugin::decodeMixerSettings(legacy, decoded) &&
+              decoded.globalMixer == 1.0f,
+              "all pre-MX4 mixer states restore global mixer enabled");
+    }
+    for (const float nonfinite : {std::numeric_limits<float>::quiet_NaN(),
+                                 std::numeric_limits<float>::infinity(),
+                                 -std::numeric_limits<float>::infinity()}) {
+        original.globalMixer = nonfinite;
+        check(sms::dsp::sanitize(original).globalMixer == 1.0f &&
+              midichopper::plugin::decodeMixerSettings(
+                  midichopper::plugin::encodeMixerSettings(original).c_str(), decoded) &&
+              decoded.globalMixer == 1.0f,
+              "non-finite requested global mixer settings default to enabled");
+    }
     check(!midichopper::plugin::decodeMixerSettings("MX1;broken", decoded) &&
           !midichopper::plugin::decodeMixerSettings("MX2;0;0;0;0;0;1", decoded) &&
           !midichopper::plugin::decodeMixerSettings("MX3;0;0;0;0;0;1;0", decoded) &&
@@ -473,6 +521,7 @@ void editorSnapshotProtocolRoundTrip()
     reply.mixer.pan = -0.5f;
     reply.mixer.dirty = 1.0f;
     reply.mixer.reverse = 1.0f;
+    reply.mixer.globalMixer = 0.0f;
     const auto encoded = plugin::encodeEditorSnapshotReply(reply);
     plugin::EditorSnapshotReply decoded;
     check(encoded.size() < 8192U && plugin::decodeEditorSnapshotReply(encoded, decoded) &&
@@ -480,7 +529,7 @@ void editorSnapshotProtocolRoundTrip()
           decoded.waveform.frames == reply.waveform.frames &&
           decoded.waveform.minimum[0] == -1.0f && decoded.playback.start == 0.25f &&
           decoded.playback.attackSeconds == 0.125f && decoded.mixer.pan == -0.5f && decoded.mixer.dirty == 1.0f &&
-          decoded.mixer.reverse == 1.0f,
+          decoded.mixer.reverse == 1.0f && decoded.mixer.globalMixer == 0.0f,
           "one bounded reply carries coherent waveform, playback and mixer values");
     check(!plugin::decodeEditorSnapshotReply(encoded + "|", decoded) &&
           !plugin::decodeEditorSnapshotReply(encoded.substr(0, encoded.rfind('|')), decoded) &&
@@ -765,17 +814,20 @@ void padDirectionRequestRoundTrip()
     request.playback = {0.3f, 0.8f, 0.125f, 0.25f, 0.6f, 0.5f};
     request.mixer.reverse = 1.0f;
     request.mixer.pan = -0.25f;
+    request.mixer.globalMixer = 0.0f;
     const auto encoded = encodePadDirectionRequest(request);
     PadDirectionRequest decoded;
     check(decodePadDirectionRequest(encoded, decoded) && decoded.pad == 63U &&
           decoded.playback.start == request.playback.start &&
           decoded.playback.end == request.playback.end &&
           decoded.playback.attackSeconds == request.playback.attackSeconds &&
-          decoded.mixer.reverse == 1.0f && decoded.mixer.pan == -0.25f,
+          decoded.mixer.reverse == 1.0f && decoded.mixer.pan == -0.25f &&
+          decoded.mixer.globalMixer == 0.0f,
           "direction action round-trips paired cuts, ADSR and mixer settings");
     const auto reject = [&](const std::string& invalid) {
         check(!decodePadDirectionRequest(invalid, decoded) && decoded.pad == 63U &&
-              decoded.playback.start == request.playback.start && decoded.mixer.reverse == 1.0f,
+              decoded.playback.start == request.playback.start && decoded.mixer.reverse == 1.0f &&
+              decoded.mixer.globalMixer == 0.0f,
               "malformed direction action preserves destination");
     };
     reject("");

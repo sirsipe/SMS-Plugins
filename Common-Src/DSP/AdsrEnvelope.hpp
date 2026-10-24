@@ -31,9 +31,10 @@ public:
         }
     }
 
-    void noteOff() noexcept
+    /** Optionally replace an automatic fade with a full release from the current level. */
+    void noteOff(const bool restartRelease = false) noexcept
     {
-        if (stage_ == Stage::Idle || stage_ == Stage::Release)
+        if (stage_ == Stage::Idle || (stage_ == Stage::Release && !restartRelease))
             return;
         remaining_ = framesFor(settings_.releaseSeconds);
         if (remaining_ == 0U || level_ <= 0.0f) {

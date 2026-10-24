@@ -152,7 +152,7 @@ bool same(sms::dsp::SampleMixerSettings a, sms::dsp::SampleMixerSettings b)
     return a.gainDecibels == b.gainDecibels && a.pan == b.pan &&
            a.tuneSemitones == b.tuneSemitones && a.lowpass == b.lowpass &&
            a.highpass == b.highpass && a.filterSlope == b.filterSlope && a.dirty == b.dirty &&
-        a.reverse == b.reverse;
+           a.reverse == b.reverse && a.globalMixer == b.globalMixer;
 }
 
 // The callback uses only fixed arrays and atomics. Every block has the same
@@ -316,6 +316,7 @@ void transferContinuity(const PadData& source)
         mixer.gainDecibels = -6.0f; mixer.pan = 0.25f;
         mixer.tuneSemitones = -3.0f; mixer.lowpass = 0.125f;
         mixer.highpass = 0.25f; mixer.filterSlope = 2; mixer.dirty = 1; mixer.reverse = 1;
+        mixer.globalMixer = 0;
         engine.setPadPlaybackSettings(0, playback);
         engine.setPadMixerSettings(0, mixer);
         sms::dsp::SamplePlaybackSettings copiedPlayback;

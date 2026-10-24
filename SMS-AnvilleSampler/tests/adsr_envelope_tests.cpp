@@ -374,6 +374,51 @@ void testFrameRoundingAndSampleRateFallback()
     expect(envelope.releaseFrames() == 1U, "sample rates at or below one use 48 kHz fallback");
 }
 
+void testRestartAutomaticRelease()
+{
+    AdsrEnvelope envelope;
+    const SamplePlaybackSettings automatic{.sustainLevel = 0.8f, .releaseSeconds = 0.2f};
+    auto fullRelease = automatic;
+    fullRelease.releaseSeconds = 0.4f;
+    envelope.configure(10.0, automatic);
+    envelope.noteOn();
+    envelope.noteOff();
+    expectNear(envelope.next(), 0.8f, "automatic fade before full note-off release");
+    expectNear(envelope.level(), 0.4f, "automatic fade level before full release");
+    envelope.configure(10.0, fullRelease);
+    envelope.noteOff(true);
+    expectNear(envelope.level(), 0.4f, "full note-off release preserves current level");
+    expectNear(envelope.next(), 0.4f, "full note-off release first sample");
+    envelope.noteOff();
+    expectSequence(envelope, {0.3f, 0.2f, 0.1f},
+                   "normal repeated noteOff preserves restarted release timing");
+    expectStage(envelope, AdsrEnvelope::Stage::Idle, "full note-off release endpoint");
+
+    envelope.configure(10.0, automatic);
+    envelope.noteOn();
+    envelope.noteOff();
+    static_cast<void>(envelope.next());
+    envelope.updateSettings(fullRelease);
+    expectNear(envelope.next(), 0.4f, "live release update first sample");
+    envelope.noteOff(true);
+    expectSequence(envelope, {0.3f, 0.225f, 0.15f, 0.075f},
+                   "explicit restart uses full duration after a live release edit");
+    expectStage(envelope, AdsrEnvelope::Stage::Idle, "live-edited full release endpoint");
+
+    envelope.configure(10.0, automatic);
+    envelope.noteOn();
+    envelope.noteOff();
+    static_cast<void>(envelope.next());
+    fullRelease.releaseSeconds = 0.0f;
+    envelope.configure(10.0, fullRelease);
+    envelope.noteOff(true);
+    expectStage(envelope, AdsrEnvelope::Stage::Idle,
+                "zero-duration override ends automatic release immediately");
+    expectNear(envelope.next(), 0.0f, "zero-duration override clears release level");
+    envelope.noteOff(true);
+    expectStage(envelope, AdsrEnvelope::Stage::Idle, "explicit release restart keeps idle voice idle");
+}
+
 } // namespace
 
 int main()
@@ -388,6 +433,7 @@ int main()
     testZeroDurationEditsAndUnchangedSettings();
     testEnvelopeSettingsSanitization();
     testAutomaticReleaseResume();
+    testRestartAutomaticRelease();
     testFrameRoundingAndSampleRateFallback();
 
     if (failures != 0) {

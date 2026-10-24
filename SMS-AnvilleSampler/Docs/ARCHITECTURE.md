@@ -58,13 +58,13 @@ Playback uses linear interpolation for source-rate conversion and semitone
 varispeed. Per-pad region/ADSR and mixer settings are non-destructive; global
 volume/pan/tune combine during playback. Active voices refresh mixer,
 ADSR, and cuts per block; one-shot Start stays fixed until retrigger.
-Triggers latch pad direction/mode; Global Reverse turns all voices. Editor requests atomically mirror
+Triggers latch pad direction/mode; Global Reverse turns enabled pads. Editor requests atomically mirror
 Start/End, active cursor and orientation without restarting ADSR/filters. Reverse
 maps playback i to raw N−1−i before effects, preserving PCM; cut/split stays raw. Gate loops Start/End through note-off and ADSR
 release. Arm cuts Gate voices. Editor Loop repeats until stopped; Play auditions once.
-Loops preserve fractional overshoot, seam interpolation, ADSR and filters in
-either direction. Only one-shot voices schedule an automatic
-end fade and cap Release to half the region duration. Loop cut edits keep an
+Loops preserve fractional overshoot, seam interpolation and filters, retriggering
+ADSR each pass. Pass fades cap Release to half their duration; Gate note-off
+restores full Release without retriggering. Loop cut edits keep an
 in-range cursor; otherwise they wrap its fractional position into the new range.
 Filter and Dirty follow [Mixing](../../Docs/AI/MIXING.md).
 

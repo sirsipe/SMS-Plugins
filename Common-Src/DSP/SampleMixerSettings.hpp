@@ -14,7 +14,7 @@ inline constexpr float kMaximumTuneSemitones = 24.0f;
 inline constexpr float kMinimumFilterAmount = 0.0f;
 inline constexpr float kMaximumFilterAmount = 1.0f;
 
-/** Per-sample level, balance, varispeed, color, and playback direction settings. */
+/** Per-sample level, balance, varispeed, color, direction, and global routing. */
 struct SampleMixerSettings {
     float gainDecibels = 0.0f;
     float pan = 0.0f;
@@ -24,6 +24,7 @@ struct SampleMixerSettings {
     float filterSlope = 0.0f; // 0 = 6, 1 = 12, 2 = 24 dB/octave
     float dirty = 0.0f;
     float reverse = 0.0f;
+    float globalMixer = 1.0f;
 };
 
 [[nodiscard]] inline SampleMixerSettings sanitize(SampleMixerSettings value) noexcept
@@ -46,6 +47,7 @@ struct SampleMixerSettings {
     value.filterSlope = std::clamp(std::round(finiteOr(value.filterSlope, 0.0f)), 0.0f, 2.0f);
     value.dirty = finiteOr(value.dirty, 0.0f) >= 0.5f ? 1.0f : 0.0f;
     value.reverse = finiteOr(value.reverse, 0.0f) >= 0.5f ? 1.0f : 0.0f;
+    value.globalMixer = finiteOr(value.globalMixer, 1.0f) >= 0.5f ? 1.0f : 0.0f;
     return value;
 }
 

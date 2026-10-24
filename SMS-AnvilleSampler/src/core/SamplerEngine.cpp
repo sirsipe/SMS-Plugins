@@ -172,7 +172,8 @@ void SamplerEngine::setSettings(const EngineSettings& s) noexcept {
         std::clamp<std::uint32_t>(settings_.maxVoices, 1U, kPadsPerBank));
     if (settings_.reverse != previous.reverse) {
         for (std::uint32_t pad = 0; pad < kPadCount; ++pad)
-            redirectPadVoice(pad, !pads_[pad].voiceReverse);
+            if (pads_[pad].mixerGlobalMixer.load(std::memory_order_acquire) >= 0.5f)
+                redirectPadVoice(pad, !pads_[pad].voiceReverse);
     }
     if (settings_.armed) {
         stopChopPreview();
@@ -426,9 +427,13 @@ void SamplerEngine::applyPendingState() noexcept {
             if (!update) continue;
             if (update->replaceAudio) publishStorage(pad, update->storage, false);
             if (update->replacePlayback) setPadPlaybackSettingsDirect(pad, update->playback);
-            if (update->replaceMixer) setPadMixerSettingsDirect(pad, update->mixer);
+            // A paired editor action applies the final direction once, avoiding
+            // transient turns/clamping when local and master changes cancel.
+            if (update->replaceMixer)
+                setPadMixerSettingsDirect(pad, update->mixer, !update->redirectActiveVoice);
             if (update->redirectActiveVoice)
-                redirectPadVoice(pad, update->activeReverse != settings_.reverse);
+                redirectPadVoice(pad, update->activeReverse !=
+                    (settings_.reverse && update->mixer.globalMixer >= 0.5f));
         }
         for (std::uint32_t pad = 0; pad < kPadCount; ++pad)
             if (updates[pad]) PadMutation::finish(pads_[pad]);
@@ -615,8 +620,10 @@ void SamplerEngine::startVoice(std::uint32_t pad, std::uint8_t velocity,
     if (!p.playing)
         enforceVoiceLimit(pad);
     const auto frameCount = p.publishedFrames.load(std::memory_order_acquire);
+    const auto mixer = padMixerSettings(pad);
+    const bool globalMixer = mixer.globalMixer >= 0.5f;
     auto playback = padPlaybackSettings(pad);
-    if (settings_.reverse) playback = sms::dsp::mirroredRegion(playback);
+    if (globalMixer && settings_.reverse) playback = sms::dsp::mirroredRegion(playback);
     const auto startFrame = std::min(frameCount - 1U, static_cast<std::uint32_t>(
         std::floor(static_cast<double>(playback.start) * frameCount)));
     const auto endFrame = std::clamp(static_cast<std::uint32_t>(
@@ -624,29 +631,29 @@ void SamplerEngine::startVoice(std::uint32_t pad, std::uint8_t velocity,
     p.voiceStartFrame = startFrame;
     p.voiceEndFrame = endFrame;
     p.releaseFromEnd = false;
+    p.noteReleased = false;
     p.velocityGain = static_cast<float>(velocity) / 127.0f;
     const double sourceRate = p.sourceSampleRate.load(std::memory_order_relaxed);
-    const auto mixer = padMixerSettings(pad);
-    p.voiceReverse = (mixer.reverse >= 0.5f) != settings_.reverse;
+    p.voiceReverse = (mixer.reverse >= 0.5f) != (globalMixer && settings_.reverse);
     p.playPosition = static_cast<double>(startFrame);
     const float gain = sms::dsp::sampleGain(mixer);
-    const float pan = std::clamp(mixer.pan + settings_.pan, -1.0f, 1.0f);
+    const float pan = std::clamp(mixer.pan + (globalMixer ? settings_.pan : 0.0f), -1.0f, 1.0f);
     const double tuneRatio = std::exp2(
-        static_cast<double>(mixer.tuneSemitones + settings_.tuneSemitones) / 12.0);
+        static_cast<double>(mixer.tuneSemitones + (globalMixer ? settings_.tuneSemitones : 0.0f)) / 12.0);
     p.mixerGainLeft = gain * (pan > 0.0f ? 1.0f - pan : 1.0f);
     p.mixerGainRight = gain * (pan < 0.0f ? 1.0f + pan : 1.0f);
-    p.dirtyPlayback = mixer.dirty >= 0.5f || settings_.dirty >= 0.5f;
+    p.dirtyPlayback = mixer.dirty >= 0.5f || (globalMixer && settings_.dirty >= 0.5f);
     p.padFilters.reset();
     p.globalFilters.reset();
     p.padFilters.configure(mixer, sample_rate_);
-    p.globalFilters.configure({0.0f, 0.0f, 0.0f, settings_.lowpass,
-        settings_.highpass, settings_.filterSlope, settings_.dirty}, sample_rate_);
+    p.globalFilters.configure({0.0f, 0.0f, 0.0f,
+        globalMixer ? settings_.lowpass : 0.0f,
+        globalMixer ? settings_.highpass : 0.0f, settings_.filterSlope}, sample_rate_);
     p.playStep = (sourceRate / sample_rate_) * tuneRatio;
     const float regionSeconds = static_cast<float>(endFrame - startFrame) /
         static_cast<float>((sourceRate > 1.0 ? sourceRate : sample_rate_) *
                            tuneRatio);
-    if (mode == VoiceMode::OneShot)
-        playback.releaseSeconds = std::min(playback.releaseSeconds, regionSeconds * 0.5f);
+    playback.releaseSeconds = std::min(playback.releaseSeconds, regionSeconds * 0.5f);
     p.envelope.configure(sample_rate_, playback);
     p.envelope.noteOn();
     p.playing = true;
@@ -659,8 +666,13 @@ void SamplerEngine::startVoice(std::uint32_t pad, std::uint8_t velocity,
 void SamplerEngine::stopVoice(std::uint32_t pad) noexcept {
     if (pad < kPadCount) {
         auto& voice = pads_[pad];
+        if (voice.noteReleased)
+            return;
         voice.releaseFromEnd = false;
-        voice.envelope.noteOff();
+        voice.noteReleased = true;
+        // A held Gate's release is independent of its per-pass end fade.
+        voice.envelope.updateSettings(padPlaybackSettings(pad));
+        voice.envelope.noteOff(true);
         if (!voice.envelope.active()) {
             voice.playing = false;
             voice.publishedPlaying.store(false, std::memory_order_release);
@@ -730,8 +742,10 @@ void SamplerEngine::refreshActiveVoiceSettings(const std::uint32_t pad) noexcept
         return;
     }
 
+    const auto mixer = padMixerSettings(pad);
+    const bool globalMixer = mixer.globalMixer >= 0.5f;
     auto playback = padPlaybackSettings(pad);
-    if (settings_.reverse) playback = sms::dsp::mirroredRegion(playback);
+    if (globalMixer && settings_.reverse) playback = sms::dsp::mirroredRegion(playback);
     const bool looping = voice.voiceMode != VoiceMode::OneShot;
     if (looping) {
         // Loop turns and seam interpolation must use the latest Start, too.
@@ -754,23 +768,23 @@ void SamplerEngine::refreshActiveVoiceSettings(const std::uint32_t pad) noexcept
         voice.playPosition = voice.voiceStartFrame + phase;
     }
 
-    const auto mixer = padMixerSettings(pad);
     const float gain = sms::dsp::sampleGain(mixer);
-    const float pan = std::clamp(mixer.pan + settings_.pan, -1.0f, 1.0f);
+    const float pan = std::clamp(mixer.pan + (globalMixer ? settings_.pan : 0.0f), -1.0f, 1.0f);
     const double tuneRatio = std::exp2(
-        static_cast<double>(mixer.tuneSemitones + settings_.tuneSemitones) / 12.0);
+        static_cast<double>(mixer.tuneSemitones + (globalMixer ? settings_.tuneSemitones : 0.0f)) / 12.0);
     voice.mixerGainLeft = gain * (pan > 0.0f ? 1.0f - pan : 1.0f);
     voice.mixerGainRight = gain * (pan < 0.0f ? 1.0f + pan : 1.0f);
-    voice.dirtyPlayback = mixer.dirty >= 0.5f || settings_.dirty >= 0.5f;
+    voice.dirtyPlayback = mixer.dirty >= 0.5f || (globalMixer && settings_.dirty >= 0.5f);
     voice.padFilters.configure(mixer, sample_rate_);
-    voice.globalFilters.configure({0.0f, 0.0f, 0.0f, settings_.lowpass,
-        settings_.highpass, settings_.filterSlope, settings_.dirty}, sample_rate_);
+    voice.globalFilters.configure({0.0f, 0.0f, 0.0f,
+        globalMixer ? settings_.lowpass : 0.0f,
+        globalMixer ? settings_.highpass : 0.0f, settings_.filterSlope}, sample_rate_);
     const double sourceRate = voice.sourceSampleRate.load(std::memory_order_relaxed);
     voice.playStep = (sourceRate / sample_rate_) * tuneRatio;
     const float regionSeconds = static_cast<float>(voice.voiceEndFrame - voice.voiceStartFrame) /
         static_cast<float>((sourceRate > 1.0 ? sourceRate : sample_rate_) *
                            tuneRatio);
-    if (voice.voiceMode == VoiceMode::OneShot)
+    if (!voice.noteReleased)
         playback.releaseSeconds = std::min(playback.releaseSeconds, regionSeconds * 0.5f);
     voice.envelope.updateSettings(playback);
 
@@ -933,13 +947,17 @@ void SamplerEngine::process(const float* inputLeft, const float* inputRight,
             if (!p.playing) continue;
             const auto frameCount = p.publishedFrames.load(std::memory_order_acquire);
             const auto n = std::min(frameCount, p.voiceEndFrame);
-            if (n == 0 || !p.envelope.active()) { p.playing = false; p.publishedPlaying.store(false, std::memory_order_release); continue; }
+            const bool looping = p.voiceMode != VoiceMode::OneShot;
+            if (n == 0 || (!p.envelope.active() && (!looping || p.noteReleased))) {
+                p.playing = false;
+                p.publishedPlaying.store(false, std::memory_order_release);
+                continue;
+            }
             const auto pos = p.playPosition;
             // The cursor, cut points and envelope use left-to-right playback
             // coordinates. Reverse virtually flips the full source before trimming.
             const auto i = static_cast<std::uint32_t>(pos);
             if (i >= n) { p.playing = false; p.publishedPlaying.store(false, std::memory_order_release); continue; }
-            const bool looping = p.voiceMode != VoiceMode::OneShot;
             const auto j = (i + 1U < n) ? i + 1U : looping ? p.voiceStartFrame : i;
             const auto frac = static_cast<float>(pos - static_cast<double>(i));
             const auto sourceFrame = [&](const std::uint32_t index) noexcept {
@@ -947,7 +965,7 @@ void SamplerEngine::process(const float* inputLeft, const float* inputRight,
             };
             const double step = p.playStep;
             const double remainingOutputFrames = (static_cast<double>(n) - pos) / step;
-            if (!looping && !p.envelope.releasing() && p.envelope.releaseFrames() > 0U &&
+            if (!p.noteReleased && !p.envelope.releasing() && p.envelope.releaseFrames() > 0U &&
                 remainingOutputFrames <= static_cast<double>(p.envelope.releaseFrames())) {
                 p.envelope.noteOff();
                 p.releaseFromEnd = true;
@@ -980,8 +998,12 @@ void SamplerEngine::process(const float* inputLeft, const float* inputRight,
                 p.playPosition = p.voiceStartFrame + std::fmod(
                     p.playPosition - p.voiceStartFrame,
                     static_cast<double>(n - p.voiceStartFrame));
+                if (!p.noteReleased) {
+                    p.envelope.noteOn();
+                    p.releaseFromEnd = false;
+                }
             }
-            if ((!looping && reachedEnd) || !p.envelope.active()) {
+            if ((!looping && reachedEnd) || (!p.envelope.active() && (!looping || p.noteReleased))) {
                 p.playing = false;
                 p.publishedPlaying.store(false, std::memory_order_release);
             }
@@ -1702,11 +1724,13 @@ sms::dsp::SampleMixerSettings SamplerEngine::padMixerSettings(
         p.mixerFilterSlope.load(std::memory_order_acquire),
         p.mixerDirty.load(std::memory_order_acquire),
         p.mixerReverse.load(std::memory_order_acquire),
+        p.mixerGlobalMixer.load(std::memory_order_acquire),
     });
 }
 
 void SamplerEngine::setPadMixerSettingsDirect(
-    const std::uint32_t pad, const sms::dsp::SampleMixerSettings& requested) noexcept
+    const std::uint32_t pad, const sms::dsp::SampleMixerSettings& requested,
+    const bool redirectGlobal) noexcept
 {
     if (pad >= kPadCount) return;
     const auto settings = sms::dsp::sanitize(requested);
@@ -1720,7 +1744,13 @@ void SamplerEngine::setPadMixerSettingsDirect(
         p.mixerHighpass.load(std::memory_order_acquire) != settings.highpass ||
         p.mixerFilterSlope.load(std::memory_order_acquire) != settings.filterSlope ||
         p.mixerDirty.load(std::memory_order_acquire) != settings.dirty ||
-        p.mixerReverse.load(std::memory_order_acquire) != settings.reverse;
+        p.mixerReverse.load(std::memory_order_acquire) != settings.reverse ||
+        p.mixerGlobalMixer.load(std::memory_order_acquire) != settings.globalMixer;
+    // Bypassing the master changes only its contribution to direction. Keep
+    // the latched local direction, current source position, and envelope.
+    if (redirectGlobal && settings_.reverse &&
+        p.mixerGlobalMixer.load(std::memory_order_acquire) != settings.globalMixer)
+        redirectPadVoice(pad, !p.voiceReverse);
     p.mixerGainDecibels.store(settings.gainDecibels, std::memory_order_release);
     p.mixerPan.store(settings.pan, std::memory_order_release);
     p.mixerTuneSemitones.store(settings.tuneSemitones, std::memory_order_release);
@@ -1729,6 +1759,7 @@ void SamplerEngine::setPadMixerSettingsDirect(
     p.mixerFilterSlope.store(settings.filterSlope, std::memory_order_release);
     p.mixerDirty.store(settings.dirty, std::memory_order_release);
     p.mixerReverse.store(settings.reverse, std::memory_order_release);
+    p.mixerGlobalMixer.store(settings.globalMixer, std::memory_order_release);
     if (changed)
         p.generation.fetch_add(1U, std::memory_order_release);
 }
