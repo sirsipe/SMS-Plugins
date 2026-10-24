@@ -22,9 +22,10 @@ asset paths. Include short installation instructions and a preview if possible.
 
 Create personal experiments under ignored `build/skins/<id>/` or outside the
 checkout. Do not add personal skins, artwork, previews, or archives to Git.
-The [bundled default](../../SMS-AnvilleSampler/skins/default/skin.ini) and
+[Anville Graffiti](../../SMS-AnvilleSampler/skins/AnvilleGraffiti/skin.ini),
+[Finnish Dream](../../SMS-AnvilleSampler/skins/FinnishDream/skin.ini), and the
 [placeholder](../../SMS-AnvilleSampler/skins/placeholder/) are maintained
-repository skins; change the default only for an explicitly requested product
+repository skins; change bundled skins only for an explicitly requested product
 change. Keep sampler code and the placeholder unchanged when authoring custom skins.
 
 ## Palette design

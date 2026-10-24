@@ -24,7 +24,7 @@ Filter with `ctest --test-dir build --output-on-failure -R NAME`:
 | `ui-skin` | Bounded/versioned manifests, scalar/UTF-8/printf fallback, Unicode bundle/image paths, confined images, startup snapshots |
 | `ui-skin-catalog` | Discovery, forced precedence, missing choices, native config folders, Unicode atomic preferences and concurrent writes |
 | `ui-skin-theme` | Placeholder completeness, RGBA/metric bounds, envelope point RGBA/hover, opacities, logo decoding/glow, nested/thread scopes |
-| `ui-default-skin` | Packaged default assets in enabled formats, forced/hidden selector, embedded logo, color/metric validity |
+| `ui-bundled-skins` | Both bundled skins in enabled formats, built-in default, selectable/remembered choices, embedded logo, exact assets and color/metric validity |
 | `ui-geometry` | Instrument metadata/ports, identity/help URLs, pad mapping, editor snapshots, waveform/chop geometry, viewport mapping, logo halo/pulse geometry, hit testing, wheel editing, Space press/repeat routing |
 | `ui-message-bus` | Bounded VST3 message ordering, independent view cursors, explicit gap reporting on wrap, and large replies |
 | `wav-codec` | WAV formats, chunk/truncation/header/nonfinite validation, file actions, offline render, real-time access gate |
@@ -86,15 +86,16 @@ Checks:
   Global Mixer with global pan/tune/Dirty/filters/Reverse active; check immediate
   bypass, orientation and active local effects/OUT. Verify reenable, independent
   pad flags, save/reload and copy/paste.
-- Skins: verify forced `skin` hides the selector; check halo/pulse,
-  steady/disabled settings, logos, background/pad/panel opacity and resizing. Remove the default
-  before testing collections. With named `skins` entries,
-  switch Default/custom in LV2/VST3; check images/text/colors and reopening
-  across formats. Test scrolling, deleted skins, config-write failure, and resizing.
+- Skins: without preferences, verify Default. Switch
+  Default/Anville Graffiti/Finnish Dream in LV2/VST3; check images/text/colors,
+  halo/pulse, background/pad/panel opacity, resizing and remembered selection
+  across formats. In installed copies, verify forced `skin` hides the
+  selector; check steady/disabled halos and custom logos. Test scrolling, deleted
+  skins, config-write failure, and resizing.
 - UI/editor: check drawing/resizing, pad selection, region/mixer/ADSR drag,
   wheel/reset, sound/playhead, and single-target hover. In embedded VST3, type
   a global value: Enter commits, Escape cancels. Check ARM/play/stop icons and
-  bundled blue PLAY/red ARMED indicators. ARM hides the mixer; both edge faders remain
+  default green PLAY/red ARMED indicators. ARM hides the mixer; both edge faders remain
   editable in every view. Verify independent monitor/playback gain, raw preview,
   and unchanged captured PCM. Click to focus: Space plays/stops
   in PLAY/Sample Editor and starts/chops in ARM. Hold/release/tap to check repeat

@@ -84,12 +84,15 @@ jobs:
         run: |
           $required = @(
             'Contents/x86_64-win/SMS-AnvilleSampler.vst3',
-            'skin/skin.ini', 'skin/background.png', 'skin-template/skin.ini'
+            'skins/AnvilleGraffiti/skin.ini', 'skins/AnvilleGraffiti/background.png',
+            'skins/FinnishDream/skin.ini', 'skins/FinnishDream/background.jpg',
+            'skin-template/skin.ini'
           )
           foreach ($relative in $required) {
             $file = Join-Path 'build-win/bin/SMS-AnvilleSampler.vst3' $relative
             if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { throw "Missing bundle file: $file" }
           }
+          if (Test-Path 'build-win/bin/SMS-AnvilleSampler.vst3/skin') { throw 'Unexpected forced skin' }
           if (Test-Path 'build-win/bin/SMS-AnvilleSampler.lv2') { throw 'Unexpected LV2 output' }
 
       - name: Package manual build artifact

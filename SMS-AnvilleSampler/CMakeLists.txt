@@ -191,61 +191,57 @@ foreach(anvillesampler_target IN LISTS anvillesampler_targets)
     ANVILLESAMPLER_HELP_REF="${ANVILLESAMPLER_HELP_REF}")
 endforeach()
 
-# Ship the maintained active default and an inactive authoring example.
-# Copy on every build so manifest/artwork edits do not require relinking.
-set(anvillesampler_default_skin "${CMAKE_CURRENT_SOURCE_DIR}/skins/default")
-set(anvillesampler_skin_template "${CMAKE_CURRENT_SOURCE_DIR}/skins/placeholder")
-add_custom_target(anvillesampler_skin_templates ALL)
+# Ship selectable skins and an inactive authoring example.
+# Refresh on every build so manifest/artwork edits do not require relinking.
+set(anvillesampler_skin_source "${CMAKE_CURRENT_SOURCE_DIR}/skins")
+set(anvillesampler_bundled_skin_ids AnvilleGraffiti FinnishDream)
+set(anvillesampler_skin_template "${anvillesampler_skin_source}/placeholder")
+set(anvillesampler_packaged_skin_paths)
 if(ANVILLESAMPLER_BUILD_LV2)
-  add_custom_command(TARGET anvillesampler_skin_templates POST_BUILD
-    COMMAND "${CMAKE_COMMAND}" -E copy_directory "${anvillesampler_default_skin}"
-      "${PROJECT_BINARY_DIR}/bin/SMS-AnvilleSampler.lv2/skin"
-    COMMAND "${CMAKE_COMMAND}" -E copy_directory "${anvillesampler_skin_template}"
-      "${PROJECT_BINARY_DIR}/bin/SMS-AnvilleSampler.lv2/skin-template"
-    VERBATIM)
+  list(APPEND anvillesampler_packaged_skin_paths
+    "${PROJECT_BINARY_DIR}/bin/SMS-AnvilleSampler.lv2/skin")
 endif()
 if(ANVILLESAMPLER_BUILD_VST3)
-  add_custom_command(TARGET anvillesampler_skin_templates POST_BUILD
-    COMMAND "${CMAKE_COMMAND}" -E copy_directory "${anvillesampler_default_skin}"
-      "${PROJECT_BINARY_DIR}/bin/SMS-AnvilleSampler.vst3/skin"
-    COMMAND "${CMAKE_COMMAND}" -E copy_directory "${anvillesampler_skin_template}"
-      "${PROJECT_BINARY_DIR}/bin/SMS-AnvilleSampler.vst3/skin-template"
-    VERBATIM)
+  list(APPEND anvillesampler_packaged_skin_paths
+    "${PROJECT_BINARY_DIR}/bin/SMS-AnvilleSampler.vst3/skin")
 endif()
 if(ANVILLESAMPLER_BUILD_CLAP)
-  add_custom_command(TARGET anvillesampler_skin_templates POST_BUILD
-    COMMAND "${CMAKE_COMMAND}" -E copy_directory "${anvillesampler_default_skin}"
-      "${PROJECT_BINARY_DIR}/bin/SMS-AnvilleSampler.skin"
-    COMMAND "${CMAKE_COMMAND}" -E copy_directory "${anvillesampler_skin_template}"
-      "${PROJECT_BINARY_DIR}/bin/SMS-AnvilleSampler.skin-template"
-    VERBATIM)
+  list(APPEND anvillesampler_packaged_skin_paths
+    "${PROJECT_BINARY_DIR}/bin/SMS-AnvilleSampler.skin")
 endif()
+add_custom_target(anvillesampler_skins ALL)
+foreach(skin_path IN LISTS anvillesampler_packaged_skin_paths)
+  # Remove the previously shipped forced skin from reused build output.
+  # User overrides belong in installed bundles, away from generated files.
+  add_custom_command(TARGET anvillesampler_skins POST_BUILD
+    COMMAND "${CMAKE_COMMAND}" -E rm -rf "${skin_path}"
+    COMMAND "${CMAKE_COMMAND}" -E copy_directory "${anvillesampler_skin_template}"
+      "${skin_path}-template"
+    VERBATIM)
+  foreach(skin_id IN LISTS anvillesampler_bundled_skin_ids)
+    add_custom_command(TARGET anvillesampler_skins POST_BUILD
+      COMMAND "${CMAKE_COMMAND}" -E rm -rf "${skin_path}s/${skin_id}"
+      COMMAND "${CMAKE_COMMAND}" -E copy_directory "${anvillesampler_skin_source}/${skin_id}"
+        "${skin_path}s/${skin_id}"
+      VERBATIM)
+  endforeach()
+endforeach()
 if(ANVILLESAMPLER_BUILD_LV2)
-  add_dependencies(SMS-AnvilleSampler-lv2 anvillesampler_skin_templates)
+  add_dependencies(SMS-AnvilleSampler-lv2 anvillesampler_skins)
 endif()
 if(ANVILLESAMPLER_BUILD_VST3)
-  add_dependencies(SMS-AnvilleSampler-VST3-vst3 anvillesampler_skin_templates)
+  add_dependencies(SMS-AnvilleSampler-VST3-vst3 anvillesampler_skins)
 endif()
 if(ANVILLESAMPLER_BUILD_CLAP)
-  add_dependencies(SMS-AnvilleSampler-clap anvillesampler_skin_templates)
+  add_dependencies(SMS-AnvilleSampler-clap anvillesampler_skins)
 endif()
 
 if(BUILD_TESTING)
-  add_executable(anvillesampler_default_skin_tests tests/default_skin_tests.cpp)
-  target_link_libraries(anvillesampler_default_skin_tests PRIVATE sms_common_ui)
-  add_dependencies(anvillesampler_default_skin_tests anvillesampler_skin_templates)
-  set(anvillesampler_packaged_skins)
-  if(ANVILLESAMPLER_BUILD_LV2)
-    list(APPEND anvillesampler_packaged_skins "${PROJECT_BINARY_DIR}/bin/SMS-AnvilleSampler.lv2/skin")
-  endif()
-  if(ANVILLESAMPLER_BUILD_VST3)
-    list(APPEND anvillesampler_packaged_skins "${PROJECT_BINARY_DIR}/bin/SMS-AnvilleSampler.vst3/skin")
-  endif()
-  if(ANVILLESAMPLER_BUILD_CLAP)
-    list(APPEND anvillesampler_packaged_skins "${PROJECT_BINARY_DIR}/bin/SMS-AnvilleSampler.skin")
-  endif()
-  add_test(NAME ui-default-skin COMMAND anvillesampler_default_skin_tests
-    "${anvillesampler_default_skin}" ${anvillesampler_packaged_skins})
+  add_executable(anvillesampler_bundled_skin_tests tests/bundled_skin_tests.cpp)
+  target_link_libraries(anvillesampler_bundled_skin_tests PRIVATE sms_common_ui)
+  add_dependencies(anvillesampler_bundled_skin_tests anvillesampler_skins)
+  add_test(NAME ui-bundled-skins COMMAND anvillesampler_bundled_skin_tests
+    "${anvillesampler_skin_source}" ${anvillesampler_packaged_skin_paths})
 
   add_executable(anvillesampler_skin_catalog_tests tests/skin_catalog_tests.cpp)
   target_link_libraries(anvillesampler_skin_catalog_tests PRIVATE sms_common_ui Threads::Threads)

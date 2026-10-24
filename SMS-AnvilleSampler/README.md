@@ -29,7 +29,7 @@ Tested: **REAPER**, **Ardour**, **Carla**.
 1. Insert **SMS-Anville Sampler** as an instrument on a REAPER track receiving stereo audio/MIDI, or an Ardour MIDI track with stereo input sidechain for capture. Rescan after upgrading if listed as FX.
 
 2. Press **ARM** (red record circle) to arm; release it for PLAY.
-   Bundled header indicators: red ARMED, blue PLAY.
+   Default indicators: red ARMED, green PLAY. Skins can recolor them.
    The first empty visible pad is selected; click another while idle.
 
 3. **The first MIDI note-on or Space press starts the slice.** Later taps close
@@ -46,9 +46,9 @@ Tested: **REAPER**, **Ardour**, **Carla**.
 ![Context menu](Docs/context-menu.png)
 
 
-The hamburger menu has layout and bank mode selection. **Online Help** opens this
-guide from the matching tag in official releases, or from `main` in development
-builds. **Report Issue** opens the project's issues page.
+The hamburger menu selects layouts and bank modes. **Online Help** opens this
+guide at the release tag or development `main`. **Report Issue** opens the
+project's issues page.
 
 Select **All Banks** (unique notes, default) for gapless notes or **Selected Bank**
 (shared notes) to reuse controller notes in the active bank. All Banks limits
@@ -99,8 +99,8 @@ Right-click for **Split Sample**; following samples shift right without being ov
   The plug-in consumes Space when delivered; a DAW that intercepts keyboard
   shortcuts first may require its option to send keys to the plug-in.
 
-The bundled [graffiti skin](Docs/SKINS.md) loads automatically; customize its
-images, colors, labels and pulsing logo halo.
+Default uses no skin. **Hamburger → Skins** offers bundled **Anville Graffiti**
+and **Finnish Dream**, remembering your choice. See [skins](Docs/SKINS.md).
 
 ## Other controls
 

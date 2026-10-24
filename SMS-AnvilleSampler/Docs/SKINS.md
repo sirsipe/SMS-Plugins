@@ -6,17 +6,19 @@ Supply this guide, the [AI authoring reference](../../Docs/AI/SKINS.md), and
 [placeholder/skin.ini](../skins/placeholder/skin.ini) (the key catalog).
 Specify style, name, language and output folder.
 Personal skins belong in ignored `build/skins/` or outside the
-checkout; Git maintains only the default and placeholder.
+checkout; Git maintains the bundled skins and placeholder.
 
 ## Bundled appearance
 
-Every build deploys [the graffiti default](../skins/default/skin.ini) into
-`skin/` (CLAP uses sibling `SMS-AnvilleSampler.skin`). It loads automatically and
-hides the skin selector. It uses amber controls, cream text, and a yellow halo around the embedded anvil.
-Builds overwrite the shipped manifest and artwork in build output.
+**Default** is the built-in appearance without a skin.
+[Anville Graffiti](../skins/AnvilleGraffiti/skin.ini) and
+[Finnish Dream](../skins/FinnishDream/skin.ini) are bundled as optional choices
+under **hamburger → Skins**. A remembered selection is restored on reopening.
 
-Replace the installed `skin` for a custom forced appearance. Remove it to enable
-a `skins` collection or the built-in appearance.
+Builds refresh both in `skins/` (CLAP: sibling `SMS-AnvilleSampler.skins`).
+Builds remove the old forced `skin` from build output, including CLAP's
+`SMS-AnvilleSampler.skin`. Create `skin` in installed bundles to override the
+collection.
 
 ## Loading skins
 

@@ -22,7 +22,7 @@ summary page. It contains separate LV2 and VST3 `.tar.gz` archives plus
 For an unsigned Windows x64 development build, select **Windows CI** instead.
 Its `SMS-AnvilleSampler-<commit>-windows-x86_64` artifact contains a VST3 ZIP and
 `SHA256SUMS.txt`. Extract the whole `SMS-AnvilleSampler.vst3` folder, including
-`Contents`, `skin` and `skin-template`. Windows CI runs CTest and bundle checks;
+`Contents`, `skins` and `skin-template`. Windows CI runs CTest and bundle checks;
 it does not establish native DAW compatibility or publish a Windows release.
 Prerequisites and configuration live in [platform builds](AI/PLATFORM-BUILDS.md).
 

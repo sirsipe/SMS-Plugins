@@ -76,7 +76,7 @@ into DPF's expected directories and checks their SHA-256 hashes. There is no
 external VST3 SDK, Linux package, private dependency or secret to install.
 
 The workflow builds VST3 only, runs all CTest tests, verifies bundle binary,
-default skin and template paths, and checks LV2 was not produced. The static
+both bundled skin and template paths, and checks LV2 was not produced. The static
 MSVC runtime avoids a separate Visual C++ redistributable for these artifacts.
 Push/PR runs retain no bundles; manual runs upload a ZIP and SHA-256 checksum
 for 14 days. See [testing branch builds](../RELEASING.md).
