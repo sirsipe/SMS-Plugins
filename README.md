@@ -5,16 +5,22 @@
 > **STILL IN ALPHA - PLEASE WAIT FOR v1.0.0 BEFORE USING**
 
 _Professionally developed, **Linux-native** audio plugins._
-Windows and macOS versions may follow later.
+
+Windows and macOS versions, if provided, are experimental.
 
 ## Plugins
 
 ### [SMS-Anville Sampler](SMS-AnvilleSampler/README.md) — live stereo chopping sampler
-  for LV2 and VST3.
+Available as
+- **Linux VST3** (preferred) and LV2
+- Windows VST3 (experimental)
 
-| Default Skin | Finnish Dream | Anville Graffiti |
-| --- | --- | --- |
-| [<img src="SMS-AnvilleSampler/Docs/main-view.png" width="672" alt="Default Skin Main View">](SMS-AnvilleSampler/Docs/main-view.png) | [<img src="SMS-AnvilleSampler/Docs/main-view-finnish-dream.png" width="224" alt="Finnish Dream Main View">](SMS-AnvilleSampler/Docs/main-view-finnish-dream.png) | [<img src="SMS-AnvilleSampler/Docs/main-view-anville-graffiti.png" width="224" alt="Anville Graffiti Main View">](SMS-AnvilleSampler/Docs/main-view-anville-graffiti.png) |
+[<img src="SMS-AnvilleSampler/Docs/main-view.png" width="672" alt="Default Skin Main View">](SMS-AnvilleSampler/Docs/main-view.png)
+
+#### Alternative skins
+| Finnish Dream | Anville Graffiti |
+| --- | --- |
+| [<img src="SMS-AnvilleSampler/Docs/main-view-finnish-dream.png" alt="Finnish Dream Main View">](SMS-AnvilleSampler/Docs/main-view-finnish-dream.png) | [<img src="SMS-AnvilleSampler/Docs/main-view-anville-graffiti.png" alt="Anville Graffiti Main View">](SMS-AnvilleSampler/Docs/main-view-anville-graffiti.png) |
 
 ## About the developer & this project
 > Hi,
