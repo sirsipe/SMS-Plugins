@@ -1,19 +1,32 @@
 # SMS-Anville Sampler
 
-_A live stereo chopping sampler for Linux._
+> [!WARNING]
+> 
+> **STILL IN ALPHA - PLEASE WAIT FOR v1.0.0 BEFORE USING**
+
+_A live stereo chopping sampler._ See [Releases](https://github.com/sirsipe/SMS-Plugins/releases) for downloads.
+ - Linux VST3 (preferred)
+ - Linux LV2
+ - Windows VST3 (experimental)
+
+
 
 > Thanks to **Manolo Anville** ([@ManoloAnville](https://github.com/ManoloAnville)) for collaboration.
 
-| Default Skin | Finnish Dream | Anville Graffiti |
-| --- | --- | --- |
-| [<img src="Docs/main-view.png" width="672" alt="Default Skin">](Docs/main-view.png) | [<img src="Docs/main-view-finnish-dream.png" width="224" alt="Finnish Dream">](Docs/main-view-finnish-dream.png) | [<img src="Docs/main-view-anville-graffiti.png" width="224" alt="Anville Graffiti">](Docs/main-view-anville-graffiti.png) |
+[<img src="Docs/main-view.png" alt="Default Skin Main View">](Docs/main-view.png)
+
+#### Bundled Skins
+*Skins can be freely customized, see [skins](Docs/SKINS.md).*
+
+| Finnish Dream | Anville Graffiti |
+| --- | --- |
+| [<img src="Docs/main-view-finnish-dream.png" alt="Finnish Dream Main View">](Docs/main-view-finnish-dream.png) | [<img src="Docs/main-view-anville-graffiti.png" alt="Anville Graffiti Main View">](Docs/main-view-anville-graffiti.png) |
 
 Captures: v0.0.12.
 
-**VST3 is preferred** for faster GUI loading and human testing. LV2 is mostly
-AI-tested; CLAP is untested.
+**VST3 is preferred** for faster GUI loading and more comprehensive testing. LV2 is mostly AI-tested, and Windows VST3 has had minimal testing.
 
-Tested: **REAPER**, **Ardour**, **Carla**.
+Tested in: **REAPER**, **Ardour**, **Carla**. (But all DAW supporting VST3 should work.)
 
 - MIDI control; capture/chop input or load samples into pads.
 - Waveform editing and splitting.
@@ -43,10 +56,13 @@ Tested: **REAPER**, **Ardour**, **Carla**.
 
 5. Right-click a pad to edit, split, or adjust neighbouring cuts.
 
+### ARM view
+
 ![ARM capture view](Docs/arm-view.png)
 
-![Context menu](Docs/context-menu.png)
+### Menus
 
+![Context menu](Docs/context-menu.png)
 
 Hamburger: **PAD LAYOUT**, **BANK MODE**, **SKIN**, **LINKS**. Online Help opens this
 guide; Report Issue opens the project issues.
@@ -57,6 +73,8 @@ notes within the active bank. All Banks base note is limited to 64.
 Layouts preserve samples.
 
 ![Hamburger menu](Docs/hamburger-menu.png)
+
+### Sample Editor view
 
 **SAMPLE EDITOR** opens waveform, ADSR, and pad mixing; **MAIN VIEW** returns. See the
 [mixing guide](Docs/MIXING.md). The selection button cycles **Play on Select**,
@@ -70,24 +88,40 @@ edge faders stay visible. **IN** monitors and **OUT** controls samples and previ
 **Ctrl + wheel** zooms; **Shift + wheel** scrolls. The left zoom control and
 window box provide drag alternatives. Changing pads resets the view.
 
-| Default Skin | Finnish Dream | Anville Graffiti |
-| --- | --- | --- |
-| [<img src="Docs/sample-editor.png" width="672" alt="Default Skin">](Docs/sample-editor.png) | [<img src="Docs/sample-editor-finnish-dream.png" width="224" alt="Finnish Dream">](Docs/sample-editor-finnish-dream.png) | [<img src="Docs/sample-editor-anville-graffiti.png" width="224" alt="Anville Graffiti">](Docs/sample-editor-anville-graffiti.png) |
+[<img src="Docs/sample-editor.png" alt="Default Skin">](Docs/sample-editor.png) 
+
+#### Alternative skins
+| Finnish Dream | Anville Graffiti |
+| --- | --- |
+| [<img src="Docs/sample-editor-finnish-dream.png" alt="Finnish Dream">](Docs/sample-editor-finnish-dream.png) | [<img src="Docs/sample-editor-anville-graffiti.png" alt="Anville Graffiti">](Docs/sample-editor-anville-graffiti.png) |
+
+
+### Adjust Cut Points view
 
 Right-click a middle pad for **Adjust cut points**. See the
 [cut-point guide](Docs/CHOP-EDITOR.md).
 
-| Default Skin | Finnish Dream | Anville Graffiti |
-| --- | --- | --- |
-| [<img src="Docs/adjust-cut-points.png" width="672" alt="Default Skin">](Docs/adjust-cut-points.png) | [<img src="Docs/adjust-cut-points-finnish-dream.png" width="224" alt="Finnish Dream">](Docs/adjust-cut-points-finnish-dream.png) | [<img src="Docs/adjust-cut-points-anville-graffiti.png" width="224" alt="Anville Graffiti">](Docs/adjust-cut-points-anville-graffiti.png) |
+[<img src="Docs/adjust-cut-points.png" alt="Default Skin">](Docs/adjust-cut-points.png)
+
+#### Alternative skins
+| Finnish Dream | Anville Graffiti |
+| --- | --- |
+| [<img src="Docs/adjust-cut-points-finnish-dream.png" alt="Finnish Dream">](Docs/adjust-cut-points-finnish-dream.png) | [<img src="Docs/adjust-cut-points-anville-graffiti.png" alt="Anville Graffiti">](Docs/adjust-cut-points-anville-graffiti.png) |
+
+
+### Split sample view
 
 Right-click for **Split Sample**; following samples shift right without being overwritten.
 
-| Default Skin | Finnish Dream | Anville Graffiti |
-| --- | --- | --- |
-| [<img src="Docs/split-sample.png" width="672" alt="Default Skin">](Docs/split-sample.png) | [<img src="Docs/split-sample-finnish-dream.png" width="224" alt="Finnish Dream">](Docs/split-sample-finnish-dream.png) | [<img src="Docs/split-sample-anville-graffiti.png" width="224" alt="Anville Graffiti">](Docs/split-sample-anville-graffiti.png) |
+[<img src="Docs/split-sample.png" alt="Default Skin">](Docs/split-sample.png) 
 
-### General Controls
+#### Alternative skins
+| Finnish Dream | Anville Graffiti |
+| --- | --- |
+| [<img src="Docs/split-sample-finnish-dream.png" alt="Finnish Dream">](Docs/split-sample-finnish-dream.png) | [<img src="Docs/split-sample-anville-graffiti.png" alt="Anville Graffiti">](Docs/split-sample-anville-graffiti.png) |
+
+
+## General Controls
 
 - Drag/wheel knobs and sliders.
 - **Shift** gives 10× knob precision; **Ctrl** steps Gain/Volume 1 dB, Pan 10%, Tune one semitone.
@@ -132,12 +166,19 @@ length slice per note-on.
 ## Skins
 
 Default uses no skin. **Hamburger → Skin** offers bundled **Anville Graffiti**
-and **Finnish Dream**, remembering your choice. See [skins](Docs/SKINS.md).
+and **Finnish Dream**, remembering your choice. 
 
-| Default Skin | Finnish Dream | Anville Graffiti |
-| --- | --- | --- |
-| [<img src="Docs/main-view.png" width="224" alt="Default Skin">](Docs/main-view.png) | [<img src="Docs/main-view-finnish-dream.png" width="224" alt="Finnish Dream">](Docs/main-view-finnish-dream.png) | [<img src="Docs/main-view-anville-graffiti.png" width="224" alt="Anville Graffiti">](Docs/main-view-anville-graffiti.png) |
+Skins can be freely customized, see [skins](Docs/SKINS.md).
 
+### Skin: Default
+ [<img src="Docs/main-view.png" alt="Default Skin">](Docs/main-view.png) 
+
+### Skin: Finnish Dream
+[<img src="Docs/main-view-finnish-dream.png" alt="Finnish Dream">](Docs/main-view-finnish-dream.png)
+
+### Skin: Anville Graffiti
+[<img src="Docs/main-view-anville-graffiti.png" alt="Anville Graffiti">](Docs/main-view-anville-graffiti.png)
+ 
 ## Vision, Contributions, License
 
 Development/testing: [Contributing](../CONTRIBUTING.md).
