@@ -979,10 +979,17 @@ private:
         }
     }
 
+    void drawControlPanelBacking()
+    {
+        const sms::ui::dpf::ScopedCanvasState panelState(canvas_);
+        canvas_.globalAlpha(sms::ui::dpf::theme().controlPanelAlpha);
+        sms::ui::dpf::drawPanel(canvas_, uiLayout::sidePanel);
+    }
+
     void drawChopEditorPanel()
     {
         const auto& colors = sms::ui::dpf::theme();
-        sms::ui::dpf::drawPanel(canvas_, uiLayout::sidePanel);
+        drawControlPanelBacking();
         canvas_.fontFace(NANOVG_DEJAVU_SANS_TTF);
         canvas_.fontSize(13.0f);
         canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_LEFT |
@@ -1076,7 +1083,7 @@ private:
     void drawEditorPadPanel()
     {
         const auto& colors = sms::ui::dpf::theme();
-        sms::ui::dpf::drawPanel(canvas_, uiLayout::sidePanel);
+        drawControlPanelBacking();
         sms::ui::dpf::drawSegment(canvas_, uiLayout::closeEditor, "MAIN VIEW", true,
                                   colors.activityPlayback,
                                   hovered(InteractiveType::closeEditor));
@@ -1140,7 +1147,7 @@ private:
     void drawControlPanel()
     {
         const auto& colors = sms::ui::dpf::theme();
-        sms::ui::dpf::drawPanel(canvas_, uiLayout::sidePanel);
+        drawControlPanelBacking();
         sms::ui::dpf::drawSegment(canvas_, uiLayout::openEditor,
                                   "SAMPLE EDITOR", false,
                                   colors.controlAccent, hovered(InteractiveType::openEditor),

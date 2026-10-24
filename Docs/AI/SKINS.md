@@ -59,8 +59,9 @@ with the original logo fully opaque over the halo.
 Metrics control material grain, tint/shadow/bevel/disabled/hover opacity, panel
 and control radii, and outline width. Use the template's exact keys and the
 guide's bounds. Geometry and font sizes stay fixed; metrics cannot relocate or
-resize widgets. `backgroundAlpha`, `padAlpha` and `padPanelAlpha` independently
-control image, pad-surface and main pad-bank backing opacity. See the skin guide
+resize widgets. `backgroundAlpha`, `padAlpha`, `padPanelAlpha` and
+`controlPanelAlpha` independently control image, pad-surface, main pad-bank backing
+and right-side backing opacity. See the skin guide
 for bounds/defaults. Preserve label/selection opacity; fade every pad
 surface layer, including shadows, tint, hover/activity fill, bevels and grain.
 Panel gradient alpha also reveals artwork; pad gradients use `padAlpha`.

@@ -56,6 +56,7 @@ inline constexpr std::array themeMetricFields{
     ThemeMetricField{"backgroundAlpha", &Theme::backgroundAlpha, 0.0f, 1.0f},
     ThemeMetricField{"padAlpha", &Theme::padAlpha, 0.0f, 1.0f},
     ThemeMetricField{"padPanelAlpha", &Theme::padPanelAlpha, 0.0f, 1.0f},
+    ThemeMetricField{"controlPanelAlpha", &Theme::controlPanelAlpha, 0.0f, 1.0f},
     ThemeMetricField{"padTintAlpha", &Theme::padTintAlpha, 0.0f, 1.0f},
     ThemeMetricField{"panelRadius", &Theme::panelRadius, 0.0f, 24.0f},
     ThemeMetricField{"controlRadius", &Theme::controlRadius, 0.0f, 24.0f},

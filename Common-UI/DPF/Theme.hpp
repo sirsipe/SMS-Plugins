@@ -27,6 +27,7 @@ struct Theme {
     float backgroundAlpha = 1.0f;
     float padAlpha = 1.0f;
     float padPanelAlpha = 1.0f;
+    float controlPanelAlpha = 1.0f;
     DGL_NAMESPACE::Color canvas{15, 15, 18};
     DGL_NAMESPACE::Color surface{27, 27, 33};
     DGL_NAMESPACE::Color surfaceRaised{39, 39, 47};

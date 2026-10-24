@@ -177,14 +177,16 @@ void independentOpacityControls()
     sms::ui::Skin skin;
     const auto original = skinTheme(skin);
     check(original.backgroundAlpha == 1.0f && original.padAlpha == 1.0f &&
-          original.padPanelAlpha == 1.0f, "older skins retain full opacity");
+          original.padPanelAlpha == 1.0f && original.controlPanelAlpha == 1.0f,
+          "older skins retain full opacity");
     skin.metrics["backgroundAlpha"] = "0.75";
     skin.metrics["padAlpha"] = "0";
     skin.metrics["padPanelAlpha"] = "0.35";
+    skin.metrics["controlPanelAlpha"] = "0.5";
     const auto transparent = skinTheme(skin);
     check(transparent.backgroundAlpha == 0.75f && transparent.padAlpha == 0.0f &&
-          transparent.padPanelAlpha == 0.35f,
-          "background, pad surfaces and backing panel opacity are independent");
+          transparent.padPanelAlpha == 0.35f && transparent.controlPanelAlpha == 0.5f,
+          "background, pad surfaces and both backing panel opacities are independent");
     check(transparent.padTintAlpha == original.padTintAlpha &&
           sameColor(transparent.selection, original.selection) &&
           sameColor(transparent.contentPrimary, original.contentPrimary) &&

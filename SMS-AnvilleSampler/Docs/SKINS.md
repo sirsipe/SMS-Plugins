@@ -3,10 +3,10 @@
 ## Ask an LLM to create a skin
 
 Supply this guide, the [AI authoring reference](../../Docs/AI/SKINS.md), and
-[placeholder/skin.ini](../skins/placeholder/skin.ini), which catalogs every key.
-Specify style, name, language and output folder. Attach these files if links are
+[placeholder/skin.ini](../skins/placeholder/skin.ini) (the key catalog).
+Specify style, name, language and output folder. Attach files if links are
 inaccessible. Personal skins belong in ignored `build/skins/` or outside the
-checkout; only the bundled default and placeholder are maintained in Git.
+checkout; Git maintains only the default and placeholder.
 
 ## Bundled appearance
 
@@ -20,8 +20,8 @@ a `skins` collection or the built-in appearance.
 
 ## Loading skins
 
-Discovery runs when the editor opens. Menu choices switch immediately.
-Reopen after editing skin files; restart hosts retaining hidden editors.
+Discovery runs when the editor opens; menu choices switch immediately.
+Reopen after editing; restart hosts retaining hidden editors.
 
 ## One skin or a collection
 
@@ -45,7 +45,7 @@ SMS-AnvilleSampler.vst3/
       logo.png
 ```
 
-Valid collection manifests require a nonempty display name:
+Collections require a display name:
 
 ```ini
 [skin]
@@ -55,12 +55,12 @@ name=Graffiti
 
 If at least one named skin is available, **hamburger → Skins** lists **Default**
 (the built-in appearance) first, followed by skin names sorted alphabetically.
-Names appear literally. The selected row is marked; lists scroll with the wheel while Default stays
+Names appear literally. Selection is marked; wheel scrolling keeps Default
 at the top. Only immediate subfolders are scanned. Missing names, unsupported or malformed manifests, and
 paths escaping the collection are skipped. Selecting a skin that has since
 become unreadable keeps the current skin and reports an error.
 
-The bundle root is alongside `Contents`, rather than beside its nested binary.
+The bundle root contains `Contents`.
 LV2 uses the same `skin`/`skins` directories inside `SMS-AnvilleSampler.lv2`.
 For single-file CLAP, use sibling `SMS-AnvilleSampler.skin` for an override or
 `SMS-AnvilleSampler.skins` for a collection. CLAP host integration remains
@@ -83,7 +83,7 @@ Choices are saved per user under `SMS-AnvilleSampler/selected-skin`:
 Selections replace preferences atomically. Unavailable config reports
 that the appearance changed but could not be remembered.
 
-Preferences store subfolder IDs. Matching IDs share choices across LV2/VST3.
+Preferences store subfolder IDs, shared across LV2/VST3.
 New editors restore them; already-open editors retain their appearance. A missing or unavailable remembered skin uses Default. A forced
 `skin` ignores the preference without overwriting it. Choosing Default also
 persists. Skins do not change host parameters or DAW project state.
@@ -116,6 +116,7 @@ selection=#80D0FF
 backgroundAlpha=0.75
 padAlpha=0.60
 padPanelAlpha=0.35
+controlPanelAlpha=0.50
 [images]
 background=background.png
 ```
@@ -132,8 +133,7 @@ order. Their menu names can be replaced in `[strings]`.
 
 The ADSR curve and all points use `activityPlayback`, including on hover.
 
-Use PNG or JPEG artwork, up to 64 MiB per encoded file. Unicode folder and image
-filenames are supported. The
+Use PNG or JPEG artwork, up to 64 MiB per encoded file, with Unicode paths supported. The
 background stretches across the 1344 × 756 logical chassis, behind the panels,
 controls, and screws. It does not replace individual control artwork. The logo
 stretches into the 170 × 78 header rectangle: 48% opacity without a glow,
@@ -143,10 +143,13 @@ first draw with a ready graphics context.
 
 Under `[metrics]`, `backgroundAlpha` fades artwork over the chassis;
 `padAlpha` fades pad fills, tints, shadows and grain. `padPanelAlpha` fades
-the main pad-bank backing panel so artwork shows through it. Labels, selection outlines, menus and control panels retain their opacity.
-All three accept 0–1 and default to `1`.
+the main pad-bank backing panel so artwork shows through it. `controlPanelAlpha`
+fades the right-side backing panel in the main view, Sample Editor and Cut Point
+Editor. Both panel metrics include the backing's borders, shadows and grain.
+Labels, pad selection outlines, menus and individual controls retain their opacity.
+All four accept 0–1 and default to `1`.
 
-Configure the halo with `[colors] logoGlow` and `[metrics] logoGlowAlpha`,
+Configure halos with `[colors] logoGlow` and `[metrics] logoGlowAlpha`,
 `logoGlowRadius`, and `logoGlowPulseSeconds`. Alpha or radius `0` disables it;
 a transparent glow color also disables it. Pulse `0` is steady; positive values
 set the cycle length in seconds. Brightness gently cycles from 65% to 100% of
