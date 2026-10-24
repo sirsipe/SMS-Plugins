@@ -75,8 +75,8 @@ Checks:
   pads; FINALIZE keeps the open slice. UNDO discards the open/last slice;
   confirmed CLEAR empties all banks. Repeat in VST3/LV2; check affected capture
   modes and compare recorded output for timing/pre-roll changes.
-- Playback: verify notes/banks, voice limits and stereo. Gate and editor loops
-  repeat ADSR each pass; edit all stages live. Gate note-off uses full Release
+- Playback: verify notes/banks, voice limits and stereo. Hold and editor loops
+  repeat ADSR each pass; edit all stages live. Hold note-off uses full Release
   across seams without retriggering; zero Release stops immediately. One Shot
   ends once. Toggle pad/global Reverse during overlapping voices in both modes;
   check immediate turns, preserved ADSR/filters/tails, mirrored cuts/cursor,

@@ -288,9 +288,16 @@ void concurrentScopeIsolation()
 
 void placeholderCatalog()
 {
-    const auto skin = sms::ui::Skin::load(ANVILLESAMPLER_SKIN_TEMPLATE_DIR);
+    auto skin = sms::ui::Skin::load(ANVILLESAMPLER_SKIN_TEMPLATE_DIR);
     check(skin.valid(), "placeholder manifest loads");
+    check(skin.strings.contains("HOLD") && skin.strings.at("HOLD") == "HOLD" &&
+          !skin.strings.contains("GATE"), "placeholder catalogs Hold under its current string key");
     const auto mapped = skinTheme(skin);
+    skin.strings["HOLD"] = "PIDÄ";
+    {
+        ThemeScope scope(mapped, skin);
+        check(std::string(themeText("HOLD")) == "PIDÄ", "Hold label uses the skin translation");
+    }
     const Theme defaults;
     for (const auto& field : themeColorFields) {
         check(skin.colors.contains(field.name), "placeholder catalogs every semantic color");

@@ -54,7 +54,7 @@ enum class InteractiveType : int {
     fixedMode,
     fixedLength,
     oneShotMode,
-    gatedMode,
+    holdMode,
     voiceLimit,
     preRoll,
     monitor,
@@ -551,8 +551,8 @@ interactiveTargetAt(const sms::ui::Point point, const InteractionContext& contex
     } else {
         if (uiLayout::oneShotMode.contains(point))
             return target(InteractiveType::oneShotMode);
-        if (uiLayout::gatedMode.contains(point))
-            return target(InteractiveType::gatedMode);
+        if (uiLayout::holdMode.contains(point))
+            return target(InteractiveType::holdMode);
         if (uiLayout::voiceLimit.contains(point))
             return target(InteractiveType::voiceLimit);
         if (uiLayout::mainPlayStop.contains(point))

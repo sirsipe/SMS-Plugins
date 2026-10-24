@@ -23,7 +23,7 @@ namespace midichopper {
 enum class CaptureMode : std::uint8_t { Sequential, FixedDuration };
 // Kept as a source-compatible alias for early clients of the core.
 using RecordMode = CaptureMode;
-enum class PlaybackMode : std::uint8_t { OneShot, Gated };
+enum class PlaybackMode : std::uint8_t { OneShot, Hold };
 enum class MidiEventType : std::uint8_t { NoteOff, NoteOn };
 
 /** A timestamp is an offset into the current process block (zero based). */
@@ -315,7 +315,7 @@ private:
     void setPadMixerSettingsDirect(std::uint32_t pad,
         const sms::dsp::SampleMixerSettings& settings, bool redirectGlobal = true) noexcept;
     void redirectPadVoice(std::uint32_t pad, bool reverse) noexcept;
-    enum class VoiceMode : std::uint8_t { OneShot, Gated, Loop };
+    enum class VoiceMode : std::uint8_t { OneShot, Hold, Loop };
     std::uint32_t auditionPad_ = kPadCount;
     struct Pad {
         Storage* storage = nullptr;

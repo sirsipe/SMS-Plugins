@@ -239,7 +239,7 @@ protected:
             break;
         case kParameterPlaybackMode:
             setupParameter(index, parameter, "Playback", "playback", "",
-                           kParameterIsInteger, "0 = one-shot, 1 = gated.");
+                           kParameterIsInteger, "0 = One Shot, 1 = Hold.");
             break;
         case kParameterInputMonitor:
             setupParameter(index, parameter, "Input Monitor", "input_monitor", "",
@@ -1076,7 +1076,7 @@ private:
             ? midichopper::CaptureMode::FixedDuration : midichopper::CaptureMode::Sequential;
         settings.fixedLengthSeconds = clampedParameter(kParameterFixedLengthSeconds);
         settings.playbackMode = parameter(kParameterPlaybackMode) >= 0.5f
-            ? midichopper::PlaybackMode::Gated : midichopper::PlaybackMode::OneShot;
+            ? midichopper::PlaybackMode::Hold : midichopper::PlaybackMode::OneShot;
         settings.monitorInput = inputMonitorEnabled(
             clampedParameter(kParameterInputMonitor), settings.armed);
         settings.baseNote = static_cast<std::uint8_t>(clampedParameter(kParameterBaseMidiNote));

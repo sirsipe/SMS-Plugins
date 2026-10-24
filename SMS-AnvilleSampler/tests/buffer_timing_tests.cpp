@@ -236,7 +236,7 @@ void reverseMatchesReversedSourceBeforeTrimmingAndEffects()
 void playbackPartitions()
 {
     for (const auto rate : {44100.0, 48000.0})
-        for (const auto mode : {PlaybackMode::OneShot, PlaybackMode::Gated})
+        for (const auto mode : {PlaybackMode::OneShot, PlaybackMode::Hold})
             for (const bool effects : {false, true})
               for (const bool reverse : {false, true})
                 for (const bool globalReverse : {false, true}) {
@@ -286,7 +286,7 @@ void loopingPlaybackPartitions()
             SamplerEngine engine(48000.0, 0.1);
             auto settings = engine.settings();
             settings.monitorInput = false;
-            settings.playbackMode = PlaybackMode::Gated;
+            settings.playbackMode = PlaybackMode::Hold;
             engine.setSettings(settings);
             PadData source;
             source.sampleRate = 72000.0;
@@ -401,7 +401,7 @@ void eventOrdering()
         SamplerEngine engine(1000.0, 0.1);
         auto settings = engine.settings();
         settings.monitorInput = false;
-        settings.playbackMode = PlaybackMode::Gated;
+        settings.playbackMode = PlaybackMode::Hold;
         engine.setSettings(settings);
         PadData source;
         source.sampleRate = 1000.0;
@@ -435,7 +435,7 @@ void playbackOffsets()
         SamplerEngine engine(48000.0, 0.1);
         auto settings = engine.settings();
         settings.monitorInput = false;
-        settings.playbackMode = PlaybackMode::Gated;
+        settings.playbackMode = PlaybackMode::Hold;
         engine.setSettings(settings);
         PadData source;
         source.sampleRate = 48000.0;

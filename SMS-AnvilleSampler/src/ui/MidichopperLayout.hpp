@@ -117,7 +117,7 @@ inline constexpr sms::ui::Rect sequentialMode{994.0f, 220.0f, 106.0f, 38.0f};
 inline constexpr sms::ui::Rect fixedMode{1108.0f, 220.0f, 108.0f, 38.0f};
 inline constexpr sms::ui::Rect fixedLength{994.0f, 298.0f, 222.0f, 36.0f};
 inline constexpr sms::ui::Rect oneShotMode{994.0f, 220.0f, 106.0f, 38.0f};
-inline constexpr sms::ui::Rect gatedMode{1108.0f, 220.0f, 108.0f, 38.0f};
+inline constexpr sms::ui::Rect holdMode{1108.0f, 220.0f, 108.0f, 38.0f};
 inline constexpr sms::ui::Rect voiceLimit{994.0f, 298.0f, 222.0f, 28.0f};
 inline constexpr sms::ui::Rect mainPlayStop{1049.0f, 342.0f, 112.0f, 32.0f};
 

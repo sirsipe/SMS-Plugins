@@ -4,8 +4,8 @@
 
 Supply this guide, the [AI authoring reference](../../Docs/AI/SKINS.md), and
 [placeholder/skin.ini](../skins/placeholder/skin.ini) (the key catalog).
-Specify style, name, language and output folder. Attach files if links are
-inaccessible. Personal skins belong in ignored `build/skins/` or outside the
+Specify style, name, language and output folder.
+Personal skins belong in ignored `build/skins/` or outside the
 checkout; Git maintains only the default and placeholder.
 
 ## Bundled appearance
@@ -103,6 +103,8 @@ Values are literal: do not add quotes, inline comments, or escape sequences.
 | `[metrics]` | Decimal numbers; alpha 0–1, radii/outline width 0–24 pixels, logo pulse 0–60 seconds |
 | `[strings]` | Exact built-in label/format on the left, replacement text on the right |
 | `[images]` | `background` and `logo`: relative image filenames inside the skin |
+
+Rename custom skins' `GATE` string keys to `HOLD`.
 
 For example:
 

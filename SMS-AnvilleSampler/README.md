@@ -111,9 +111,9 @@ images, colors, labels and pulsing logo halo.
 - Max Voices limits simultaneous pads. At capacity, a new trigger stops the
 oldest voice; set it to one for monophonic playback.
 
-- **Gate** loops a pad's Start/End region while its MIDI note or mouse press is
+- **Hold** loops a pad's Start/End region while its MIDI note or mouse press is
 held. Release starts the pad's ADSR release; the region continues looping until
-the fade ends. ARM stops Gate loops. **One Shot** ignores note-off.
+the fade ends. ARM stops Hold loops. **One Shot** ignores note-off.
 
 - Pre-roll moves boundaries slightly earlier to compensate for late taps. Fixed
 mode records one fixed-length slice per note-on.

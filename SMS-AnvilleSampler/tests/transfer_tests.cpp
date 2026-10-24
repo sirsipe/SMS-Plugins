@@ -169,7 +169,7 @@ public:
     {
         auto settings = sampler.settings();
         settings.monitorInput = true;
-        settings.playbackMode = midichopper::PlaybackMode::Gated;
+        settings.playbackMode = midichopper::PlaybackMode::Hold;
         settings.maxVoices = 1;
         if (recording) {
             settings.armed = true;

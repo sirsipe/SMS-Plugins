@@ -1212,9 +1212,9 @@ private:
             sms::ui::dpf::drawSegment(canvas_, uiLayout::oneShotMode, "ONE SHOT",
                 state_.playbackMode < 0.5f, colors.controlAccent,
                 hovered(InteractiveType::oneShotMode));
-            sms::ui::dpf::drawSegment(canvas_, uiLayout::gatedMode, "GATE",
+            sms::ui::dpf::drawSegment(canvas_, uiLayout::holdMode, "HOLD",
                 state_.playbackMode >= 0.5f, colors.controlAccent,
-                hovered(InteractiveType::gatedMode));
+                hovered(InteractiveType::holdMode));
             text(994.0f, 278.0f, "MAX VOICES", nullptr);
             char voices[8];
             std::snprintf(voices, sizeof(voices), sms::ui::dpf::themeFormat("%d"), state_.maxVoices);

@@ -60,10 +60,10 @@ volume/pan/tune combine during playback. Active voices refresh mixer,
 ADSR, and cuts per block; one-shot Start stays fixed until retrigger.
 Triggers latch pad direction/mode; Global Reverse turns enabled pads. Editor requests atomically mirror
 Start/End, active cursor and orientation without restarting ADSR/filters. Reverse
-maps playback i to raw N−1−i before effects, preserving PCM; cut/split stays raw. Gate loops Start/End through note-off and ADSR
-release. Arm cuts Gate voices. Editor Loop repeats until stopped; Play auditions once.
+maps playback i to raw N−1−i before effects, preserving PCM; cut/split stays raw. Hold loops Start/End through note-off and ADSR
+release. Arm cuts Hold voices. Editor Loop repeats until stopped; Play auditions once.
 Loops preserve fractional overshoot, seam interpolation and filters, retriggering
-ADSR each pass. Pass fades cap Release to half their duration; Gate note-off
+ADSR each pass. Pass fades cap Release to half their duration; Hold note-off
 restores full Release without retriggering. Loop cut edits keep an
 in-range cursor; otherwise they wrap its fractional position into the new range.
 Filter and Dirty follow [Mixing](../../Docs/AI/MIXING.md).

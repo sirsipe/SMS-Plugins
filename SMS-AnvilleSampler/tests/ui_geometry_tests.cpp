@@ -445,6 +445,9 @@ void interactionTargets()
               interaction::interactiveTargetAt(center(layout::oneShotMode), context),
               interaction::InteractiveType::oneShotMode) &&
           interaction::isTarget(
+              interaction::interactiveTargetAt(center(layout::holdMode), context),
+              interaction::InteractiveType::holdMode) &&
+          interaction::isTarget(
               interaction::interactiveTargetAt(center(layout::voiceLimit), context),
               interaction::InteractiveType::voiceLimit),
           "play mode exposes only its playback controls");

@@ -13,9 +13,9 @@ master fader remain active. With Global Direction reversed, toggling bypass
 also turns the playing sample at its current source position.
 
 All pad mixer and ADSR edits reach active playback on the next audio block.
-Gate and editor Loop repeat the ADSR shape on every Start/End pass, so edited
+Hold and editor Loop repeat the ADSR shape on every Start/End pass, so edited
 Attack and Decay are heard on subsequent passes. Release fades each pass's end,
-capped to half the pass duration. Gate note-off instead uses the full Release
+capped to half the pass duration. Hold note-off instead uses the full Release
 from the current level and keeps looping through its tail without retriggering
 the envelope. One Shot plays its envelope once.
 
@@ -28,14 +28,14 @@ Start 20% / End 70% becomes Start 30% / End 80%. Flipping a playing pad takes
 effect immediately at the corresponding mirrored position: one-third becomes
 two-thirds. Playback continues from the same source position in the opposite
 direction, without restarting ADSR or filters, including an existing release.
-One Shot finishes once and ignores note-off; Gate repeats until note-off and
+One Shot finishes once and ignores note-off; Hold repeats until note-off and
 release finish. Cut Point Editor and Split Sample always show and preview the
 original, unflipped audio. Direction never modifies stored audio.
 
 **Global Direction** is a saved master toggle. It combines with each pad's
 setting: Reverse on both means Forward playback. Toggling it immediately turns
 all active pads with Global Mixer enabled at their current source positions, preserving envelopes,
-release tails, filters, and polyphony in One Shot and Gate. New triggers also
+release tails, filters, and polyphony in One Shot and Hold. New triggers also
 use the master setting. Pad directions and cut points stay saved independently;
 Sample Editor shows the combined waveform and mirrored cuts. Its pad arrows
 show the pad's own setting. Raw previews, monitoring, and per-pad exports are

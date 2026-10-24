@@ -182,7 +182,7 @@ void SamplerEngine::setSettings(const EngineSettings& s) noexcept {
             // Capture ignores note-offs, so a held performance loop cannot
             // retain ownership across the transition into capture.
             for (std::uint32_t pad = 0; pad < kPadCount; ++pad)
-                if (pads_[pad].voiceMode == VoiceMode::Gated)
+                if (pads_[pad].voiceMode == VoiceMode::Hold)
                     hardStopVoice(pad);
         }
     }
@@ -670,7 +670,7 @@ void SamplerEngine::stopVoice(std::uint32_t pad) noexcept {
             return;
         voice.releaseFromEnd = false;
         voice.noteReleased = true;
-        // A held Gate's release is independent of its per-pass end fade.
+        // Hold mode's note-off release is independent of its per-pass end fade.
         voice.envelope.updateSettings(padPlaybackSettings(pad));
         voice.envelope.noteOff(true);
         if (!voice.envelope.active()) {
@@ -870,9 +870,9 @@ void SamplerEngine::handleEvent(const MidiEvent& event) noexcept {
         }
         return;
     }
-    if (on) startVoice(pad, event.velocity, settings_.playbackMode == PlaybackMode::Gated
-        ? VoiceMode::Gated : VoiceMode::OneShot);
-    else if (pads_[pad].voiceMode == VoiceMode::Gated) stopVoice(pad);
+    if (on) startVoice(pad, event.velocity, settings_.playbackMode == PlaybackMode::Hold
+        ? VoiceMode::Hold : VoiceMode::OneShot);
+    else if (pads_[pad].voiceMode == VoiceMode::Hold) stopVoice(pad);
 }
 
 void SamplerEngine::process(const float* inputLeft, const float* inputRight,

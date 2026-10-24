@@ -1491,7 +1491,7 @@ protected:
                 setControlValue(kParameterPlaybackMode, 0.0f);
                 return true;
             }
-            if (midichopper::ui::isTarget(clicked, midichopper::ui::InteractiveType::gatedMode))
+            if (midichopper::ui::isTarget(clicked, midichopper::ui::InteractiveType::holdMode))
             {
                 setControlValue(kParameterPlaybackMode, 1.0f);
                 return true;

@@ -897,7 +897,7 @@ void all_bank_midi_mapping() {
     midichopper::SamplerEngine e(1000.0, 1.0);
     auto settings = e.settings();
     settings.monitorInput = false;
-    settings.playbackMode = midichopper::PlaybackMode::Gated;
+    settings.playbackMode = midichopper::PlaybackMode::Hold;
     settings.midiBankMode = midichopper::MidiBankMode::AllBanks;
     e.setSettings(settings);
 
@@ -1348,10 +1348,10 @@ midichopper::PadData loop_source(const double rate = 1000.0)
     return source;
 }
 
-void gated_region_looping()
+void hold_region_looping()
 {
     using namespace midichopper;
-    for (const auto mode : {PlaybackMode::Gated, PlaybackMode::OneShot})
+    for (const auto mode : {PlaybackMode::Hold, PlaybackMode::OneShot})
       for (const bool reverse : {false, true}) {
         SamplerEngine engine(1000.0, 1.0);
         auto settings = engine.settings();
@@ -1373,10 +1373,10 @@ void gated_region_looping()
         std::array<float, 18> left{}, right{};
         engine.process(nullptr, nullptr, left.data(), right.data(), left.size(), events, 2U);
         for (std::size_t frame = 0U; frame < left.size(); ++frame) {
-            const bool audible = frame < (mode == PlaybackMode::Gated ? 14U : 4U);
+            const bool audible = frame < (mode == PlaybackMode::Hold ? 14U : 4U);
             const float phase = static_cast<float>(frame % 4U);
             const float expected = audible ? (reverse ? 6.0f - phase : 3.0f + phase) : 0.0f;
-            close(left[frame], expected, "Gate repeats exclusive region until exact note-off; OneShot stays finite");
+            close(left[frame], expected, "Hold repeats exclusive region until exact note-off; OneShot stays finite");
             close(right[frame], -10.0f * expected, "trimmed loop preserves independent stereo channels");
         }
         check(!engine.anyPlaybackActive(), "zero-release note-off leaves no held loop");
@@ -1389,7 +1389,7 @@ void gated_region_looping()
         SamplerEngine engine(1000.0, 1.0);
         auto settings = engine.settings();
         settings.monitorInput = false;
-        settings.playbackMode = PlaybackMode::Gated;
+        settings.playbackMode = PlaybackMode::Hold;
         engine.setSettings(settings);
         check(engine.importPad(0U, loop_source(fast ? 1625.0 : 1500.0)),
               "import resampled loop");
@@ -1416,7 +1416,7 @@ void gated_region_looping()
     }
 }
 
-void gated_loop_release_and_edits()
+void hold_loop_release_and_edits()
 {
     using namespace midichopper;
     for (const bool retrigger : {false, true})
@@ -1424,7 +1424,7 @@ void gated_loop_release_and_edits()
         SamplerEngine engine(1000.0, 1.0);
         auto settings = engine.settings();
         settings.monitorInput = false;
-        settings.playbackMode = PlaybackMode::Gated;
+        settings.playbackMode = PlaybackMode::Hold;
         engine.setSettings(settings);
         check(engine.importPad(0U, loop_source()), "import release loop");
         sms::dsp::SampleMixerSettings mixer;
@@ -1453,8 +1453,8 @@ void gated_loop_release_and_edits()
                 : frame < 15U ? static_cast<float>(15U - frame) / 16.0f : 0.0f;
             const float position = static_cast<float>(phase % 4U);
             const float expected = (reverse ? 6.0f - position : 3.0f + position) * gain;
-            close(left[frame], expected, "Gate release crosses seams and retrigger resets cursor/envelope");
-            close(right[frame], -10.0f * expected, "Gate release maintains stereo across multiple turns");
+            close(left[frame], expected, "Hold release crosses seams and retrigger resets cursor/envelope");
+            close(right[frame], -10.0f * expected, "Hold release maintains stereo across multiple turns");
         }
         check(engine.anyPlaybackActive() == retrigger, "release finishes only after its full ADSR duration");
     }
@@ -1462,7 +1462,7 @@ void gated_loop_release_and_edits()
     SamplerEngine engine(1000.0, 1.0);
     auto settings = engine.settings();
     settings.monitorInput = false;
-    settings.playbackMode = PlaybackMode::Gated;
+    settings.playbackMode = PlaybackMode::Hold;
     engine.setSettings(settings);
     check(engine.importPad(0U, loop_source()), "import live End loop");
     sms::dsp::SamplePlaybackSettings region;
@@ -1512,7 +1512,7 @@ void live_loop_region_edits()
             auto settings = engine.settings();
             settings.monitorInput = false;
             // Editor Loop must work even when the main mode is One Shot.
-            settings.playbackMode = audition ? PlaybackMode::OneShot : PlaybackMode::Gated;
+            settings.playbackMode = audition ? PlaybackMode::OneShot : PlaybackMode::Hold;
             settings.reverse = globalReverse;
             engine.setSettings(settings);
             check(engine.importPad(0U, loop_source()), "import live loop-boundary source");
@@ -1569,8 +1569,8 @@ void live_loop_region_edits()
                 const MidiEvent off{0U, 36U, 0U, MidiEventType::NoteOff};
                 engine.process(nullptr, nullptr, left, right, 8U, &off, 1U);
                 for (unsigned frame = 0U; frame < 8U; ++frame) {
-                    close(left[frame], 0.0f, "zero-release Gate stops immediately after edited cuts");
-                    close(right[frame], 0.0f, "zero-release edited Gate stops both channels");
+                    close(left[frame], 0.0f, "zero-release Hold stops immediately after edited cuts");
+                    close(right[frame], 0.0f, "zero-release edited Hold stops both channels");
                 }
             }
             check(!engine.anyPlaybackActive(), "edited loop still stops normally");
@@ -1580,7 +1580,7 @@ void live_loop_region_edits()
 void playback_direction_latched_at_trigger()
 {
     using namespace midichopper;
-    for (const auto mode : {PlaybackMode::OneShot, PlaybackMode::Gated})
+    for (const auto mode : {PlaybackMode::OneShot, PlaybackMode::Hold})
       for (const bool initiallyReverse : {false, true}) {
         SamplerEngine engine(1000.0, 1.0);
         auto settings = engine.settings();
@@ -1633,8 +1633,8 @@ void reverse_boundaries_and_envelopes()
 {
     using namespace midichopper;
     // Fractional final interval clamps to Start for One Shot, and a one-frame
-    // Gate region remains safe even when each step skips multiple turns.
-    for (const auto mode : {PlaybackMode::OneShot, PlaybackMode::Gated})
+    // Hold region remains safe even when each step skips multiple turns.
+    for (const auto mode : {PlaybackMode::OneShot, PlaybackMode::Hold})
       for (const bool singleFrame : {false, true}) {
         SamplerEngine engine(1000.0, 1.0);
         auto settings = engine.settings();
@@ -1656,9 +1656,9 @@ void reverse_boundaries_and_envelopes()
         for (std::size_t frame = 0; frame < 12U; ++frame) {
             float expected;
             if (singleFrame)
-                expected = (mode == PlaybackMode::Gated || frame == 0U)
+                expected = (mode == PlaybackMode::Hold || frame == 0U)
                     ? 8.0f : 0.0f;
-            else if (mode == PlaybackMode::Gated) {
+            else if (mode == PlaybackMode::Hold) {
                 constexpr float loop[]{6, 5.5f, 5, 4.5f, 4, 3.5f, 3, 4.5f};
                 expected = loop[frame % 8U];
             } else
@@ -1750,7 +1750,7 @@ void live_editor_flip_preserves_voice()
     SamplerEngine engine(1000.0, 1.0);
     auto settings = engine.settings();
     settings.monitorInput = false;
-    settings.playbackMode = PlaybackMode::Gated;
+    settings.playbackMode = PlaybackMode::Hold;
     settings.maxVoices = 2U;
     engine.setSettings(settings);
     const auto source = loop_source();
@@ -1809,7 +1809,7 @@ void live_editor_flip_fractional_and_single_frame()
         SamplerEngine engine(1000.0, 1.0);
         auto settings = engine.settings();
         settings.monitorInput = false;
-        settings.playbackMode = PlaybackMode::Gated;
+        settings.playbackMode = PlaybackMode::Hold;
         engine.setSettings(settings);
         check(engine.importPad(0U, loop_source()), "import fractional live flip source");
         sms::dsp::SamplePlaybackSettings playback;
@@ -1836,7 +1836,7 @@ void live_editor_flip_fractional_and_single_frame()
         SamplerEngine engine(1000.0, 1.0);
         auto settings = engine.settings();
         settings.monitorInput = false;
-        settings.playbackMode = PlaybackMode::Gated;
+        settings.playbackMode = PlaybackMode::Hold;
         engine.setSettings(settings);
         check(engine.importPad(0U, loop_source()), "import one-frame live flip source");
         sms::dsp::SamplePlaybackSettings playback;
@@ -1854,7 +1854,7 @@ void live_editor_flip_fractional_and_single_frame()
         engine.process(nullptr, nullptr, left, right, 2U);
         close(left[0], 1.0f, "one-frame live flip wraps into the mirrored range");
         close(left[1], 1.0f, "one-frame reverse loop remains bounded");
-        check(engine.anyPlaybackActive(), "single-frame Gate remains held after orientation update");
+        check(engine.anyPlaybackActive(), "single-frame Hold remains held after orientation update");
     }
 }
 
@@ -1891,9 +1891,9 @@ void live_editor_flip_during_one_shot_and_release()
         SamplerEngine engine(1000.0, 1.0);
         auto settings = engine.settings();
         settings.monitorInput = false;
-        settings.playbackMode = PlaybackMode::Gated;
+        settings.playbackMode = PlaybackMode::Hold;
         engine.setSettings(settings);
-        check(engine.importPad(0U, loop_source()), "import Gate release live flip source");
+        check(engine.importPad(0U, loop_source()), "import Hold release live flip source");
         sms::dsp::SamplePlaybackSettings playback;
         playback.start = 0.125f;
         playback.end = 0.625f;
@@ -1903,7 +1903,7 @@ void live_editor_flip_during_one_shot_and_release()
                                  {2U, 36U, 0U, MidiEventType::NoteOff}};
         float left[4]{}, right[4]{};
         engine.process(nullptr, nullptr, left, right, 3U, events, 2U);
-        close(left[2], 4.0f, "Gate note-off begins release before live flip");
+        close(left[2], 4.0f, "Hold note-off begins release before live flip");
         playback.start = 0.375f;
         playback.end = 0.875f;
         sms::dsp::SampleMixerSettings reverse;
@@ -1913,7 +1913,7 @@ void live_editor_flip_during_one_shot_and_release()
         constexpr float release[]{3.75f, 2.0f, 0.75f, 0.0f};
         for (std::size_t frame = 0U; frame < 4U; ++frame)
             close(left[frame], release[frame], "live flip preserves manual release level and duration");
-        check(!engine.anyPlaybackActive(), "flipped Gate finishes its existing release tail");
+        check(!engine.anyPlaybackActive(), "flipped Hold finishes its existing release tail");
     }
 }
 
@@ -1924,7 +1924,7 @@ void live_editor_flip_fractional_seam_and_coalesced_noop()
         SamplerEngine engine(1000.0, 1.0);
         auto settings = engine.settings();
         settings.monitorInput = false;
-        settings.playbackMode = PlaybackMode::Gated;
+        settings.playbackMode = PlaybackMode::Hold;
         engine.setSettings(settings);
         check(engine.importPad(0U, loop_source()), "import fractional seam flip source");
         sms::dsp::SamplePlaybackSettings playback;
@@ -1947,13 +1947,13 @@ void live_editor_flip_fractional_seam_and_coalesced_noop()
               "fractional seam orientation wrap remains finite");
         close(left[0], 3.5f, "fractional seam cursor wraps safely into mirrored range");
         close(left[1], 5.0f, "fractional seam continues inside reversed region");
-        check(engine.anyPlaybackActive(), "fractional seam flip keeps Gate active");
+        check(engine.anyPlaybackActive(), "fractional seam flip keeps Hold active");
     }
     {
         SamplerEngine engine(1000.0, 1.0);
         auto settings = engine.settings();
         settings.monitorInput = false;
-        settings.playbackMode = PlaybackMode::Gated;
+        settings.playbackMode = PlaybackMode::Hold;
         engine.setSettings(settings);
         check(engine.importPad(0U, loop_source()), "import coalesced no-op flip source");
         sms::dsp::SamplePlaybackSettings original;
@@ -1990,7 +1990,7 @@ void editor_flip_target_survives_later_mixer_restore()
     SamplerEngine engine(1000.0, 1.0);
     auto settings = engine.settings();
     settings.monitorInput = false;
-    settings.playbackMode = PlaybackMode::Gated;
+    settings.playbackMode = PlaybackMode::Hold;
     engine.setSettings(settings);
     check(engine.importPad(0U, loop_source()), "import editor-target merge source");
     const MidiEvent on{0U, 36U, 127U, MidiEventType::NoteOn};
@@ -2075,7 +2075,7 @@ void global_reverse_live_voices_and_editor()
     SamplerEngine engine(1000.0, 1.0);
     auto settings = engine.settings();
     settings.monitorInput = false;
-    settings.playbackMode = PlaybackMode::Gated;
+    settings.playbackMode = PlaybackMode::Hold;
     settings.maxVoices = 2U;
     engine.setSettings(settings);
     check(engine.importPad(0U, loop_source()) && engine.importPad(1U, loop_source()),
@@ -2164,7 +2164,7 @@ void global_reverse_audition_release_and_raw_preview()
         SamplerEngine engine(1000.0, 1.0);
         auto settings = engine.settings();
         settings.monitorInput = false;
-        settings.playbackMode = PlaybackMode::Gated;
+        settings.playbackMode = PlaybackMode::Hold;
         engine.setSettings(settings);
         check(engine.importPad(0U, loop_source()), "import global reverse release source");
         sms::dsp::SamplePlaybackSettings playback;
@@ -2176,21 +2176,21 @@ void global_reverse_audition_release_and_raw_preview()
                                  {2U, 36U, 0U, MidiEventType::NoteOff}};
         float left[4]{}, right[4]{};
         engine.process(nullptr, nullptr, left, right, 3U, events, 2U);
-        close(left[2], 4.0f, "manual Gate release has begun before master turn");
+        close(left[2], 4.0f, "manual Hold release has begun before master turn");
         settings = engine.settings();
         settings.reverse = true;
         engine.setSettings(settings);
         engine.process(nullptr, nullptr, left, right, 4U);
         constexpr float release[]{3.75f, 2.0f, 0.75f, 0.0f};
         for (std::size_t frame = 0U; frame < 4U; ++frame)
-            close(left[frame], release[frame], "global turn preserves Gate release progression");
-        check(!engine.anyPlaybackActive(), "globally turned Gate finishes its existing release");
+            close(left[frame], release[frame], "global turn preserves Hold release progression");
+        check(!engine.anyPlaybackActive(), "globally turned Hold finishes its existing release");
     }
     {
         SamplerEngine engine(1000.0, 1.0);
         auto settings = engine.settings();
         settings.monitorInput = false;
-        settings.playbackMode = PlaybackMode::Gated;
+        settings.playbackMode = PlaybackMode::Hold;
         engine.setSettings(settings);
         check(engine.importPad(0U, loop_source()), "import global seam turn source");
         sms::dsp::SamplePlaybackSettings playback;
@@ -2207,7 +2207,7 @@ void global_reverse_audition_release_and_raw_preview()
         settings.reverse = true;
         engine.setSettings(settings);
         engine.process(nullptr, nullptr, left, right, 2U);
-        close(left[0], 3.5f, "global turn wraps fractional Gate seam into mirrored region");
+        close(left[0], 3.5f, "global turn wraps fractional Hold seam into mirrored region");
         close(left[1], 5.0f, "global seam turn continues at mirrored Start");
         check(engine.anyPlaybackActive(), "global seam turn keeps held loop active");
     }
@@ -2216,7 +2216,7 @@ void global_reverse_audition_release_and_raw_preview()
 void independent_pad_audition()
 {
     using namespace midichopper;
-    for (const auto mode : {PlaybackMode::Gated, PlaybackMode::OneShot})
+    for (const auto mode : {PlaybackMode::Hold, PlaybackMode::OneShot})
         for (const bool loop : {false, true})
           for (const bool reverse : {false, true}) {
             SamplerEngine engine(1000.0, 1.0);
@@ -2250,11 +2250,11 @@ void independent_pad_audition()
                     ? (reverse ? 6.0f - phase : 3.0f + phase) : 0.0f;
                 close(left[frame], sample * envelope * 0.25f, "audition Play/Loop honours region, ADSR and pan/gain");
                 close(right[frame], -10.0f * sample * envelope * 0.5f,
-                      "audition is independent of Gate mode and MIDI note-off");
+                      "audition is independent of Hold mode and MIDI note-off");
             }
             check(engine.anyPlaybackActive() == loop, "only Loop audition survives its region End");
             if (loop) {
-                settings.playbackMode = mode == PlaybackMode::Gated ? PlaybackMode::OneShot : PlaybackMode::Gated;
+                settings.playbackMode = mode == PlaybackMode::Hold ? PlaybackMode::OneShot : PlaybackMode::Hold;
                 engine.setSettings(settings);
                 engine.process(nullptr, nullptr, left.data(), right.data(), left.size());
                 check(engine.anyPlaybackActive(), "changing global playback mode keeps an editor loop running");
@@ -2272,7 +2272,7 @@ void pad_audition_lifecycle()
     SamplerEngine engine(1000.0, 1.0);
     auto settings = engine.settings();
     settings.monitorInput = false;
-    settings.playbackMode = PlaybackMode::Gated;
+    settings.playbackMode = PlaybackMode::Hold;
     settings.maxVoices = 2U;
     engine.setSettings(settings);
     for (std::uint32_t pad = 0U; pad < 3U; ++pad)
@@ -2315,26 +2315,26 @@ void pad_audition_lifecycle()
     check(!engine.anyPlaybackActive(), "editor audition cannot start while armed");
 }
 
-void arm_stops_gate_without_interrupting_capture()
+void arm_stops_hold_without_interrupting_capture()
 {
     using namespace midichopper;
     SamplerEngine engine(1000.0, 1.0);
     auto settings = engine.settings();
     settings.monitorInput = false;
-    settings.playbackMode = PlaybackMode::Gated;
+    settings.playbackMode = PlaybackMode::Hold;
     engine.setSettings(settings);
-    check(engine.importPad(0U, loop_source()), "import Gate source before Arm");
+    check(engine.importPad(0U, loop_source()), "import Hold source before Arm");
     sms::dsp::SamplePlaybackSettings playback;
     playback.releaseSeconds = 0.008f;
     engine.setPadPlaybackSettings(0U, playback);
     const MidiEvent on{0U, 36U, 127U, MidiEventType::NoteOn};
     std::array<float, 16> left{}, right{};
     engine.process(nullptr, nullptr, left.data(), right.data(), 1U, &on, 1U);
-    check(engine.anyPlaybackActive(), "held Gate voice starts before Arm");
+    check(engine.anyPlaybackActive(), "held Hold voice starts before Arm");
     settings.armed = true;
     engine.setSettings(settings);
     check(!engine.anyPlaybackActive() && !engine.padMetadata(0U).active,
-          "entering Arm immediately hard-cuts Gate voices without a release tail");
+          "entering Arm immediately hard-cuts Hold voices without a release tail");
     const MidiEvent captureEvents[] = {
         {0U, 37U, 127U, MidiEventType::NoteOn},
         {2U, 36U, 0U, MidiEventType::NoteOff}, // release the former performance note
@@ -2349,7 +2349,7 @@ void arm_stops_gate_without_interrupting_capture()
     engine.process(nullptr, nullptr, left.data(), right.data(), left.size());
     for (std::size_t frame = 0U; frame < left.size(); ++frame)
         check(left[frame] == 0.0f && right[frame] == 0.0f,
-              "Gate voice released during Arm cannot resume after disarming");
+              "Hold voice released during Arm cannot resume after disarming");
     PadData captured;
     check(engine.exportPad(1U, captured) && captured.frames == 4U,
           "disarm finalizes every captured frame despite the performance note-off");
@@ -2557,7 +2557,7 @@ void repeating_live_envelopes() {
         SamplerEngine engine(1000.0, 1.0);
         auto settings = engine.settings();
         settings.monitorInput = false;
-        settings.playbackMode = PlaybackMode::Gated;
+        settings.playbackMode = PlaybackMode::Hold;
         engine.setSettings(settings);
         PadData source;
         source.sampleRate = 1000.0;
@@ -2605,7 +2605,7 @@ void repeating_live_envelopes() {
         SamplerEngine engine(1000.0, 1.0);
         auto settings = engine.settings();
         settings.monitorInput = false;
-        settings.playbackMode = PlaybackMode::Gated;
+        settings.playbackMode = PlaybackMode::Hold;
         engine.setSettings(settings);
         PadData source;
         source.sampleRate = 1000.0;
@@ -2623,15 +2623,15 @@ void repeating_live_envelopes() {
         const float releaseLevel = beforeOff == 5U ? 0.75f : 1.0f;
         for (unsigned frame = 0U; frame < 12U; ++frame)
             close(left[frame], releaseLevel * static_cast<float>(12U - frame) / 12.0f,
-                  "Gate note-off uses full Release and never retriggers at seams");
-        close(left[12], 0.0f, "Gate release ends in silence");
-        check(!engine.anyPlaybackActive(), "completed Gate release stops looping");
+                  "Hold note-off uses full Release and never retriggers at seams");
+        close(left[12], 0.0f, "Hold release ends in silence");
+        check(!engine.anyPlaybackActive(), "completed Hold release stops looping");
     }
 }
 
 void sample_global_mixer_bypass() {
     using namespace midichopper;
-    for (const auto mode : {PlaybackMode::OneShot, PlaybackMode::Gated}) {
+    for (const auto mode : {PlaybackMode::OneShot, PlaybackMode::Hold}) {
         SamplerEngine engine(48000.0, 0.1), reference(48000.0, 0.1);
         auto settings = engine.settings();
         settings.playbackMode = mode;
@@ -2704,7 +2704,7 @@ void sample_global_mixer_bypass() {
     auto settings = engine.settings();
     settings.monitorInput = false;
     settings.reverse = true;
-    settings.playbackMode = PlaybackMode::Gated;
+    settings.playbackMode = PlaybackMode::Hold;
     engine.setSettings(settings);
     check(engine.importPad(0U, loop_source()), "import live bypass turn source");
     sms::dsp::SamplePlaybackSettings region;
@@ -3030,10 +3030,10 @@ void unbounded_midi_source_preserves_late_note_off() {
     pad.sampleRate = 1000.0;
     pad.frames = 20;
     pad.stereo.assign(40, 1.0f);
-    check(engine.importPad(0, pad), "import gated-playback pad");
+    check(engine.importPad(0, pad), "import Hold-playback pad");
     auto settings = engine.settings();
     settings.monitorInput = false;
-    settings.playbackMode = midichopper::PlaybackMode::Gated;
+    settings.playbackMode = midichopper::PlaybackMode::Hold;
     engine.setSettings(settings);
 
     std::vector<midichopper::MidiEvent> events;
@@ -3084,8 +3084,8 @@ int main() {
     maximum_voice_limit();
     stop_all_playback();
     sample_region_and_adsr();
-    gated_region_looping();
-    gated_loop_release_and_edits();
+    hold_region_looping();
+    hold_loop_release_and_edits();
     live_loop_region_edits();
     asymmetric_trim_reverse_coordinates();
     live_editor_flip_preserves_voice();
@@ -3100,7 +3100,7 @@ int main() {
     reverse_boundaries_and_envelopes();
     independent_pad_audition();
     pad_audition_lifecycle();
-    arm_stops_gate_without_interrupting_capture();
+    arm_stops_hold_without_interrupting_capture();
     sample_mixer_and_varispeed();
     live_sample_editor_updates();
     repeating_live_envelopes();
