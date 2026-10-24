@@ -24,7 +24,7 @@ Filter with `ctest --test-dir build --output-on-failure -R NAME`:
 | `ui-skin` | Bounded/versioned manifests, scalar/UTF-8/printf fallback, Unicode bundle/image paths, confined images, startup snapshots |
 | `ui-skin-catalog` | Discovery, forced precedence, missing choices, native config folders, Unicode atomic preferences and concurrent writes |
 | `ui-skin-theme` | Placeholder completeness, RGBA/metric bounds, envelope point RGBA/hover, opacities, logo decoding/glow, nested/thread scopes |
-| `ui-bundled-skins` | Both bundled skins in enabled formats, built-in default, selectable/remembered choices, embedded logo, exact assets and color/metric validity |
+| `ui-bundled-skins` | Three bundled skins in enabled formats, Default, selectable/remembered choices, embedded logo and asset/color validity |
 | `ui-geometry` | Instrument metadata/ports, identity/help URLs, pad mapping, editor snapshots, waveform/chop geometry, viewport mapping, logo halo/pulse geometry, hit testing, wheel editing, Space press/repeat routing |
 | `ui-message-bus` | Bounded VST3 message ordering, independent view cursors, explicit gap reporting on wrap, and large replies |
 | `wav-codec` | WAV formats, chunk/truncation/header/nonfinite validation, file actions, offline render, real-time access gate |
@@ -56,8 +56,7 @@ LV2_URI='https://github.com/sirsipe/SMS-Plugins/SMS-AnvilleSampler'
 LV2_PATH="$PWD/build/bin" pw-jack carla-single native lv2 "$LV2_URI"
 ```
 
-Omit `pw-jack` if unnecessary. Pin
-[Carla main](https://github.com/falkTX/Carla/blob/main/source/backend/plugin/CarlaPluginLV2.cpp)
+Pin [Carla main](https://github.com/falkTX/Carla/blob/main/source/backend/plugin/CarlaPluginLV2.cpp)
 with LV2 control-input change-request support for MIDI bank activation;
 Carla 2.5.10 lacks it.
 
@@ -89,12 +88,12 @@ Checks:
   bypass, orientation and active local effects/OUT. Verify reenable, independent
   pad flags, save/reload and copy/paste.
 - Skins: without preferences, verify Default. Switch
-  Default/Anville Graffiti/Finnish Dream in LV2/VST3; check images/text/colors,
-  halo/pulse, background/pad/panel opacity, resizing and remembered selection
+  Default/Finnish Dream/Looks like Wu/White Cadillac Vinyl in LV2/VST3; check
+  artwork, halo/pulse, opacity, resizing and remembered selection
   across formats. In installed copies, verify forced `skin` hides the
   selector; check steady/disabled halos and custom logos. Test scrolling, deleted
   skins, config-write failure, and resizing.
-- UI/editor: check drawing/resizing, pad selection, region/mixer/ADSR drag,
+- UI/editor: check drawing, pad selection, region/mixer/ADSR drag,
   wheel/reset, sound/playhead, and single-target hover. In embedded VST3, type
   a global value: Enter commits, Escape cancels. Check ARM/play/stop icons and
   default green PLAY/red ARMED indicators. ARM hides the mixer; both edge faders remain

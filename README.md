@@ -15,12 +15,12 @@ Available as
 - **Linux VST3** (preferred) and LV2
 - Windows VST3 (experimental)
 
-[<img src="SMS-AnvilleSampler/Docs/main-view.png" width="672" alt="Default Skin Main View">](SMS-AnvilleSampler/Docs/main-view.png)
+[<img src="SMS-AnvilleSampler/Docs/main-view.png" width="672" alt="Default Main View">](SMS-AnvilleSampler/Docs/main-view.png)
 
 #### Alternative skins
-| Finnish Dream | Anville Graffiti |
-| --- | --- |
-| [<img src="SMS-AnvilleSampler/Docs/main-view-finnish-dream.png" alt="Finnish Dream Main View">](SMS-AnvilleSampler/Docs/main-view-finnish-dream.png) | [<img src="SMS-AnvilleSampler/Docs/main-view-anville-graffiti.png" alt="Anville Graffiti Main View">](SMS-AnvilleSampler/Docs/main-view-anville-graffiti.png) |
+| Finnish Dream | Looks like Wu | White Cadillac Vinyl |
+| --- | --- | --- |
+| [<img src="SMS-AnvilleSampler/Docs/main-view-finnish-dream.png" width="224" alt="Finnish Dream Main View">](SMS-AnvilleSampler/Docs/main-view-finnish-dream.png) | [<img src="SMS-AnvilleSampler/Docs/main-view-looks-like-wu.png" width="224" alt="Looks like Wu Main View">](SMS-AnvilleSampler/Docs/main-view-looks-like-wu.png) | [<img src="SMS-AnvilleSampler/Docs/main-view-white-cadillac-vinyl.png" width="224" alt="White Cadillac Vinyl Main View">](SMS-AnvilleSampler/Docs/main-view-white-cadillac-vinyl.png) |
 
 ## About the developer & this project
 > Hi,

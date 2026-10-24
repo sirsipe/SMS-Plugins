@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(SMSAnvilleSampler VERSION 0.0.12 LANGUAGES C CXX)
+project(SMSAnvilleSampler VERSION 0.0.13 LANGUAGES C CXX)
 
 include(CTest)
 include(GNUInstallDirs)
@@ -194,7 +194,7 @@ endforeach()
 # Ship selectable skins and an inactive authoring example.
 # Refresh on every build so manifest/artwork edits do not require relinking.
 set(anvillesampler_skin_source "${CMAKE_CURRENT_SOURCE_DIR}/skins")
-set(anvillesampler_bundled_skin_ids AnvilleGraffiti FinnishDream)
+set(anvillesampler_bundled_skin_ids "Finnish Dream" "Looks like Wu" "White Cadillac Vinyl")
 set(anvillesampler_skin_template "${anvillesampler_skin_source}/placeholder")
 set(anvillesampler_packaged_skin_paths)
 if(ANVILLESAMPLER_BUILD_LV2)
@@ -211,10 +211,12 @@ if(ANVILLESAMPLER_BUILD_CLAP)
 endif()
 add_custom_target(anvillesampler_skins ALL)
 foreach(skin_path IN LISTS anvillesampler_packaged_skin_paths)
-  # Remove the previously shipped forced skin from reused build output.
+  # Remove retired bundled/forced skins from reused build output.
   # User overrides belong in installed bundles, away from generated files.
   add_custom_command(TARGET anvillesampler_skins POST_BUILD
     COMMAND "${CMAKE_COMMAND}" -E rm -rf "${skin_path}"
+      "${skin_path}s/AnvilleGraffiti" "${skin_path}s/Anville Graffiti"
+      "${skin_path}s/FinnishDream"
     COMMAND "${CMAKE_COMMAND}" -E copy_directory "${anvillesampler_skin_template}"
       "${skin_path}-template"
     VERBATIM)

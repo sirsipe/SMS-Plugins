@@ -23,7 +23,7 @@ Inspect every capture for clipping, missing waveforms, overlays and incorrect sk
 
 ## Assets and README layout
 
-Store twelve separate, full-resolution PNGs in `SMS-AnvilleSampler/Docs`:
+Store sixteen separate, full-resolution PNGs in `SMS-AnvilleSampler/Docs`:
 
 | View | Default filename |
 | --- | --- |
@@ -32,15 +32,16 @@ Store twelve separate, full-resolution PNGs in `SMS-AnvilleSampler/Docs`:
 | Split Sample | `split-sample.png` |
 | Adjust Cut Points | `adjust-cut-points.png` |
 
-For each view, add `-finnish-dream` and `-anville-graffiti` before `.png` for the
-other appearances. Basic Usage captures (`arm-view.png`, `context-menu.png`,
+For each view, add `-finnish-dream`, `-looks-like-wu`, and
+`-white-cadillac-vinyl` before `.png` for the other appearances. Basic Usage
+captures (`arm-view.png`, `context-menu.png`,
 `hamburger-menu.png`) always use the built-in appearance. Keep working captures
 under ignored build output.
 
 Both READMEs share the Main View captures. The plugin README also shows each
-editor in all three appearances. Markdown tables and linked HTML `img` elements
-label the built-in appearance **Default Skin** and show it prominently, with
-skin previews at one-third its display width.
+editor in all four appearances. Markdown tables and linked HTML `img` elements
+label the built-in appearance **Default** and show it prominently, with three
+named skin previews at one-third its display width.
 The Skins section uses three equally sized, separate Main View images. Every
 image links to its original PNG; do not bake layouts, labels or scaling into assets.
 

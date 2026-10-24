@@ -26,13 +26,15 @@ CLAP is not currently covered by CI. VST3/CLAP default OFF;
 `ANVILLESAMPLER_BUILD_LV2` defaults ON and can be disabled for VST3-only builds.
 At least one format must be enabled.
 Python 3 runs DPF's resource converter to embed `res/anville.png` in each UI binary.
-Each build copies the maintained Anville Graffiti and Finnish Dream skins into
-LV2/VST3 `skins/` and CLAP sibling `SMS-AnvilleSampler.skins`. The built-in
-appearance is the default; both skins are selectable from the menu.
+Each build copies the maintained Finnish Dream, Looks like Wu, and White Cadillac
+Vinyl skins into LV2/VST3 `skins/` and CLAP sibling
+`SMS-AnvilleSampler.skins`. The built-in appearance is Default; all three skins
+are selectable from the menu.
 The inactive `skin-template` remains available for authoring. Copies refresh
 even when no binaries relink; builds remove legacy forced skins from build
-output. Custom forced skins belong in installed bundles. See the
-[skin guide](../../SMS-AnvilleSampler/Docs/SKINS.md).
+output. The [skin guide](../../SMS-AnvilleSampler/Docs/SKINS.md) documents
+cleanup of retired skin folders in reused output. Custom forced skins belong in
+installed bundles.
 Use a fresh ignored `build-*` directory if an existing CMake cache uses a
 different source path or generator. Avoid repeatedly rebuilding unchanged code.
 

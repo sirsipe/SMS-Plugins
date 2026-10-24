@@ -84,8 +84,9 @@ jobs:
         run: |
           $required = @(
             'Contents/x86_64-win/SMS-AnvilleSampler.vst3',
-            'skins/AnvilleGraffiti/skin.ini', 'skins/AnvilleGraffiti/background.png',
-            'skins/FinnishDream/skin.ini', 'skins/FinnishDream/background.jpg',
+            'skins/Finnish Dream/skin.ini', 'skins/Finnish Dream/backgroundw.png',
+            'skins/Looks like Wu/skin.ini', 'skins/Looks like Wu/wustyle3.png',
+            'skins/White Cadillac Vinyl/skin.ini', 'skins/White Cadillac Vinyl/vinyl.png',
             'skin-template/skin.ini'
           )
           foreach ($relative in $required) {

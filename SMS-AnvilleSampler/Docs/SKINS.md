@@ -3,62 +3,45 @@
 ## Ask an LLM to create a skin
 
 Supply this guide, the [AI authoring reference](../../Docs/AI/SKINS.md), and
-[placeholder/skin.ini](../skins/placeholder/skin.ini) (the key catalog).
-Specify style, name, language and output folder.
-Personal skins belong in ignored `build/skins/` or outside the
-checkout; Git maintains the bundled skins and placeholder.
+[placeholder/skin.ini](../skins/placeholder/skin.ini), the key catalog. Specify
+style, name, language and folder. Keep personal skins under ignored `build/skins/`
+or outside the checkout; Git maintains bundled skins and the placeholder.
 
 ## Bundled appearance
 
-**Default** is the built-in appearance without a skin.
-[Anville Graffiti](../skins/AnvilleGraffiti/skin.ini) and
-[Finnish Dream](../skins/FinnishDream/skin.ini) are bundled as optional choices
-under **hamburger → Skin**. Selection restores on reopening.
+**Default** is the built-in appearance without a skin. Three skins are bundled
+as choices under **hamburger → Skin**: [Finnish Dream](<../skins/Finnish Dream/skin.ini>),
+[Looks like Wu](<../skins/Looks like Wu/skin.ini>), and
+[White Cadillac Vinyl](<../skins/White Cadillac Vinyl/skin.ini>). Selection restores on reopening.
 
-Builds refresh both in `skins/` (CLAP: sibling `SMS-AnvilleSampler.skins`).
-Builds remove the old forced `skin` from build output, including CLAP's
-`SMS-AnvilleSampler.skin`. Create `skin` in installed bundles to override the
-collection.
+Builds refresh all three in `skins/` (CLAP: sibling `SMS-AnvilleSampler.skins`).
+Reused build output removes retired `AnvilleGraffiti`, `Anville Graffiti`, and
+`FinnishDream` folders. Builds also remove the old forced `skin`, including
+CLAP's `SMS-AnvilleSampler.skin`. Create `skin` in installed bundles to override
+the collection. The Finnish Dream ID changed from `FinnishDream`; its old saved
+preference falls back to Default until the user selects Finnish Dream again.
 
 ## Loading skins
 
-Discovery runs when the editor opens; menu choices switch immediately.
-Reopen after editing; restart hosts retaining hidden editors.
+Discovery runs when the editor opens; menu choices switch immediately. Reopen
+after editing, restarting hosts that retain hidden editors.
 
 ## One skin or a collection
 
-A `skin` directory inside the plugin bundle overrides every other choice and
-hides the skin selector. Older unnamed manifests remain valid. A malformed forced skin uses the
-built-in look and still suppresses collections.
+A bundle `skin/` overrides collections and hides the selector. Unnamed
+manifests remain valid. A malformed forced skin uses Default but still
+suppresses collections.
 
-Without `skin`, create `skins` containing one subfolder per skin:
+Without `skin`, collections live under `skins/`, one subfolder per skin:
 
 ```text
-SMS-AnvilleSampler.vst3/
-  Contents/
-  skins/
-    dark/
-      skin.ini
-      background.png
-      logo.png
-    graffiti/
-      skin.ini
-      background.png
-      logo.png
-```
-
-Collections require a display name:
-
-```ini
-[skin]
-version=1
-name=Graffiti
+SMS-AnvilleSampler.vst3/skins/<id>/skin.ini
 ```
 
 If at least one named skin is available, **hamburger → Skin** lists **Default**
 (the built-in appearance) first, followed by skin names sorted alphabetically.
-Names appear literally. Selection is marked; wheel scrolling keeps Default
-at the top. Only immediate subfolders are scanned. Missing names, unsupported or malformed manifests, and
+Names appear literally. Selection is marked; wheel scrolling keeps Default at
+the top. Only immediate subfolders are scanned. Invalid names, manifests, and
 paths escaping the collection are skipped. Selecting a skin that has since
 become unreadable keeps the current skin and reports an error.
 
@@ -68,9 +51,9 @@ For single-file CLAP, use sibling `SMS-AnvilleSampler.skin` for an override or
 `SMS-AnvilleSampler.skins` for a collection. CLAP host integration remains
 untested.
 
-Copy the bundled `skin-template` as `skin` or `skins/dark`. Its source
+Copy `skin-template` as `skin` or `skins/<id>`. The
 [placeholder/skin.ini](../skins/placeholder/skin.ini) catalogs colors, metrics,
-labels/formats and image slots.
+labels, formats and image slots.
 
 ## Remembering a choice
 
@@ -162,9 +145,8 @@ the configured alpha. Missing alpha defaults to `0`, preserving older skins.
 The halo follows logo alpha; use transparent PNGs. Logos exceeding 4096 pixels
 on either axis receive no halo. Animation runs only while visible, up to 30 FPS.
 
-Missing/invalid settings retain defaults; unknown keys are ignored.
-Missing, malformed, oversized or unsupported manifests use the built-in theme. The
-manifest limit is 64 KiB; string keys/values have a 512-byte limit and must be
+Invalid settings retain defaults; unknown keys are ignored. Manifests are limited
+to 64 KiB; string keys/values have a 512-byte limit and must be
 valid UTF-8 without control characters. Absolute paths, `..`, and symlinks
 escaping the skin directory are rejected. Each editor owns its palette; skin
 loading and preference I/O never run in

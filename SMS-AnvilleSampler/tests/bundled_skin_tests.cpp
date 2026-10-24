@@ -41,6 +41,7 @@ void packagedSkin(const fs::path& source, const fs::path& packaged, const sms::u
                       background.compare(0, 3, "\xff\xd8\xff", 3) == 0;
     check(png || jpeg, "background is a supported PNG or JPEG asset");
     for (const auto& [key, value] : skin.colors) {
+        check(key != "pad", "authored pad colors use numbered palette keys");
         std::array<std::uint8_t, 4> rgba{};
         check(sms::ui::Skin::parseColor(value, rgba), "authored skin colors are valid RGBA");
     }
@@ -64,13 +65,14 @@ void packagedCollection(const fs::path& source, const fs::path& forced)
     check(!fs::exists(forced), "build output contains no forced skin");
     const auto catalog = sms::ui::SkinCatalog::discover(forced);
     check(!catalog.forced && catalog.selectable(), "bundled collection exposes the skin selector");
-    check(catalog.entries.size() == 3, "Default and both bundled skins are available");
+    check(catalog.entries.size() == 4, "Default and all three bundled skins are available");
     check(catalog.entries[0].id.empty() && catalog.entries[0].name == "Default",
           "built-in appearance is the first choice");
     check(catalog.selectedIndex("") == 0 && catalog.selectedIndex("missing-skin") == 0 &&
           !catalog.load(0).valid(), "no preference or unavailable skin uses the built-in appearance");
-    const std::array<std::pair<const char*, const char*>, 2> expected{{
-        {"AnvilleGraffiti", "Anville Graffiti"}, {"FinnishDream", "Finnish Dream"}}};
+    const std::array<std::pair<const char*, const char*>, 3> expected{{
+        {"Finnish Dream", "Finnish Dream"}, {"Looks like Wu", "Looks like Wu"},
+        {"White Cadillac Vinyl", "White Cadillac Vinyl"}}};
     for (std::size_t i = 0; i < expected.size(); ++i) {
         const auto& [id, name] = expected[i];
         const auto index = i + 1;

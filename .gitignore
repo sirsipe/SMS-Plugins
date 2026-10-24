@@ -5,8 +5,10 @@
 **/compile_commands.json
 *.swp
 *~
+/test.wav
 
 /SMS-AnvilleSampler/skins/*
 !/SMS-AnvilleSampler/skins/placeholder/
-!/SMS-AnvilleSampler/skins/AnvilleGraffiti/
-!/SMS-AnvilleSampler/skins/FinnishDream/
+!/SMS-AnvilleSampler/skins/Looks like Wu/
+!/SMS-AnvilleSampler/skins/Finnish Dream/
+!/SMS-AnvilleSampler/skins/White Cadillac Vinyl/

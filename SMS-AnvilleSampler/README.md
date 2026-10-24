@@ -13,17 +13,18 @@ _A live stereo chopping sampler._ See [Releases](https://github.com/sirsipe/SMS-
 
 > Thanks to **Manolo Anville** ([@ManoloAnville](https://github.com/ManoloAnville)) for collaboration.
 
-[<img src="Docs/main-view.png" alt="Default Skin Main View">](Docs/main-view.png)
+[<img src="Docs/main-view.png" width="672" alt="Default Main View">](Docs/main-view.png)
 
 #### Bundled Skins
-**Hamburger → Skin** offers **Anville Graffiti** and **Finnish Dream** and remembers
-your choice. Default uses no skin. See [customization](Docs/SKINS.md).
+**Hamburger → Skin** offers **Finnish Dream**, **Looks like Wu**, and
+**White Cadillac Vinyl** and remembers your choice. **Default** uses the built-in
+appearance. See [customization](Docs/SKINS.md).
 
-| Finnish Dream | Anville Graffiti |
-| --- | --- |
-| [<img src="Docs/main-view-finnish-dream.png" alt="Finnish Dream Main View">](Docs/main-view-finnish-dream.png) | [<img src="Docs/main-view-anville-graffiti.png" alt="Anville Graffiti Main View">](Docs/main-view-anville-graffiti.png) |
+| Finnish Dream | Looks like Wu | White Cadillac Vinyl |
+| --- | --- | --- |
+| [<img src="Docs/main-view-finnish-dream.png" width="224" alt="Finnish Dream Main View">](Docs/main-view-finnish-dream.png) | [<img src="Docs/main-view-looks-like-wu.png" width="224" alt="Looks like Wu Main View">](Docs/main-view-looks-like-wu.png) | [<img src="Docs/main-view-white-cadillac-vinyl.png" width="224" alt="White Cadillac Vinyl Main View">](Docs/main-view-white-cadillac-vinyl.png) |
 
-Captures: v0.0.12.
+Captures: v0.0.13.
 
 **VST3 is preferred** for faster GUI loading and more comprehensive testing. LV2 is mostly AI-tested, and Windows VST3 has had minimal testing.
 
@@ -31,8 +32,7 @@ Tested in **REAPER**, **Ardour**, **Carla**.
 
 - MIDI control; capture/chop input or load samples into pads.
 - Waveform editing and splitting.
-- Pad/global mixer and FX: per-pad Forward/Reverse, Gain, Pan, Dirty, Tune (Varispeed), Lowpass/Highpass (6/12/24 dB/octave), independent monitor/playback levels.
-- Per-sample ADSR.
+- Pad/global FX: per-pad Forward/Reverse, Gain, Pan, Dirty, Tune and filters; per-sample ADSR.
 - 2x4, 3x4, or 4x4 pads; four shared/unique MIDI banks; pad colors.
 - VST3 presets transfer samples/settings between Ardour and REAPER; Carla lacks support.
 
@@ -76,24 +76,19 @@ Layouts preserve samples.
 
 ### Sample Editor view
 
-**SAMPLE EDITOR** opens waveform, ADSR, and pad mixing; **MAIN VIEW** returns. See the
-[mixing guide](Docs/MIXING.md). The selection button cycles **Play on Select**,
-**Loop on Select**, and Off (unpressed **Play on Select**). Play auditions once; Loop repeats Start/End after
-release, restarting ADSR each pass with live edits. These modes are independent
-of main playback. Selection changes replace auditions; disabling or leaving stops
-auditioning. **Play/Stop** auditions the selected occupied pad when idle or cuts all
-samples. With Loop on Select, it and Space loop. ARM hides the global mixer;
-edge faders stay visible. **IN** monitors and **OUT** controls samples and previews.
+**SAMPLE EDITOR** opens waveform, ADSR, and pad mixing; **MAIN VIEW** returns.
+Selection cycles Play on Select, Loop on Select, and Off. Play auditions once;
+Loop repeats Start/End after release and restarts ADSR. Both are independent of
+main playback. See the [mixing guide](Docs/MIXING.md) for mixer controls.
 
-**Ctrl + wheel** zooms; **Shift + wheel** scrolls. The left zoom control and
-window box provide drag alternatives. Changing pads resets the view.
+**Ctrl + wheel** zooms; **Shift + wheel** scrolls. Changing pads resets the view.
 
-[<img src="Docs/sample-editor.png" alt="Default Skin">](Docs/sample-editor.png) 
+[<img src="Docs/sample-editor.png" width="672" alt="Default">](Docs/sample-editor.png)
 
 #### Alternative skins
-| Finnish Dream | Anville Graffiti |
-| --- | --- |
-| [<img src="Docs/sample-editor-finnish-dream.png" alt="Finnish Dream">](Docs/sample-editor-finnish-dream.png) | [<img src="Docs/sample-editor-anville-graffiti.png" alt="Anville Graffiti">](Docs/sample-editor-anville-graffiti.png) |
+| Finnish Dream | Looks like Wu | White Cadillac Vinyl |
+| --- | --- | --- |
+| [<img src="Docs/sample-editor-finnish-dream.png" width="224" alt="Finnish Dream">](Docs/sample-editor-finnish-dream.png) | [<img src="Docs/sample-editor-looks-like-wu.png" width="224" alt="Looks like Wu">](Docs/sample-editor-looks-like-wu.png) | [<img src="Docs/sample-editor-white-cadillac-vinyl.png" width="224" alt="White Cadillac Vinyl">](Docs/sample-editor-white-cadillac-vinyl.png) |
 
 
 ### Adjust Cut Points view
@@ -101,37 +96,37 @@ window box provide drag alternatives. Changing pads resets the view.
 Right-click a middle pad for **Adjust cut points**. See the
 [cut-point guide](Docs/CHOP-EDITOR.md).
 
-[<img src="Docs/adjust-cut-points.png" alt="Default Skin">](Docs/adjust-cut-points.png)
+[<img src="Docs/adjust-cut-points.png" width="672" alt="Default">](Docs/adjust-cut-points.png)
 
 #### Alternative skins
-| Finnish Dream | Anville Graffiti |
-| --- | --- |
-| [<img src="Docs/adjust-cut-points-finnish-dream.png" alt="Finnish Dream">](Docs/adjust-cut-points-finnish-dream.png) | [<img src="Docs/adjust-cut-points-anville-graffiti.png" alt="Anville Graffiti">](Docs/adjust-cut-points-anville-graffiti.png) |
+| Finnish Dream | Looks like Wu | White Cadillac Vinyl |
+| --- | --- | --- |
+| [<img src="Docs/adjust-cut-points-finnish-dream.png" width="224" alt="Finnish Dream">](Docs/adjust-cut-points-finnish-dream.png) | [<img src="Docs/adjust-cut-points-looks-like-wu.png" width="224" alt="Looks like Wu">](Docs/adjust-cut-points-looks-like-wu.png) | [<img src="Docs/adjust-cut-points-white-cadillac-vinyl.png" width="224" alt="White Cadillac Vinyl">](Docs/adjust-cut-points-white-cadillac-vinyl.png) |
 
 
 ### Split sample view
 
 Right-click for **Split Sample**; following samples shift right without being overwritten.
 
-[<img src="Docs/split-sample.png" alt="Default Skin">](Docs/split-sample.png) 
+[<img src="Docs/split-sample.png" width="672" alt="Default">](Docs/split-sample.png)
 
 #### Alternative skins
-| Finnish Dream | Anville Graffiti |
-| --- | --- |
-| [<img src="Docs/split-sample-finnish-dream.png" alt="Finnish Dream">](Docs/split-sample-finnish-dream.png) | [<img src="Docs/split-sample-anville-graffiti.png" alt="Anville Graffiti">](Docs/split-sample-anville-graffiti.png) |
+| Finnish Dream | Looks like Wu | White Cadillac Vinyl |
+| --- | --- | --- |
+| [<img src="Docs/split-sample-finnish-dream.png" width="224" alt="Finnish Dream">](Docs/split-sample-finnish-dream.png) | [<img src="Docs/split-sample-looks-like-wu.png" width="224" alt="Looks like Wu">](Docs/split-sample-looks-like-wu.png) | [<img src="Docs/split-sample-white-cadillac-vinyl.png" width="224" alt="White Cadillac Vinyl">](Docs/split-sample-white-cadillac-vinyl.png) |
 
 
 ## General Controls
 
 - Drag/wheel knobs and sliders.
-- **Shift** gives 10× knob precision; **Ctrl** steps Gain/Volume 1 dB, Pan 10%, Tune one semitone.
+- **Shift** gives 10× knob precision; **Ctrl** steps Gain/Volume 1 dB, Pan 10%, and Tune one semitone.
 - Double-click values to enter exact values; double/middle-click knobs, ADSR, or
   edge faders to reset.
 - The wheel adjusts ADSR, Start/End, and cuts.
 - Click the plug-in for keyboard focus. **Space** plays/stops in PLAY/editor or
-  starts/chops ARM capture; holding does not repeat. Menus, dialogs, numeric entry,
-  and cut-point views suppress it. The plug-in consumes delivered Space; if the
-  DAW intercepts it first, enable sending keys to the plug-in.
+  starts/chops ARM capture; holding does not repeat. Menus, dialogs, numeric
+  entry, and cut-point views suppress Space. Enable sending keys to the plug-in
+  if the DAW intercepts it.
 
 ## Other controls
 
