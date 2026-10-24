@@ -61,6 +61,8 @@ enum class InteractiveType : int {
     finalizeAction,
     undoAction,
     clearAction,
+    menuPadLayouts,
+    menuBankModes,
     menuSkins,
     skinItem,
     padDirection,
@@ -357,7 +359,7 @@ struct InteractionContext {
     bool chopSplitMode = false;
     bool menuOpen = false;
     bool skinsAvailable = false;
-    bool skinMenuOpen = false;
+    layout::MenuSubmenu menuSubmenu = layout::MenuSubmenu::none;
     sms::ui::ContextMenuGeometry skinMenu;
     int skinMenuItemCount = 0;
     bool padContextMenuOpen = false;
@@ -406,7 +408,7 @@ interactiveTargetAt(const sms::ui::Point point, const InteractionContext& contex
         return target(InteractiveType::menuButton);
 
     if (context.menuOpen) {
-        if (context.skinMenuOpen) {
+        if (context.menuSubmenu == uiLayout::MenuSubmenu::skin) {
             const int row = context.skinMenu.hit(point);
             if (row >= 0 && row < context.skinMenuItemCount)
                 return target(InteractiveType::skinItem, row);
@@ -416,18 +418,24 @@ interactiveTargetAt(const sms::ui::Point point, const InteractionContext& contex
         }
         if (context.skinsAvailable && uiLayout::skinMenuButton.contains(point))
             return target(InteractiveType::menuSkins);
-        if (!context.captureActive) {
-            for (int index = 0; index < static_cast<int>(kPadLayoutCount); ++index) {
-                if (uiLayout::menuOption(index).contains(point))
-                    return target(InteractiveType::menuLayout, index);
-            }
+        if (context.menuSubmenu == uiLayout::MenuSubmenu::padLayout ||
+            context.menuSubmenu == uiLayout::MenuSubmenu::bankMode) {
+            const bool padLayout = context.menuSubmenu == uiLayout::MenuSubmenu::padLayout;
+            const auto menu = padLayout ? uiLayout::layoutMenuGeometry()
+                                        : uiLayout::bankModeMenuGeometry();
+            const int row = menu.hit(point);
+            if (row >= 0 && (!padLayout || !context.captureActive))
+                return target(padLayout ? InteractiveType::menuLayout
+                                         : InteractiveType::menuMidiBankMode, row);
+            if (menu.bounds().contains(point))
+                return sms::ui::kNoInteractiveTarget;
         }
-        for (int index = 0; index < static_cast<int>(kMidiBankModeCount); ++index) {
-            if (uiLayout::midiBankModeOption(index).contains(point))
-                return target(InteractiveType::menuMidiBankMode, index);
-        }
+        if (uiLayout::layoutMenuButton.contains(point))
+            return target(InteractiveType::menuPadLayouts);
+        if (uiLayout::bankModeMenuButton.contains(point))
+            return target(InteractiveType::menuBankModes);
         for (int index = 0; index < 2; ++index) {
-            if (uiLayout::menuLinkOption(index).contains(point))
+            if (uiLayout::menuLinkOption(index, context.skinsAvailable).contains(point))
                 return target(InteractiveType::menuLink, index);
         }
         return sms::ui::kNoInteractiveTarget;

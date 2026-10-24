@@ -1000,7 +1000,7 @@ protected:
             fLogoGlow ? &*fLogoGlow : nullptr,
             sms::ui::logoGlowOpacity(fTheme.logoGlowAlpha, fTheme.logoGlowPulseSeconds,
                 std::chrono::duration<double>(std::chrono::steady_clock::now() - fLogoGlowEpoch).count()),
-            fSkinCatalog.selectable(), fMenuOpen && fSkinMenuOpen, fSkinMenu,
+            fSkinCatalog.selectable(), fMenuOpen ? fMenuSubmenu : uiLayout::MenuSubmenu::none, fSkinMenu,
             std::span<const sms::ui::ContextMenuItemView>{skinMenuItems.data(),
                 static_cast<std::size_t>(skinRows)}, fSkinMenuOffset,
             static_cast<int>(fSkinCatalog.entries.size()),
@@ -1039,7 +1039,7 @@ protected:
             if (fMenuOpen) {
                 if (ev.press) {
                     fMenuOpen = false;
-                    fSkinMenuOpen = false;
+                    fMenuSubmenu = uiLayout::MenuSubmenu::none;
                     (void)fHover.clear();
                     requestRepaint();
                 }
@@ -1144,12 +1144,20 @@ protected:
                     clicked, midichopper::ui::InteractiveType::menuButton))
             {
                 fMenuOpen = !fMenuOpen;
-                fSkinMenuOpen = false;
+                fMenuSubmenu = uiLayout::MenuSubmenu::none;
                 requestRepaint();
                 return true;
             }
             if (fMenuOpen)
             {
+                if (midichopper::ui::isTarget(clicked, midichopper::ui::InteractiveType::menuPadLayouts) ||
+                    midichopper::ui::isTarget(clicked, midichopper::ui::InteractiveType::menuBankModes)) {
+                    fMenuSubmenu = midichopper::ui::isTarget(clicked,
+                        midichopper::ui::InteractiveType::menuPadLayouts)
+                        ? uiLayout::MenuSubmenu::padLayout : uiLayout::MenuSubmenu::bankMode;
+                    requestRepaint();
+                    return true;
+                }
                 if (midichopper::ui::isTarget(clicked, midichopper::ui::InteractiveType::menuSkins)) {
                     openSkinMenu();
                     requestRepaint();
@@ -1160,7 +1168,7 @@ protected:
                         clicked.index, fSkinMenuOffset)));
                     return true;
                 }
-                fSkinMenuOpen = false;
+                fMenuSubmenu = uiLayout::MenuSubmenu::none;
                 if (midichopper::ui::isTarget(
                         clicked, midichopper::ui::InteractiveType::menuLayout)) {
                     fMenuOpen = false;
@@ -1672,13 +1680,18 @@ protected:
         }
         const auto hovered = resolveInteractiveTarget(x, y);
         if (fMenuOpen) {
-            if (midichopper::ui::isTarget(hovered, midichopper::ui::InteractiveType::menuSkins)) {
-                if (!fSkinMenuOpen) openSkinMenu();
-            } else if (fSkinMenuOpen && (midichopper::ui::isTarget(hovered,
-                           midichopper::ui::InteractiveType::menuLayout) ||
-                       midichopper::ui::isTarget(hovered, midichopper::ui::InteractiveType::menuMidiBankMode) ||
-                       midichopper::ui::isTarget(hovered, midichopper::ui::InteractiveType::menuLink))) {
-                fSkinMenuOpen = false;
+            auto submenu = fMenuSubmenu;
+            if (midichopper::ui::isTarget(hovered, midichopper::ui::InteractiveType::menuPadLayouts))
+                submenu = uiLayout::MenuSubmenu::padLayout;
+            else if (midichopper::ui::isTarget(hovered, midichopper::ui::InteractiveType::menuBankModes))
+                submenu = uiLayout::MenuSubmenu::bankMode;
+            else if (midichopper::ui::isTarget(hovered, midichopper::ui::InteractiveType::menuSkins))
+                submenu = uiLayout::MenuSubmenu::skin;
+            else if (midichopper::ui::isTarget(hovered, midichopper::ui::InteractiveType::menuLink))
+                submenu = uiLayout::MenuSubmenu::none;
+            if (submenu != fMenuSubmenu) {
+                if (submenu == uiLayout::MenuSubmenu::skin) openSkinMenu();
+                else fMenuSubmenu = submenu;
                 requestRepaint();
             }
         }
@@ -1725,7 +1738,7 @@ protected:
         if (delta == 0.0f || !std::isfinite(delta))
             return false;
 
-        if (fMenuOpen && fSkinMenuOpen && fSkinMenu.bounds().contains({x, y})) {
+        if (fMenuOpen && fMenuSubmenu == uiLayout::MenuSubmenu::skin && fSkinMenu.bounds().contains({x, y})) {
             const int maximum = uiLayout::skinMenuMaxOffset(static_cast<int>(fSkinCatalog.entries.size()));
             fSkinMenuOffset = std::clamp(fSkinMenuOffset + (delta < 0.0f ? 1 : -1), 0, maximum);
             (void)fHover.clear();
@@ -1977,7 +1990,7 @@ protected:
             return true;
         }
         if (fMenuOpen) {
-            if (fSkinMenuOpen) fSkinMenuOpen = false;
+            if (fMenuSubmenu != uiLayout::MenuSubmenu::none) fMenuSubmenu = uiLayout::MenuSubmenu::none;
             else fMenuOpen = false;
             (void)fHover.clear();
             requestRepaint();
@@ -2083,7 +2096,7 @@ private:
     std::chrono::steady_clock::time_point fLogoGlowEpoch{};
     std::chrono::steady_clock::time_point fNextLogoGlowRepaint{};
     std::optional<DGL_NAMESPACE::NanoImage> fBackground;
-    bool fSkinMenuOpen = false;
+    uiLayout::MenuSubmenu fMenuSubmenu = uiLayout::MenuSubmenu::none;
     int fSkinMenuOffset = 0;
     sms::ui::ContextMenuGeometry fSkinMenu;
     bool fSkinImagesLoaded = false;
@@ -2204,7 +2217,7 @@ private:
         fSkinMenuOffset = std::clamp(static_cast<int>(fSelectedSkin) - 1, 0,
                                     uiLayout::skinMenuMaxOffset(count));
         fSkinMenu = uiLayout::skinMenuGeometry(count);
-        fSkinMenuOpen = true;
+        fMenuSubmenu = uiLayout::MenuSubmenu::skin;
         requestRepaint();
     }
 
@@ -2218,7 +2231,7 @@ private:
         }
         fSelectedSkin = index;
         fPendingSkin = std::move(skin);
-        fSkinMenuOpen = false;
+        fMenuSubmenu = uiLayout::MenuSubmenu::none;
         fMenuOpen = false;
         (void)fHover.clear();
         if (!sms::ui::SkinPreference::write(fSkinPreferencePath, fSkinCatalog.entries[index].id))
@@ -2242,7 +2255,7 @@ private:
         context.chopSplitMode = fChopEditor.split();
         context.menuOpen = fMenuOpen;
         context.skinsAvailable = fSkinCatalog.selectable();
-        context.skinMenuOpen = fMenuOpen && fSkinMenuOpen;
+        context.menuSubmenu = fMenuOpen ? fMenuSubmenu : uiLayout::MenuSubmenu::none;
         context.skinMenu = fSkinMenu;
         context.skinMenuItemCount = uiLayout::skinMenuVisibleCount(
             static_cast<int>(fSkinCatalog.entries.size()));

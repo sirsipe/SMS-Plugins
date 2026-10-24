@@ -543,37 +543,13 @@ private:
         canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_LEFT |
                           DGL_NAMESPACE::NanoVG::ALIGN_TOP);
         canvas_.fillColor(colors.contentSecondary);
-        text(1060.0f, 81.0f, "PAD LAYOUT", nullptr);
-        static constexpr const char* labels[] = {
-            "16 PADS  ·  4×4", "12 PADS  ·  3×4", "8 PADS   ·  4×2",
-        };
-        for (int index = 0; index < static_cast<int>(kPadLayoutCount); ++index)
-            sms::ui::dpf::drawSegment(canvas_, uiLayout::menuOption(index), labels[index],
-                                      index == state_.layout, colors.selection,
-                                      hovered(InteractiveType::menuLayout, index),
-                                      state_.currentPad < 0);
-        canvas_.fillColor(colors.contentSecondary);
-        text(1060.0f, 207.0f, "MIDI BANK MODE", nullptr);
-        static constexpr const char* midiLabels[] = {
-            "SELECTED  ·  SHARED", "ALL BANKS  ·  UNIQUE",
-        };
-        for (int index = 0; index < static_cast<int>(kMidiBankModeCount); ++index)
-            sms::ui::dpf::drawSegment(canvas_, uiLayout::midiBankModeOption(index),
-                                      midiLabels[index], index == state_.midiBankMode,
-                                      colors.selection,
-                                      hovered(InteractiveType::menuMidiBankMode, index));
-        canvas_.fillColor(colors.contentSecondary);
-        text(1060.0f, 309.0f, "LINKS", nullptr);
-        static constexpr const char* linkLabels[] = {"ONLINE HELP", "REPORT ISSUE"};
-        for (int index = 0; index < 2; ++index)
-            sms::ui::dpf::drawSegment(canvas_, uiLayout::menuLinkOption(index),
-                                      linkLabels[index], false, colors.selection,
-                                      hovered(InteractiveType::menuLink, index));
-        if (state_.skinsAvailable) {
-            sms::ui::dpf::drawSegment(canvas_, uiLayout::skinMenuButton, "SKINS",
-                state_.skinMenuOpen, colors.selection, hovered(InteractiveType::menuSkins));
-            const float x = uiLayout::skinMenuButton.x + 13.0f;
-            const float y = uiLayout::skinMenuButton.y + 14.0f;
+        const auto submenuButton = [&](const sms::ui::Rect bounds, const char* label,
+                                       const uiLayout::MenuSubmenu submenu,
+                                       const InteractiveType type) {
+            sms::ui::dpf::drawSegment(canvas_, bounds, label,
+                state_.menuSubmenu == submenu, colors.selection, hovered(type));
+            const float x = bounds.x + 13.0f;
+            const float y = bounds.y + bounds.height * 0.5f;
             canvas_.beginPath();
             canvas_.moveTo(x + 2.0f, y - 4.0f);
             canvas_.lineTo(x - 2.0f, y);
@@ -581,8 +557,41 @@ private:
             canvas_.strokeColor(colors.contentSecondary);
             canvas_.strokeWidth(1.3f);
             canvas_.stroke();
-        }
-        if (state_.skinMenuOpen) {
+        };
+        submenuButton(uiLayout::layoutMenuButton, "PAD LAYOUT",
+            uiLayout::MenuSubmenu::padLayout, InteractiveType::menuPadLayouts);
+        submenuButton(uiLayout::bankModeMenuButton, "BANK MODE",
+            uiLayout::MenuSubmenu::bankMode, InteractiveType::menuBankModes);
+        if (state_.skinsAvailable)
+            submenuButton(uiLayout::skinMenuButton, "SKIN",
+                uiLayout::MenuSubmenu::skin, InteractiveType::menuSkins);
+        text(1060.0f, state_.skinsAvailable ? 199.0f : 163.0f, "LINKS", nullptr);
+        static constexpr const char* linkLabels[] = {"ONLINE HELP", "REPORT ISSUE"};
+        for (int index = 0; index < 2; ++index)
+            sms::ui::dpf::drawSegment(canvas_,
+                uiLayout::menuLinkOption(index, state_.skinsAvailable),
+                linkLabels[index], false, colors.selection, hovered(InteractiveType::menuLink, index));
+        if (state_.menuSubmenu == uiLayout::MenuSubmenu::padLayout) {
+            const sms::ui::ContextMenuItemView items[] = {
+                {"16 PADS  ·  4×4", state_.currentPad < 0, false,
+                    sms::ui::ContextMenuItemKind::action, state_.layout == 0},
+                {"12 PADS  ·  3×4", state_.currentPad < 0, false,
+                    sms::ui::ContextMenuItemKind::action, state_.layout == 1},
+                {"8 PADS   ·  4×2", state_.currentPad < 0, false,
+                    sms::ui::ContextMenuItemKind::action, state_.layout == 2},
+            };
+            sms::ui::dpf::drawContextMenu(canvas_, uiLayout::layoutMenuGeometry(), items,
+                hovered(InteractiveType::menuLayout) ? state_.hoveredTarget.index : -1);
+        } else if (state_.menuSubmenu == uiLayout::MenuSubmenu::bankMode) {
+            const sms::ui::ContextMenuItemView items[] = {
+                {"SELECTED  ·  SHARED", true, false,
+                    sms::ui::ContextMenuItemKind::action, state_.midiBankMode == 0},
+                {"ALL BANKS  ·  UNIQUE", true, false,
+                    sms::ui::ContextMenuItemKind::action, state_.midiBankMode == 1},
+            };
+            sms::ui::dpf::drawContextMenu(canvas_, uiLayout::bankModeMenuGeometry(), items,
+                hovered(InteractiveType::menuMidiBankMode) ? state_.hoveredTarget.index : -1);
+        } else if (state_.menuSubmenu == uiLayout::MenuSubmenu::skin) {
             sms::ui::dpf::drawContextMenu(canvas_, state_.skinMenu, state_.skinMenuItems,
                 hovered(InteractiveType::skinItem) ? state_.hoveredTarget.index : -1);
             const int maximum = uiLayout::skinMenuMaxOffset(state_.skinMenuTotal);

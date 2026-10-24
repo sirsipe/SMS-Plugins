@@ -13,7 +13,7 @@ checkout; Git maintains the bundled skins and placeholder.
 **Default** is the built-in appearance without a skin.
 [Anville Graffiti](../skins/AnvilleGraffiti/skin.ini) and
 [Finnish Dream](../skins/FinnishDream/skin.ini) are bundled as optional choices
-under **hamburger → Skins**. A remembered selection is restored on reopening.
+under **hamburger → Skin**. Selection restores on reopening.
 
 Builds refresh both in `skins/` (CLAP: sibling `SMS-AnvilleSampler.skins`).
 Builds remove the old forced `skin` from build output, including CLAP's
@@ -55,7 +55,7 @@ version=1
 name=Graffiti
 ```
 
-If at least one named skin is available, **hamburger → Skins** lists **Default**
+If at least one named skin is available, **hamburger → Skin** lists **Default**
 (the built-in appearance) first, followed by skin names sorted alphabetically.
 Names appear literally. Selection is marked; wheel scrolling keeps Default
 at the top. Only immediate subfolders are scanned. Missing names, unsupported or malformed manifests, and
@@ -106,7 +106,8 @@ Values are literal: do not add quotes, inline comments, or escape sequences.
 | `[strings]` | Exact built-in label/format on the left, replacement text on the right |
 | `[images]` | `background` and `logo`: relative image filenames inside the skin |
 
-Rename custom skins' `GATE` string keys to `HOLD`.
+Rename custom string keys: `GATE` → `HOLD`; `SKINS` → `SKIN`;
+`MIDI BANK MODE` → `BANK MODE`.
 
 For example:
 

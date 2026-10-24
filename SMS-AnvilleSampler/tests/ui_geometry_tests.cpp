@@ -175,24 +175,19 @@ void pluginIdentity()
 void hamburgerMenuGeometry()
 {
     namespace menu = midichopper::ui::layout;
-    const auto lastLayout = menu::menuOption(2);
-    const auto firstMidiMode = menu::midiBankModeOption(0);
-    const auto lastMidiMode = menu::midiBankModeOption(1);
-    const auto firstLink = menu::menuLinkOption(0);
-    const auto lastLink = menu::menuLinkOption(1);
-    check(firstMidiMode.y > lastLayout.y + lastLayout.height,
-          "MIDI bank choices follow pad-layout choices without overlap");
-    check(menu::menuPanel.contains({firstMidiMode.x + firstMidiMode.width * 0.5f,
-                                    firstMidiMode.y + firstMidiMode.height * 0.5f}) &&
-          menu::menuPanel.contains({lastMidiMode.x + lastMidiMode.width * 0.5f,
-                                    lastMidiMode.y + lastMidiMode.height * 0.5f}),
-          "MIDI bank choices remain inside the hamburger panel");
-    check(firstLink.y > lastMidiMode.y + lastMidiMode.height &&
-          menu::menuPanel.contains({firstLink.x + firstLink.width * 0.5f,
-                                    firstLink.y + firstLink.height * 0.5f}) &&
-          menu::menuPanel.contains({lastLink.x + lastLink.width * 0.5f,
-                                    lastLink.y + lastLink.height * 0.5f}),
-          "browser links follow bank choices inside the hamburger panel");
+    for (const bool skins : {false, true}) {
+        const auto panel = menu::menuPanelBounds(skins);
+        const auto firstLink = menu::menuLinkOption(0, skins);
+        const auto lastLink = menu::menuLinkOption(1, skins);
+        check(menu::layoutMenuButton.y + menu::layoutMenuButton.height < menu::bankModeMenuButton.y &&
+              menu::bankModeMenuButton.y + menu::bankModeMenuButton.height < menu::skinMenuButton.y &&
+              firstLink.y > (skins ? menu::skinMenuButton.y + menu::skinMenuButton.height
+                                   : menu::bankModeMenuButton.y + menu::bankModeMenuButton.height) &&
+              lastLink.y > firstLink.y + firstLink.height &&
+              panel.contains({firstLink.x, firstLink.y}) && panel.contains({lastLink.x, lastLink.y}) &&
+              lastLink.y + lastLink.height <= panel.y + panel.height,
+              "hamburger orders layout, bank mode, optional skin, then browser links without overlap");
+    }
     check(midichopper::ui::onlineHelpUrl("main") ==
               "https://github.com/sirsipe/SMS-Plugins/tree/main/SMS-AnvilleSampler" &&
           midichopper::ui::onlineHelpUrl("SMS-AnvilleSampler-v1.2.3") ==
@@ -286,15 +281,14 @@ void skinMenuGeometryAndTargets()
     };
     const auto basePanel = layout::menuPanelBounds(false);
     const auto skinPanel = layout::menuPanelBounds(true);
-    check(basePanel.height == layout::menuPanel.height &&
+    check(skinPanel.height == layout::menuPanel.height &&
           skinPanel.height > basePanel.height &&
           inside(layout::contentBounds, skinPanel) &&
           inside(skinPanel, layout::skinMenuButton) &&
           inside(skinPanel, layout::menuLinkOption(0)) &&
           inside(skinPanel, layout::menuLinkOption(1)) &&
-          layout::skinMenuButton.y > layout::menuLinkOption(1).y +
-              layout::menuLinkOption(1).height,
-          "skin selector extends the menu without overlapping its browser links");
+          layout::skinMenuButton.y + layout::skinMenuButton.height < layout::menuLinkOption(0).y,
+          "skin selector precedes browser links inside the expanded menu");
     check(layout::skinMenuVisibleCount(-1) == 0 &&
           layout::skinMenuVisibleCount(0) == 0 &&
           layout::skinMenuMaxOffset(0) == 0,
@@ -341,7 +335,7 @@ void skinMenuGeometryAndTargets()
         }
         context.menuOpen = true;
         context.skinsAvailable = true;
-        context.skinMenuOpen = true;
+        context.menuSubmenu = layout::MenuSubmenu::skin;
         for (int row = 0; row < context.skinMenuItemCount; ++row) {
             check(interaction::isTarget(interaction::interactiveTargetAt(
                       center(context.skinMenu.item(row)), context),
@@ -354,7 +348,7 @@ void skinMenuGeometryAndTargets()
 
         // Place an overlay across a parent option to exercise overlapping targets
         // and padding independently of the current popup placement.
-        const auto option = layout::menuOption(1);
+        const auto option = layout::layoutMenuButton;
         context.skinMenu = {{option.x, option.y}, 2, layout::contentBounds};
         context.skinMenuItemCount = 2;
         check(interaction::isTarget(interaction::interactiveTargetAt(
@@ -365,12 +359,12 @@ void skinMenuGeometryAndTargets()
               context.skinMenu.hit(padding) == -1 &&
               !interaction::interactiveTargetAt(padding, context).valid(),
               "skin submenu padding blocks parent menu fallthrough");
-        context.skinMenuOpen = false;
+        context.menuSubmenu = layout::MenuSubmenu::none;
         check(interaction::isTarget(interaction::interactiveTargetAt(padding, context),
-                  InteractiveType::menuLayout, 1),
+                  InteractiveType::menuPadLayouts),
               "a hidden skin submenu leaves its parent option clickable");
         context.menuOpen = false;
-        context.skinMenuOpen = true;
+        context.menuSubmenu = layout::MenuSubmenu::skin;
         check(interaction::isTarget(interaction::interactiveTargetAt(
                   center(layout::levelFader(0)), context), InteractiveType::levelFader, 0),
               "stale submenu state cannot capture controls while the parent menu is hidden");
@@ -381,7 +375,7 @@ void skinMenuGeometryAndTargets()
     const auto pad = pads.grid(layout::mainPadBounds, 10.0f).cell(pads.visualIndex(0));
     context.skinMenu = {{pad.x, pad.y}, 2, layout::contentBounds};
     context.skinMenuItemCount = 2;
-    context.skinMenuOpen = true;
+    context.menuSubmenu = layout::MenuSubmenu::skin;
     const auto point = center(context.skinMenu.item(0));
     check(interaction::isTarget(interaction::interactiveTargetAt(point, context),
               InteractiveType::pad, 0),
@@ -390,6 +384,58 @@ void skinMenuGeometryAndTargets()
     check(interaction::isTarget(interaction::interactiveTargetAt(point, context),
               InteractiveType::skinItem, 0),
           "an open skin submenu captures the underlying pad");
+}
+
+void layoutAndBankSubmenuTargets()
+{
+    namespace layout = midichopper::ui::layout;
+    namespace interaction = midichopper::ui;
+    using interaction::InteractiveType;
+    for (int view = 0; view < 4; ++view) {
+        interaction::InteractionContext context;
+        context.editorMode = view == 1;
+        context.chopEditorMode = view == 2;
+        context.armed = view == 3;
+        for (const bool skins : {false, true}) {
+            context.skinsAvailable = skins;
+            for (const bool open : {false, true}) {
+                context.menuOpen = open;
+                for (const auto submenu : {layout::MenuSubmenu::none, layout::MenuSubmenu::padLayout,
+                                           layout::MenuSubmenu::bankMode, layout::MenuSubmenu::skin}) {
+                    context.menuSubmenu = submenu;
+                    for (const bool capture : {false, true}) {
+                        context.captureActive = capture;
+                        if (open) {
+                            check(interaction::isTarget(interaction::interactiveTargetAt(
+                                      center(layout::layoutMenuButton), context), InteractiveType::menuPadLayouts) &&
+                                  interaction::isTarget(interaction::interactiveTargetAt(
+                                      center(layout::bankModeMenuButton), context), InteractiveType::menuBankModes),
+                                  "submenu parents stay reachable when switching between menus");
+                        }
+                        for (const bool pads : {false, true}) {
+                            const auto geometry = pads ? layout::layoutMenuGeometry() : layout::bankModeMenuGeometry();
+                            const auto type = pads ? InteractiveType::menuLayout : InteractiveType::menuMidiBankMode;
+                            const auto active = pads ? layout::MenuSubmenu::padLayout : layout::MenuSubmenu::bankMode;
+                            check(geometry.bounds().x + geometry.bounds().width <= layout::menuPanel.x + 2.0f &&
+                                  geometry.bounds().y >= layout::contentBounds.y,
+                                  "layout and bank submenus fit to the left of their parents");
+                            for (int row = 0; row < (pads ? 3 : 2); ++row) {
+                                check(interaction::isTarget(interaction::interactiveTargetAt(
+                                          center(geometry.item(row)), context), type, row) ==
+                                          (open && submenu == active && (!pads || !capture)),
+                                      "choices require their open submenu; capture disables only layout changes");
+                            }
+                            if (open && submenu == active) {
+                                const auto bounds = geometry.bounds();
+                                check(!interaction::interactiveTargetAt({bounds.x + 1.0f, bounds.y + 1.0f}, context).valid(),
+                                      "layout and bank submenu padding blocks underlying controls");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 void spaceKeyTracking()
@@ -526,14 +572,14 @@ void interactionTargets()
 
     context.menuOpen = true;
     check(interaction::isTarget(
-              interaction::interactiveTargetAt(center(layout::menuOption(1)), context),
-              interaction::InteractiveType::menuLayout, 1),
+              interaction::interactiveTargetAt(center(layout::layoutMenuButton), context),
+              interaction::InteractiveType::menuPadLayouts),
           "open hamburger menu exposes its option");
     check(interaction::isTarget(
-              interaction::interactiveTargetAt(center(layout::menuLinkOption(0)), context),
+              interaction::interactiveTargetAt(center(layout::menuLinkOption(0, context.skinsAvailable)), context),
               interaction::InteractiveType::menuLink, 0) &&
           interaction::isTarget(
-              interaction::interactiveTargetAt(center(layout::menuLinkOption(1)), context),
+              interaction::interactiveTargetAt(center(layout::menuLinkOption(1, context.skinsAvailable)), context),
               interaction::InteractiveType::menuLink, 1),
           "open hamburger menu exposes both browser actions");
     check(!interaction::interactiveTargetAt(center(layout::fixedLength), context).valid(),
@@ -2136,6 +2182,7 @@ int main()
     hamburgerMenuGeometry();
     contextMenuGeometry();
     skinMenuGeometryAndTargets();
+    layoutAndBankSubmenuTargets();
     interactionTargets();
     spaceKeyTracking();
     padPressTracking();

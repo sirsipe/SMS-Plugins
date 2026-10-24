@@ -292,6 +292,9 @@ void placeholderCatalog()
     check(skin.valid(), "placeholder manifest loads");
     check(skin.strings.contains("HOLD") && skin.strings.at("HOLD") == "HOLD" &&
           !skin.strings.contains("GATE"), "placeholder catalogs Hold under its current string key");
+    for (const auto* label : {"PAD LAYOUT", "BANK MODE", "SKIN"})
+        check(skin.strings.contains(label) && skin.strings.at(label) == label,
+              "placeholder catalogs current hamburger submenu labels");
     const auto mapped = skinTheme(skin);
     skin.strings["HOLD"] = "PIDÄ";
     {

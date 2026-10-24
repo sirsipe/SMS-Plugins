@@ -39,14 +39,30 @@ inline constexpr sms::ui::Rect outputMeter{1294.0f, 140.0f, 44.0f, 476.0f};
 inline constexpr sms::ui::Rect mainPanel{24.0f, 96.0f, 934.0f, 596.0f};
 inline constexpr sms::ui::Rect sidePanel{974.0f, 96.0f, 266.0f, 596.0f};
 inline constexpr sms::ui::Rect menuButton{1208.0f, 25.0f, 32.0f, 32.0f};
-inline constexpr sms::ui::Rect menuPanel{1048.0f, 68.0f, 192.0f, 330.0f};
-inline constexpr sms::ui::Rect skinMenuButton{1060.0f, 405.0f, 168.0f, 28.0f};
+enum class MenuSubmenu { none, padLayout, bankMode, skin };
+
+inline constexpr sms::ui::Rect menuPanel{1048.0f, 68.0f, 192.0f, 226.0f};
+inline constexpr sms::ui::Rect layoutMenuButton{1060.0f, 80.0f, 168.0f, 28.0f};
+inline constexpr sms::ui::Rect bankModeMenuButton{1060.0f, 116.0f, 168.0f, 28.0f};
+inline constexpr sms::ui::Rect skinMenuButton{1060.0f, 152.0f, 168.0f, 28.0f};
 
 [[nodiscard]] constexpr sms::ui::Rect menuPanelBounds(const bool hasSkins) noexcept
 {
     auto bounds = menuPanel;
-    if (hasSkins) bounds.height += 48.0f;
+    if (!hasSkins) bounds.height -= 36.0f;
     return bounds;
+}
+
+[[nodiscard]] inline sms::ui::ContextMenuGeometry layoutMenuGeometry() noexcept
+{
+    return {{menuPanel.x - 240.0f + 2.0f, layoutMenuButton.y - 5.0f},
+            3, contentBounds, 240.0f};
+}
+
+[[nodiscard]] inline sms::ui::ContextMenuGeometry bankModeMenuGeometry() noexcept
+{
+    return {{menuPanel.x - 240.0f + 2.0f, bankModeMenuButton.y - 5.0f},
+            2, contentBounds, 240.0f};
 }
 
 // Pin Default at row zero; scroll the remaining choices inside the canvas.
@@ -137,19 +153,11 @@ inline constexpr sms::ui::Rect finalizeAction{994.0f, 610.0f, 70.0f, 34.0f};
 inline constexpr sms::ui::Rect undoAction{1070.0f, 610.0f, 70.0f, 34.0f};
 inline constexpr sms::ui::Rect clearAction{1146.0f, 610.0f, 70.0f, 34.0f};
 
-[[nodiscard]] constexpr sms::ui::Rect menuOption(const int index) noexcept
+[[nodiscard]] constexpr sms::ui::Rect menuLinkOption(
+    const int index, const bool hasSkins = true) noexcept
 {
-    return {1060.0f, 100.0f + static_cast<float>(index) * 31.0f, 168.0f, 27.0f};
-}
-
-[[nodiscard]] constexpr sms::ui::Rect midiBankModeOption(const int index) noexcept
-{
-    return {1060.0f, 226.0f + static_cast<float>(index) * 31.0f, 168.0f, 27.0f};
-}
-
-[[nodiscard]] constexpr sms::ui::Rect menuLinkOption(const int index) noexcept
-{
-    return {1060.0f, 328.0f + static_cast<float>(index) * 31.0f, 168.0f, 27.0f};
+    return {1060.0f, (hasSkins ? 220.0f : 184.0f) +
+            static_cast<float>(index) * 34.0f, 168.0f, 27.0f};
 }
 
 [[nodiscard]] constexpr sms::ui::Rect mainBank(const int index) noexcept

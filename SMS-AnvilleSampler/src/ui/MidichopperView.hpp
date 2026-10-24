@@ -7,6 +7,7 @@
 #include "DSP/SampleMixerSettings.hpp"
 #include "DSP/SamplePlaybackSettings.hpp"
 #include "Interaction.hpp"
+#include "MidichopperLayout.hpp"
 #include "EditorAuditionMode.hpp"
 #include "WaveformViewport.hpp"
 
@@ -87,7 +88,7 @@ struct ViewState {
     const DGL_NAMESPACE::NanoImage* logoGlow = nullptr;
     float logoGlowOpacity = 0.0f;
     bool skinsAvailable = false;
-    bool skinMenuOpen = false;
+    layout::MenuSubmenu menuSubmenu = layout::MenuSubmenu::none;
     sms::ui::ContextMenuGeometry skinMenu;
     std::span<const sms::ui::ContextMenuItemView> skinMenuItems;
     int skinMenuOffset = 0;

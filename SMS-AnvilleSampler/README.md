@@ -46,7 +46,7 @@ Tested: **REAPER**, **Ardour**, **Carla**.
 ![Context menu](Docs/context-menu.png)
 
 
-The hamburger menu selects layouts and bank modes. **Online Help** opens this
+Hamburger: **PAD LAYOUT**, **BANK MODE**, **SKIN**, then **LINKS**. **Online Help** opens this
 guide at the release tag or development `main`. **Report Issue** opens the
 project's issues page.
 
@@ -99,7 +99,7 @@ Right-click for **Split Sample**; following samples shift right without being ov
   The plug-in consumes Space when delivered; a DAW that intercepts keyboard
   shortcuts first may require its option to send keys to the plug-in.
 
-Default uses no skin. **Hamburger → Skins** offers bundled **Anville Graffiti**
+Default uses no skin. **Hamburger → Skin** offers bundled **Anville Graffiti**
 and **Finnish Dream**, remembering your choice. See [skins](Docs/SKINS.md).
 
 ## Other controls
