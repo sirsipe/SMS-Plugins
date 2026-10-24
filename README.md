@@ -9,10 +9,12 @@ Windows and macOS versions may follow later.
 
 ## Plugins
 
-- [SMS-Anville Sampler](SMS-AnvilleSampler/README.md) — live stereo chopping sampler
+### [SMS-Anville Sampler](SMS-AnvilleSampler/README.md) — live stereo chopping sampler
   for LV2 and VST3.
 
-![SMS-Anville Sampler interface](SMS-AnvilleSampler/Docs/SMS-AnvilleSampler-v0.0.8.png)
+| Default Skin | Finnish Dream | Anville Graffiti |
+| --- | --- | --- |
+| [<img src="SMS-AnvilleSampler/Docs/main-view.png" width="672" alt="Default Skin Main View">](SMS-AnvilleSampler/Docs/main-view.png) | [<img src="SMS-AnvilleSampler/Docs/main-view-finnish-dream.png" width="224" alt="Finnish Dream Main View">](SMS-AnvilleSampler/Docs/main-view-finnish-dream.png) | [<img src="SMS-AnvilleSampler/Docs/main-view-anville-graffiti.png" width="224" alt="Anville Graffiti Main View">](SMS-AnvilleSampler/Docs/main-view-anville-graffiti.png) |
 
 ## About the developer & this project
 > Hi,

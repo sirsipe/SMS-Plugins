@@ -2,146 +2,149 @@
 
 _A live stereo chopping sampler for Linux._
 
-> Special thanks to **Manolo Anville** ([@ManoloAnville](https://github.com/ManoloAnville)) for collaboration.
+> Thanks to **Manolo Anville** ([@ManoloAnville](https://github.com/ManoloAnville)) for collaboration.
 
-![SMS-Anville Sampler interface](Docs/SMS-AnvilleSampler-v0.0.8.png)
+| Default Skin | Finnish Dream | Anville Graffiti |
+| --- | --- | --- |
+| [<img src="Docs/main-view.png" width="672" alt="Default Skin">](Docs/main-view.png) | [<img src="Docs/main-view-finnish-dream.png" width="224" alt="Finnish Dream">](Docs/main-view-finnish-dream.png) | [<img src="Docs/main-view-anville-graffiti.png" width="224" alt="Anville Graffiti">](Docs/main-view-anville-graffiti.png) |
 
+Captures: v0.0.12.
 
-**VST3 is preferred:** faster GUI loading and more human testing. LV2 is mostly
+**VST3 is preferred** for faster GUI loading and human testing. LV2 is mostly
 AI-tested; CLAP is untested.
 
 Tested: **REAPER**, **Ardour**, **Carla**.
 
-- Control with any MIDI controller.
-- Capture/chop input or load samples into pads.
+- MIDI control; capture/chop input or load samples into pads.
 - Waveform editing and splitting.
-- Pad/global mixer/FX: per-pad Forward/Reverse, Gain, Pan, Dirty, Tune (Varispeed), and Lowpass/Highpass with 6/12/24 dB slopes; independent monitor/playback levels.
-- Sample specific amplitude envelope; Attack, Decay, Sustain, Release.
-- Layouts: 2x4, 3x4, or 4x4 pads; four shared/unique MIDI banks; pad colors.
-- VST3 presets store samples/settings across supported DAWs: Ardour presets also
-  load in REAPER and vice versa. Carla does not support them.
-- Skins? **Yes!** - Create your own!
+- Pad/global mixer and FX: per-pad Forward/Reverse, Gain, Pan, Dirty, Tune (Varispeed), Lowpass/Highpass (6/12/24 dB/octave), independent monitor/playback levels.
+- Per-sample ADSR.
+- 2x4, 3x4, or 4x4 pads; four shared/unique MIDI banks; pad colors.
+- VST3 presets transfer samples/settings between Ardour and REAPER; Carla lacks support.
+- Create [custom skins](Docs/SKINS.md).
 
-> Versions 1.0.0+ are not backwards compatible with alpha releases (v0.0.1-v0.9.9). Alpha releases have been removed from GitHub releases to avoid confusion.
+> v1.0.0+ is incompatible with alpha sessions (v0.0.1–v0.9.9). Alpha releases were removed from GitHub to avoid confusion.
 
 ## Basic Usage
 
-1. Insert **SMS-Anville Sampler** as an instrument on a REAPER track receiving stereo audio/MIDI, or an Ardour MIDI track with stereo input sidechain for capture. Rescan after upgrading if listed as FX.
+1. Insert as an instrument on a REAPER track receiving stereo audio/MIDI, or an
+   Ardour MIDI track with stereo input sidechain for capture. Rescan after
+   upgrades if listed as FX.
 
-2. Press **ARM** (red record circle) to arm; release it for PLAY.
-   Default indicators: red ARMED, green PLAY. Skins can recolor them.
-   The first empty visible pad is selected; click another while idle.
+2. Press **ARM** (red record circle) to arm; release for PLAY. Indicators are red
+   ARMED and green PLAY by default; skins can recolor them. The first empty visible pad is
+   selected; click another while idle.
 
-3. **The first MIDI note-on or Space press starts the slice.** Later taps close
+3. **Any MIDI note-on or Space press starts the first slice.** Later taps close
    the current slice and continue at the next pad.
-    > NOTE: **ANY** MIDI note-on (i.e. any pad of your controller) starts and chops.
 
 4. **FINALIZE** or releasing **ARM** keeps the open slice. **UNDO** discards the
-   open/last slice; **CLEAR** clears all banks after a confirmation click.
+   open/last slice; **CLEAR** clears banks after confirmation.
 
-5. Right-click a pad to edit, split, or adjust cuts with neighbours.
+5. Right-click a pad to edit, split, or adjust neighbouring cuts.
 
 ![ARM capture view](Docs/arm-view.png)
 
 ![Context menu](Docs/context-menu.png)
 
 
-Hamburger: **PAD LAYOUT**, **BANK MODE**, **SKIN**, then **LINKS**. **Online Help** opens this
-guide at the release tag or development `main`. **Report Issue** opens the
-project's issues page.
+Hamburger: **PAD LAYOUT**, **BANK MODE**, **SKIN**, **LINKS**. Online Help opens this
+guide; Report Issue opens the project issues.
 
-Select **All Banks** (unique notes, default) for gapless notes or **Selected Bank**
-(shared notes) to reuse controller notes in the active bank. All Banks limits
-the base note to 64.
+**All Banks** (default) uses unique notes for gapless play; **Selected Bank** shares
+notes within the active bank. All Banks base note is limited to 64.
 
-Layouts match your controller and preserve samples.
+Layouts preserve samples.
 
 ![Hamburger menu](Docs/hamburger-menu.png)
 
 **SAMPLE EDITOR** opens waveform, ADSR, and pad mixing; **MAIN VIEW** returns. See the
-[mixing guide](Docs/MIXING.md). The selection button cycles through **Play on
-Select**, **Loop on Select**, and Off (unpressed **Play on Select**). Play auditions
-the selected sample once; Loop repeats its Start/End region after the mouse is
-released, repeating ADSR each pass with live edits. Editor modes are independent
-of the main playback mode.
-Changing selection replaces the audition; turning it off or leaving the editor
-stops it. **Play/Stop** plays the selected occupied pad when idle or immediately cuts all
-playing samples. With Loop on Select enabled, editor Play/Stop and Space also start a loop.
-Play/Stop shows triangle/square icons. ARM hides the global mixer.
-The edge faders remain visible: **IN** controls monitoring, **OUT** controls
-samples/previews.
+[mixing guide](Docs/MIXING.md). The selection button cycles **Play on Select**,
+**Loop on Select**, and Off (unpressed **Play on Select**). Play auditions once; Loop repeats Start/End after
+release, restarting ADSR each pass with live edits. These modes are independent
+of main playback. Selection changes replace auditions; disabling or leaving stops
+auditioning. **Play/Stop** auditions the selected occupied pad when idle or cuts all
+samples. With Loop on Select, it and Space loop. ARM hides the global mixer;
+edge faders stay visible. **IN** monitors and **OUT** controls samples and previews.
 
-**Ctrl + wheel** zooms the waveform; **Shift + wheel** scrolls. The left zoom
-control and window box below provide drag alternatives. Changing pads resets
-the view.
+**Ctrl + wheel** zooms; **Shift + wheel** scrolls. The left zoom control and
+window box provide drag alternatives. Changing pads resets the view.
 
-![Sample Editor with a shaped amplitude envelope](Docs/sample-editor.png)
+| Default Skin | Finnish Dream | Anville Graffiti |
+| --- | --- | --- |
+| [<img src="Docs/sample-editor.png" width="672" alt="Default Skin">](Docs/sample-editor.png) | [<img src="Docs/sample-editor-finnish-dream.png" width="224" alt="Finnish Dream">](Docs/sample-editor-finnish-dream.png) | [<img src="Docs/sample-editor-anville-graffiti.png" width="224" alt="Anville Graffiti">](Docs/sample-editor-anville-graffiti.png) |
 
 Right-click a middle pad for **Adjust cut points**. See the
 [cut-point guide](Docs/CHOP-EDITOR.md).
 
-![Adjust Cut Points view with three slices](Docs/adjust-cut-points.png)
+| Default Skin | Finnish Dream | Anville Graffiti |
+| --- | --- | --- |
+| [<img src="Docs/adjust-cut-points.png" width="672" alt="Default Skin">](Docs/adjust-cut-points.png) | [<img src="Docs/adjust-cut-points-finnish-dream.png" width="224" alt="Finnish Dream">](Docs/adjust-cut-points-finnish-dream.png) | [<img src="Docs/adjust-cut-points-anville-graffiti.png" width="224" alt="Anville Graffiti">](Docs/adjust-cut-points-anville-graffiti.png) |
 
 Right-click for **Split Sample**; following samples shift right without being overwritten.
 
-![Split Sample view with two proposed slices](Docs/split-sample.png)
+| Default Skin | Finnish Dream | Anville Graffiti |
+| --- | --- | --- |
+| [<img src="Docs/split-sample.png" width="672" alt="Default Skin">](Docs/split-sample.png) | [<img src="Docs/split-sample-finnish-dream.png" width="224" alt="Finnish Dream">](Docs/split-sample-finnish-dream.png) | [<img src="Docs/split-sample-anville-graffiti.png" width="224" alt="Anville Graffiti">](Docs/split-sample-anville-graffiti.png) |
 
 ### General Controls
 
 - Drag/wheel knobs and sliders.
-- **Shift** gives 10× knob precision; **Ctrl** steps e.g. Gain/Volume 1 dB, Pan 10%, and Tune one semitone.
-- Double-click values for exact entry.
-- Double/middle-click knobs, ADSR sliders, or edge faders to reset.
-- The wheel also adjusts ADSR, Start/End, and cut points.
-- Click the plug-in for keyboard focus. **Space** plays/stops in
-  PLAY and Sample Editor, or starts/chops capture in ARM. Holding Space does not
-  repeat. Menus, file dialogs, numeric entry, and cut-point views suppress it.
-  The plug-in consumes Space when delivered; a DAW that intercepts keyboard
-  shortcuts first may require its option to send keys to the plug-in.
+- **Shift** gives 10× knob precision; **Ctrl** steps Gain/Volume 1 dB, Pan 10%, Tune one semitone.
+- Double-click values to enter exact values; double/middle-click knobs, ADSR, or
+  edge faders to reset.
+- The wheel adjusts ADSR, Start/End, and cuts.
+- Click the plug-in for keyboard focus. **Space** plays/stops in PLAY/editor or
+  starts/chops ARM capture; holding does not repeat. Menus, dialogs, numeric entry,
+  and cut-point views suppress it. The plug-in consumes delivered Space; if the
+  DAW intercepts it first, enable sending keys to the plug-in.
+
+## Other controls
+
+- Sample memory: ~8 minutes.
+
+- Monitor cycles Off, On, and Auto (on when ARMed).
+
+- Max Voices limits simultaneous pads; a new trigger stops the oldest at
+capacity. Set it to one for monophonic playback.
+
+- **Hold** loops Start/End while its MIDI note or mouse press is held. Release
+starts the ADSR fade; looping continues until it ends. ARM stops Hold; **One Shot**
+ignores note-off.
+
+- Pre-roll moves boundaries earlier for late taps; Fixed mode records one fixed
+length slice per note-on.
+
+- New sessions start with Auto monitoring, one voice, Play on Select, and
+6 dB/octave filter slopes.
+
+- Pad right-click: copy, paste, import, export, clear, split, collapse gaps.
+  Split/Collapse Gap stay within the active bank; copies can cross banks.
+
+- Right-click a pad for **Color**; tint persists when empty.
+
+- See [WAV files](Docs/WAV-FILES.md) for import formats and Linux requirements.
+
+- DAW projects store all banks as 16-bit stereo.
+
+- Stereo LEDs show raw input/final output.
+
+## Skins
 
 Default uses no skin. **Hamburger → Skin** offers bundled **Anville Graffiti**
 and **Finnish Dream**, remembering your choice. See [skins](Docs/SKINS.md).
 
-## Other controls
-
-- Sample memory: about eight minutes.
-
-- Monitor cycles through Off, On, and Auto; Auto is On when ARMed and Off otherwise.
-
-- Max Voices limits simultaneous pads. At capacity, a new trigger stops the
-oldest voice; set it to one for monophonic playback.
-
-- **Hold** loops a pad's Start/End region while its MIDI note or mouse press is
-held. Release starts the pad's ADSR release; the region continues looping until
-the fade ends. ARM stops Hold loops. **One Shot** ignores note-off.
-
-- Pre-roll moves boundaries slightly earlier to compensate for late taps. Fixed
-mode records one fixed-length slice per note-on.
-
-- New sessions start with Auto monitoring, one voice, Play on Select enabled,
-and 6 dB/octave filter slopes.
-
-- Right-click pads to copy, paste, import, export, clear, split, or collapse a gap.
-  Split Sample and Collapse Gap stay within the active bank. A copied pad can be
-  pasted into another bank.
-
-- Right-click a pad for **Color**; its tint is saved, even when empty.
-
-- See [WAV files](Docs/WAV-FILES.md) for supported import formats and Linux requirements.
-
-- DAW projects store all banks as 16-bit stereo state.
-
-- Stereo LED rails around the faders show raw input and final output.
-
-
+| Default Skin | Finnish Dream | Anville Graffiti |
+| --- | --- | --- |
+| [<img src="Docs/main-view.png" width="224" alt="Default Skin">](Docs/main-view.png) | [<img src="Docs/main-view-finnish-dream.png" width="224" alt="Finnish Dream">](Docs/main-view-finnish-dream.png) | [<img src="Docs/main-view-anville-graffiti.png" width="224" alt="Anville Graffiti">](Docs/main-view-anville-graffiti.png) |
 
 ## Vision, Contributions, License
 
 Development/testing: [Contributing](../CONTRIBUTING.md).
 
-Licensed under [MIT](LICENSE).
+License: [MIT](LICENSE).
 
-See [Docs/VISION.md](Docs/VISION.md) for product direction and feature scope.
+Product direction: [Vision](Docs/VISION.md).
 
 ## Build
 
