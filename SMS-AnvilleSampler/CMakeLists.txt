@@ -179,7 +179,7 @@ foreach(anvillesampler_target IN LISTS anvillesampler_targets)
     "${CMAKE_CURRENT_SOURCE_DIR}/src/plugin"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/ui")
   target_link_libraries(${anvillesampler_target} PUBLIC sms_common_ui)
-  target_link_libraries(${anvillesampler_target}-dsp PRIVATE anvillesampler_core Threads::Threads)
+  target_link_libraries(${anvillesampler_target}-dsp PRIVATE anvillesampler_core sms_file_io Threads::Threads)
   target_include_directories(${anvillesampler_target}-ui PRIVATE
     "${ANVILLESAMPLER_ARTWORK_DIR}")
   target_compile_definitions(${anvillesampler_target}-dsp PRIVATE
@@ -239,6 +239,25 @@ if(ANVILLESAMPLER_BUILD_CLAP)
 endif()
 
 if(BUILD_TESTING)
+  add_executable(anvillesampler_layout_preference_tests tests/layout_preference_tests.cpp)
+  target_include_directories(anvillesampler_layout_preference_tests PRIVATE src/plugin src/core)
+  target_link_libraries(anvillesampler_layout_preference_tests PRIVATE sms_common_ui)
+  add_test(NAME layout-preference COMMAND anvillesampler_layout_preference_tests)
+
+  # POSIX environment overrides isolate user configuration. Native Windows
+  # Roaming AppData cannot be redirected safely for this adapter-level test.
+  if(UNIX)
+    foreach(anvillesampler_target IN LISTS anvillesampler_targets)
+      add_executable(${anvillesampler_target}-layout-initialization-tests
+        tests/layout_initialization_tests.cpp
+        "${SMS_DPF_ROOT}/distrho/src/DistrhoPlugin.cpp")
+      target_link_libraries(${anvillesampler_target}-layout-initialization-tests PRIVATE
+        ${anvillesampler_target}-dsp ${CMAKE_DL_LIBS})
+      add_test(NAME layout-initialization-${anvillesampler_target}
+        COMMAND ${anvillesampler_target}-layout-initialization-tests)
+    endforeach()
+  endif()
+
   add_executable(anvillesampler_bundled_skin_tests tests/bundled_skin_tests.cpp)
   target_link_libraries(anvillesampler_bundled_skin_tests PRIVATE sms_common_ui)
   add_dependencies(anvillesampler_bundled_skin_tests anvillesampler_skins)

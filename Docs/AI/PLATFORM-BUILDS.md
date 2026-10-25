@@ -8,7 +8,7 @@ checks below pass.
 ## Findings
 
 The engine and state codec use portable C++.
-[Skin filesystem operations](../../Common-UI/SkinFileIO.cpp) implement Linux,
+[Shared filesystem operations](../../Common-Src/IO/FileIO.cpp) implement Linux,
 Windows 10+, and macOS paths and preference persistence; Windows resolves the
 loaded module through the wide API because pinned DPF exposes ANSI filenames.
 The [focused skin CI](../../.github/workflows/skin-ci.yml) builds filesystem tests

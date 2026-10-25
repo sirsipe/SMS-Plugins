@@ -31,6 +31,11 @@ host, or a specific plug-in's state model.
 - `State/SamplePlaybackSettingsCodec.hpp`: versioned settings serialization.
 - `State/SampleMixerSettingsCodec.hpp`: versioned mixer-settings serialization;
   see the [mixing contract](../Docs/AI/MIXING.md) for fields and compatibility.
+- `IO/FileIO.hpp/.cpp`: native user-config folders, UTF-8/native paths, bounded
+  reads and atomic file replacement. Control-thread only; shared by skin and
+  layout preferences. Windows uses wide APIs and Windows 10+ rename semantics;
+  Linux/macOS use POSIX files. The `sms_file_io` CMake target is defined alongside
+  its consumer in [Common-UI](../Common-UI/CMakeLists.txt).
 - `UI/Geometry.hpp`: renderer-independent rectangles and reusable pad-grid
   layout/hit testing.
 

@@ -5,12 +5,22 @@ on:
     branches: [main, win-vst3]
     paths:
       - 'Common-UI/**'
+      - 'Common-Src/IO/**'
+      - 'SMS-AnvilleSampler/src/core/Configuration.hpp'
+      - 'SMS-AnvilleSampler/src/plugin/LayoutPreference.hpp'
+      - 'SMS-AnvilleSampler/src/plugin/BankModePreference.hpp'
+      - 'SMS-AnvilleSampler/tests/layout_preference_tests.cpp'
       - 'SMS-AnvilleSampler/tests/skin*_tests.cpp'
       - 'SMS-AnvilleSampler/tests/skins/**'
       - '.github/workflows/skin-ci.yml'
   pull_request:
     paths:
       - 'Common-UI/**'
+      - 'Common-Src/IO/**'
+      - 'SMS-AnvilleSampler/src/core/Configuration.hpp'
+      - 'SMS-AnvilleSampler/src/plugin/LayoutPreference.hpp'
+      - 'SMS-AnvilleSampler/src/plugin/BankModePreference.hpp'
+      - 'SMS-AnvilleSampler/tests/layout_preference_tests.cpp'
       - 'SMS-AnvilleSampler/tests/skin*_tests.cpp'
       - 'SMS-AnvilleSampler/tests/skins/**'
       - '.github/workflows/skin-ci.yml'

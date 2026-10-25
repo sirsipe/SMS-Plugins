@@ -8,7 +8,7 @@ compiled as part of each plug-in UI target so that the plug-in's DPF feature
 defines remain authoritative.
 
 Consumers link `sms_common_ui` to inherit shared include paths and the compiled
-`sms_skin_file_io` platform library. Other shared UI components remain headers.
+`sms_file_io` platform library. Other shared UI components remain headers.
 
 - `DPF/NanoUI.hpp`: logical-canvas scaling and repaint lifecycle.
 - `Skin.hpp`: bounded versioned INI snapshots, UTF-8 text/checked-format lookup, and confined
@@ -17,10 +17,9 @@ Consumers link `sms_common_ui` to inherit shared include paths and the compiled
   floating-point `from_chars`, while keeping the host locale unchanged.
 - `SkinCatalog.hpp`: named collection discovery, forced-folder precedence, and
   atomic per-user preferences; IDs stay separate from translated display text.
-- `SkinFileIO.hpp/.cpp`: UTF-8/native path conversion, bounded artwork reads,
-  native config folders and atomic preference replacement. Windows uses wide
-  APIs and Windows 10+ rename semantics; Linux/macOS use POSIX files. No DPF
-  dependency. Platform paths are documented in the
+- `SkinFileIO.hpp`: image-read limits and a compatibility adapter to the shared
+  [filesystem helpers](../Common-Src/IO/FileIO.hpp), used by skins and startup
+  preferences. Platform paths are documented in the
   [skin guide](../SMS-AnvilleSampler/Docs/SKINS.md).
 - `DPF/Theme.hpp`: semantic colors, fixed pad tint identities, drawing metrics,
   hover opacity, and per-editor drawing scopes with thread-local restoration.

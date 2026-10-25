@@ -17,11 +17,10 @@ Skins use per-instance scopes outside DSP/project state. [Skins](SKINS.md) cover
 
 ## MIDI mapping
 
-`midi_bank_mode` selects two mappings. All Banks maps four gapless pages
-from the base note. Note-on updates the active bank; note-off does not. Layouts regroup slots without changing notes.
-Playback note-on advances a hidden output encoding the global pad index in
-alternating halves of its range. Views follow bank, MIDI labels, and last-played selection.
-An appended hidden output reports whether any pad or raw preview is active.
+`midi_bank_mode` selects two mappings. All Banks maps four gapless pages from the base note. Note-on updates the active bank; note-off does not. Layouts regroup slots without changing notes.
+Playback note-on reports the global pad index through an alternating-range hidden
+output. Views follow bank, notes, and selection.
+A hidden output reports pad/preview activity.
 `play_stop_request` toggles audition/Stop All at block boundaries.
 `PlaybackRequest.hpp` preserves legacy integers and adds Play, Loop, looping
 toggle, and Stop Audition through one atomic command. UI-local Play/Loop/Off
@@ -29,8 +28,7 @@ replaces previous auditions within the voice limit. MIDI retrigger takes ownersh
 Stop Audition cannot cut its replacement. Stop All also supports host control.
 All Banks limits the effective base note to 64 so every layout remains within
 MIDI notes 0–127. UI notes and labels use the engine mapping. Selected Bank reuses one range,
-with `active_bank` choosing its target, and retains the released fixed 16-slot
-bank organization.
+with `active_bank` choosing its target, and retains fixed 16-slot banks.
 Hold voices retain their triggering MIDI note; note-off releases matching voices
 across bank, layout, base-note, and mapping changes. Retriggering replaces that ownership.
 
@@ -54,7 +52,7 @@ Preallocated stereo pool supports 64 pads and about eight minutes. Any pad can u
 sample-offset MIDI without a fixed event cap or allocation, locking, I/O, or
 exceptions. Each pad is one voice, with a global limit of
 1–16 simultaneous voices and deterministic oldest-voice stealing.
-`input_monitor` values are Off=0, On=1, Auto=2. The adapter resolves Auto against Arm each block.
+`input_monitor` values are Off=0, On=1, Auto=2. Auto follows Arm each block.
 Playback linearly interpolates source-rate conversion and semitone
 varispeed. Per-pad region/ADSR and mixers are non-destructive; global
 volume/pan/tune combine during playback. Active voices refresh mixer,
@@ -81,6 +79,9 @@ Four outputs report peaks; LED redraws cap at 30 FPS. Host hard
 bypass cannot be metered.
 
 ## Project state
+
+`pad_layout` and `midi_bank_mode` use remembered startup defaults; host values win.
+See [preferences](../../Docs/AI/LAYOUT-PREFERENCE.md) for initialization and format limits.
 
 Pad state stores versioned, CRC-checked PCM16 as Base64; decoding validates it.
 Durable restoration stages per-pad desired updates without waiting for

@@ -1,10 +1,12 @@
 # DPF VST3 state and output constraints
 
 Audience: agents changing VST3 communication or audio-port topology. This page
-records verified behavior of the pinned DPF revision and approved architectural
+records behavior of the pinned DPF revision and approved architectural
 direction; it is not a promise of dynamic outputs.
 
 ## DSP-to-UI state transport
+
+[Startup preferences](LAYOUT-PREFERENCE.md) documents parameter-cache initialization.
 
 DPF's VST3 wrapper constructs its plug-in exporter with a null
 `updateStateValue` callback. Anville Sampler can therefore receive UI-to-DSP state,

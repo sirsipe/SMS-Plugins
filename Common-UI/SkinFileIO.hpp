@@ -1,36 +1,19 @@
 #pragma once
 
-#include <cstdint>
-#include <filesystem>
-#include <string>
-#include <string_view>
-#include <vector>
+#include "IO/FileIO.hpp"
 
 namespace sms::ui::skinFileIO {
 
-// Paths crossing manifest/DPF boundaries are UTF-8; filesystem paths stay native.
-[[nodiscard]] inline std::filesystem::path pathFromUtf8(std::string_view value)
-{
-    return std::filesystem::path(std::u8string(value.begin(), value.end()));
-}
-
-[[nodiscard]] inline std::string pathToUtf8(const std::filesystem::path& path)
-{
-    const auto value = path.u8string();
-    return std::string(value.begin(), value.end());
-}
-
-// UI thread only. Empty results indicate missing/unreadable/oversized files.
-[[nodiscard]] std::filesystem::path userConfigDirectory() noexcept;
+using sms::io::pathFromUtf8;
+using sms::io::pathToUtf8;
+using sms::io::userConfigDirectory;
 #if defined(_WIN32)
-// Find our loaded module through the wide API, bypassing DPF's ANSI filename.
-[[nodiscard]] std::filesystem::path moduleBinaryPath() noexcept;
+using sms::io::moduleBinaryPath;
 #endif
-[[nodiscard]] std::vector<std::uint8_t> readBytes(
-    const std::filesystem::path& path, std::size_t maxBytes) noexcept;
-[[nodiscard]] bool writeAtomically(
-    const std::filesystem::path& path, std::string_view contents) noexcept;
+using sms::io::readBytes;
+using sms::io::writeAtomically;
 
+// UI thread only. Empty results indicate missing/unreadable/oversized images.
 inline constexpr std::size_t maxImageBytes = 64 * 1024 * 1024;
 [[nodiscard]] inline std::vector<std::uint8_t> readImage(const std::filesystem::path& path) noexcept
 {

@@ -1,4 +1,4 @@
-#include "SkinFileIO.hpp"
+#include "FileIO.hpp"
 
 #include <algorithm>
 #include <cstdlib>
@@ -18,7 +18,7 @@
 # include <unistd.h>
 #endif
 
-namespace sms::ui::skinFileIO {
+namespace sms::io {
 namespace {
 
 // Also clean up after allocation exceptions or failed publication.
@@ -114,7 +114,7 @@ std::vector<std::uint8_t> readBytes(const std::filesystem::path& path,
             return {};
         std::vector<std::uint8_t> bytes;
 #if defined(_WIN32)
-        // Readers must allow replacement while another editor saves its choice.
+        // Readers must allow replacement while another caller writes the file.
         TemporaryFile input;
         input.handle = CreateFileW(path.c_str(), GENERIC_READ,
             FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
@@ -185,7 +185,7 @@ bool writeAtomically(const std::filesystem::path& path, const std::string_view c
         }
         // Windows 10+ POSIX rename semantics keep existing readers on the old
         // complete file while new readers open the new one. Legacy rename can
-        // fail when another editor holds the destination open.
+        // fail when another caller holds the destination open.
         const auto destination = std::filesystem::absolute(path).native();
         const auto nameBytes = destination.size() * sizeof(wchar_t);
         const auto bufferBytes = sizeof(FILE_RENAME_INFO) + nameBytes;
@@ -221,4 +221,4 @@ bool writeAtomically(const std::filesystem::path& path, const std::string_view c
     } catch (...) { return false; }
 }
 
-} // namespace sms::ui::skinFileIO
+} // namespace sms::io

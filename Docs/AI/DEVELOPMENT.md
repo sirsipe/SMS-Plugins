@@ -57,7 +57,8 @@ ctest --test-dir build-skins -C Release --output-on-failure
 and macOS, including Unicode installation paths. Windows symlink cases report
 skips when privileges are unavailable; other coverage still runs. The checks
 cover manifests, discovery, native config folders, Unicode paths/artwork reads,
-and concurrent atomic preferences, including held Windows readers. Windows
+and concurrent atomic preferences, including held Windows readers. The suite
+also checks [layout/bank-mode preferences](LAYOUT-PREFERENCE.md) serialization and failures. Windows
 persistence requires Windows 10 version 1607 or newer. They do not validate a
 native DAW/editor or establish Windows/macOS plugin release support.
 

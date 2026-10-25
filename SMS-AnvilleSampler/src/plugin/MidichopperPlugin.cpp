@@ -18,6 +18,8 @@
 #include "PadFileActionProtocol.hpp"
 #include "PadStructureProtocol.hpp"
 #include "Parameters.hpp"
+#include "LayoutPreference.hpp"
+#include "BankModePreference.hpp"
 #include "CaptureActionProtocol.hpp"
 #include "PluginUiBridge.hpp"
 #include "StateCodec.hpp"
@@ -135,6 +137,9 @@ class MidichopperPlugin final : public PluginUiBridge,
 public:
     MidichopperPlugin()
         : PluginUiBridge(midichopper::plugin::kParameterCount, kStateCount),
+          initialLayout_(isDummyInstance() ? 0 : LayoutPreference::read(LayoutPreference::configPath())),
+          initialBankMode_(isDummyInstance() ? BankModePreference::defaultMode
+              : BankModePreference::read(BankModePreference::configPath())),
           sampler_(getSampleRate()),
           padWorkflows_(sampler_, controlDispatcher_, *this)
     {
@@ -142,6 +147,8 @@ public:
             &sms::audio::RealtimeCommandDispatcher::dispatchFromEngine);
         for (std::uint32_t index = 0; index < midichopper::plugin::kParameterCount; ++index)
             parameters_[index].store(defaultParameterValue(index), std::memory_order_relaxed);
+        parameters_[kParameterPadLayout].store(static_cast<float>(initialLayout_), std::memory_order_relaxed);
+        parameters_[kParameterMidiBankMode].store(static_cast<float>(initialBankMode_), std::memory_order_relaxed);
     }
 
     ~MidichopperPlugin() override
@@ -318,6 +325,10 @@ protected:
             setupParameter(index, parameter, "Pad Layout", "pad_layout", "",
                            kParameterIsInteger,
                            "0 = 16 pads, 1 = 12 pads, 2 = 8 pads per bank.");
+            // DPF's VST3 cache starts from this default. Keep it coherent with
+            // the constructor seed so a restored host value of zero is applied.
+            // Dummy/export instances retain the factory default in LV2 metadata.
+            parameter.ranges.def = static_cast<float>(initialLayout_);
             break;
         case kParameterCurrentCapturePad:
             setupParameter(index, parameter, "Current Capture Pad", "current_capture_pad", "",
@@ -328,6 +339,8 @@ protected:
             setupParameter(index, parameter, "MIDI Bank Mode", "midi_bank_mode", "",
                            kParameterIsBoolean | kParameterIsInteger,
                            "0 = selected bank shares one note range, 1 = all banks use unique notes.");
+            // Match the constructor snapshot, as for the layout parameter.
+            parameter.ranges.def = static_cast<float>(initialBankMode_);
             parameter.enumValues.count = 2;
             parameter.enumValues.restrictedMode = true;
             parameter.enumValues.values = new ParameterEnumerationValue[2]{
@@ -1289,6 +1302,8 @@ private:
             static_cast<void>(requestParameterValueChange(index, value));
     }
 
+    const int initialLayout_;
+    const int initialBankMode_;
     midichopper::SamplerEngine sampler_;
     sms::dsp::StereoPeakMeter inputMeter_;
     sms::dsp::StereoPeakMeter outputMeter_;

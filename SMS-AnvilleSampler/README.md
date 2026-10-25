@@ -4,21 +4,20 @@
 > 
 > **STILL IN ALPHA - PLEASE WAIT FOR v1.0.0 BEFORE USING**
 
-_A live stereo chopping sampler._ See [Releases](https://github.com/sirsipe/SMS-Plugins/releases) for downloads.
+_Stereo chopping sampler._ [Downloads](https://github.com/sirsipe/SMS-Plugins/releases).
  - Linux VST3 (preferred)
  - Linux LV2
  - Windows VST3 (experimental)
 
 
 
-> Thanks to **Manolo Anville** ([@ManoloAnville](https://github.com/ManoloAnville)) for collaboration.
+> Thanks to **Manolo Anville** ([@ManoloAnville](https://github.com/ManoloAnville)).
 
 [<img src="Docs/main-view.png" width="672" alt="Default Main View">](Docs/main-view.png)
 
 #### Bundled Skins
 **Hamburger → Skin** offers **Finnish Dream**, **Looks like Wu**, and
-**White Cadillac Vinyl** and remembers your choice. **Default** uses the built-in
-appearance. See [customization](Docs/SKINS.md).
+**White Cadillac Vinyl** and remembers your choice. **Default** uses the built-in appearance. [Customization](Docs/SKINS.md).
 
 | Finnish Dream | Looks like Wu | White Cadillac Vinyl |
 | --- | --- | --- |
@@ -26,27 +25,25 @@ appearance. See [customization](Docs/SKINS.md).
 
 Captures: v0.0.13.
 
-**VST3 is preferred** for faster GUI loading and more comprehensive testing. LV2 is mostly AI-tested, and Windows VST3 has had minimal testing.
+**VST3 is preferred** for GUI loading and testing. LV2 is mostly AI-tested; Windows VST3 has minimal testing.
 
 Tested in **REAPER**, **Ardour**, **Carla**.
 
 - MIDI control; capture/chop input or load samples into pads.
 - Waveform editing and splitting.
 - Pad/global FX: per-pad Forward/Reverse, Gain, Pan, Dirty, Tune and filters; per-sample ADSR.
-- 2x4, 3x4, or 4x4 pads; four shared/unique MIDI banks; pad colors.
+- 2x4, 3x4, or 4x4 pads; four MIDI banks; pad colors.
 - VST3 presets transfer samples/settings between Ardour and REAPER; Carla lacks support.
 
 > v1.0.0+ is incompatible with alpha sessions (v0.0.1–v0.9.9). Alpha releases were removed from GitHub to avoid confusion.
 
 ## Basic Usage
 
-1. Insert as an instrument on a REAPER track receiving stereo audio/MIDI, or an
-   Ardour MIDI track with stereo input sidechain for capture. Rescan after
-   upgrades if listed as FX.
+1. Insert on a REAPER instrument track receiving stereo audio/MIDI, or an Ardour
+   MIDI track with stereo input sidechain. Rescan if listed as FX.
 
-2. Press **ARM** (red record circle) to arm; release for PLAY. Indicators are red
-   ARMED and green PLAY by default; skins can recolor them. The first empty visible pad is
-   selected; click another while idle.
+2. Press **ARM** (red circle) to arm; release for PLAY. Indicators are red
+   ARMED and green PLAY by default; skins can recolor them. The first empty pad is selected; click another while idle.
 
 3. **Any MIDI note-on or Space press starts the first slice.** Later taps close
    the current slice and continue at the next pad.
@@ -64,22 +61,24 @@ Tested in **REAPER**, **Ardour**, **Carla**.
 
 ![Context menu](Docs/context-menu.png)
 
-Hamburger: **PAD LAYOUT**, **BANK MODE**, **SKIN**, **LINKS**. Online Help opens this
-guide; Report Issue opens the project issues.
+Hamburger: **PAD LAYOUT**, **BANK MODE**, **SKIN**, **LINKS**. Online Help opens this guide; Report Issue opens issues.
 
 **All Banks** (default) uses unique notes for gapless play; **Selected Bank** shares
 notes within the active bank. All Banks base note is limited to 64.
 
-Layouts preserve samples.
+Layouts preserve samples. Menu selections remember startup defaults in
+`SMS-AnvilleSampler/selected-layout` and `selected-bank-mode`, beside the
+[skin preference](Docs/SKINS.md#remembering-a-choice). Host values always win;
+LV2 normally initializes to 16 pads/All Banks. Missing/invalid preferences use
+those defaults. Host changes do not update preferences.
 
 ![Hamburger menu](Docs/hamburger-menu.png)
 
 ### Sample Editor view
 
 **SAMPLE EDITOR** opens waveform, ADSR, and pad mixing; **MAIN VIEW** returns.
-Selection cycles Play on Select, Loop on Select, and Off. Play auditions once;
-Loop repeats Start/End after release and restarts ADSR. Both are independent of
-main playback. See the [mixing guide](Docs/MIXING.md) for mixer controls.
+Selection cycles Play on Select (once), Loop on Select, and Off. Loop repeats
+Start/End after release, restarting ADSR. Audition is independent of main playback. See the [mixing guide](Docs/MIXING.md) for mixer controls.
 
 **Ctrl + wheel** zooms; **Shift + wheel** scrolls. Changing pads resets the view.
 
@@ -123,7 +122,7 @@ Right-click for **Split Sample**; following samples shift right without being ov
 - Double-click values to enter exact values; double/middle-click knobs, ADSR, or
   edge faders to reset.
 - The wheel adjusts ADSR, Start/End, and cuts.
-- Click the plug-in for keyboard focus. **Space** plays/stops in PLAY/editor or
+- Click for keyboard focus. **Space** plays/stops in PLAY/editor or
   starts/chops ARM capture; holding does not repeat. Menus, dialogs, numeric
   entry, and cut-point views suppress Space. Enable sending keys to the plug-in
   if the DAW intercepts it.
@@ -153,7 +152,7 @@ length slice per note-on.
 
 - Right-click a pad for **Color**; tint persists when empty.
 
-- See [WAV files](Docs/WAV-FILES.md) for import formats and Linux requirements.
+- See [WAV files](Docs/WAV-FILES.md) for import formats and requirements.
 
 - DAW projects store all banks as 16-bit stereo.
 
@@ -169,7 +168,7 @@ Product direction: [Vision](Docs/VISION.md).
 
 ## Build
 
-Ubuntu/Debian prerequisites:
+Ubuntu/Debian:
 
 ```bash
 sudo apt install build-essential cmake ninja-build pkg-config git python3 \
@@ -177,7 +176,7 @@ sudo apt install build-essential cmake ninja-build pkg-config git python3 \
   libxrandr-dev libxcursor-dev libxinerama-dev libdbus-1-dev xdg-utils
 ```
 
-From the repository root:
+Build:
 
 ```bash
 git submodule update --init --recursive
@@ -188,7 +187,7 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-VST3/LV2 bundles appear under `build/bin`. Install for the current user:
+VST3/LV2 bundles appear under `build/bin`. Install per user:
 
 ```bash
 mkdir -p ~/.lv2

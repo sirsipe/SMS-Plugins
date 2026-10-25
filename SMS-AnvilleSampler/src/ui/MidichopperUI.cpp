@@ -56,6 +56,8 @@
 #include "UI/Geometry.hpp"
 #include "Interaction.hpp"
 #include "PadLayout.hpp"
+#include "LayoutPreference.hpp"
+#include "BankModePreference.hpp"
 #include "WaveformEditor.hpp"
 #include "WaveformViewport.hpp"
 #include "MidichopperLayout.hpp"
@@ -3230,10 +3232,16 @@ private:
         const int selectedLayout = std::clamp(layout,
             static_cast<int>(parameterRanges::padLayout.minimum),
             static_cast<int>(parameterRanges::padLayout.maximum));
-        if (selectedLayout == fLayout)
-            return;
         if (fChopEditor.active()) {
             setLocalStatus("Apply or Exit before changing layout");
+            return;
+        }
+        // An explicit menu selection also remembers the current layout. Host
+        // callbacks and automation never write this startup preference.
+        const bool remembered = LayoutPreference::write(LayoutPreference::configPath(), selectedLayout);
+        if (selectedLayout == fLayout) {
+            if (!remembered)
+                setLocalStatus("Layout preference could not be saved");
             return;
         }
         stopEditorAudition();
@@ -3244,6 +3252,8 @@ private:
         }
         normalizeSelectionForContext();
         setControlValue(kParameterPadLayout, static_cast<float>(fLayout));
+        if (!remembered)
+            setLocalStatus("Layout changed, but the preference could not be saved");
         requestRepaint();
     }
 
@@ -3256,8 +3266,11 @@ private:
             setLocalStatus("Apply or Exit before changing MIDI mode");
             return;
         }
+        const bool remembered = BankModePreference::write(BankModePreference::configPath(), selectedMode);
         if (selectedMode != fMidiBankMode)
             setControlValue(kParameterMidiBankMode, static_cast<float>(selectedMode));
+        if (!remembered)
+            setLocalStatus("Bank mode selected, but the preference could not be saved");
         requestRepaint();
     }
 

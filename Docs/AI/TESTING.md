@@ -23,13 +23,14 @@ Filter with `ctest --test-dir build --output-on-failure -R NAME`:
 | `state-codec` | Audio/editor/mixer compatibility, cut/waveform protocols; truncation, corrupt headers/payloads, numeric rejection, unchanged destinations |
 | `ui-skin` | Bounded/versioned manifests, scalar/UTF-8/printf fallback, Unicode bundle/image paths, confined images, startup snapshots |
 | `ui-skin-catalog` | Discovery, forced precedence, missing choices, native config folders, Unicode atomic preferences and concurrent writes |
+| `layout-*` | [Preferences, startup/host precedence, dummy metadata](LAYOUT-PREFERENCE.md) |
 | `ui-skin-theme` | Placeholder completeness, RGBA/metric bounds, envelope point RGBA/hover, opacities, logo decoding/glow, nested/thread scopes |
 | `ui-bundled-skins` | Three bundled skins in enabled formats, Default, selectable/remembered choices, embedded logo and asset/color validity |
 | `ui-geometry` | Instrument metadata/ports, identity/help URLs, pad mapping, editor snapshots, waveform/chop geometry, viewport mapping, logo halo/pulse geometry, hit testing, wheel editing, Space press/repeat routing |
 | `ui-message-bus` | Bounded VST3 message ordering, independent view cursors, explicit gap reporting on wrap, and large replies |
 | `wav-codec` | WAV formats, chunk/truncation/header/nonfinite validation, file actions, offline render, real-time access gate |
 
-Rebuild affected targets; run all tests. Long-audio test:
+Rebuild targets; run all tests. Long audio:
 
 ```bash
 ./build/anvillesampler_transfer_tests "/path/to/long-sample.wav"
@@ -45,7 +46,7 @@ LV2_PATH="$PWD/build/bin" \
   lv2info https://github.com/sirsipe/SMS-Plugins/SMS-AnvilleSampler
 ```
 
-`SMS-AnvilleSampler/src/plugin/DistrhoPluginInfo.h` defines the URI. Discovery does not validate audio.
+Discovery does not validate audio.
 
 ## LV2 host integration
 
@@ -56,7 +57,7 @@ LV2_URI='https://github.com/sirsipe/SMS-Plugins/SMS-AnvilleSampler'
 LV2_PATH="$PWD/build/bin" pw-jack carla-single native lv2 "$LV2_URI"
 ```
 
-Pin [Carla main](https://github.com/falkTX/Carla/blob/main/source/backend/plugin/CarlaPluginLV2.cpp)
+Use [Carla main](https://github.com/falkTX/Carla/blob/main/source/backend/plugin/CarlaPluginLV2.cpp)
 with LV2 control-input change-request support for MIDI bank activation;
 Carla 2.5.10 lacks it.
 
@@ -112,8 +113,9 @@ Checks:
   match the copy-time snapshot, and that an empty clipboard disables Paste.
 - State: save populated pads/settings, close, reload, and compare playback.
   Check DAW restoration.
+- Layout/bank-mode: follow the [preference acceptance checks](LAYOUT-PREFERENCE.md).
 
-## UI interaction tooling
+## UI tooling
 
 The [Dev Container](../../.devcontainer/devcontainer.json) supplies display `:1`,
 noVNC (6080), dummy JACK, software Mesa and UI tools. Run `desktop-health`;
@@ -122,10 +124,10 @@ Avoid concurrent mouse input.
 
 `bash .devcontainer/scripts/test-plugin.sh` builds VST3/LV2, runs CTest/`lv2info`,
 launches Carla LV2, clicks ARM, and captures to ignored `build/gui-test/`.
-VNC becomes 1920x1080; `--keep-open` enables interaction.
+`--keep-open` enables interaction.
 `screenshot-window WINDOW_ID OUTPUT.png` captures one window; resolve IDs after relaunch/resize.
 
-Inspect screenshots before sharing; exclude private data/unrelated windows.
+Inspect screenshots; exclude private data/unrelated windows.
 
 VST3:
 `carla-single native vst3 "$PWD/build/bin/SMS-AnvilleSampler.vst3"` on this desktop. Import a WAV; open Sample Editor and switch pads; check waveform/settings. Exercise Split Sample or Adjust Cut Points. Then save,
