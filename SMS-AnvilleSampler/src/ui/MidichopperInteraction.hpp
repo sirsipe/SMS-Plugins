@@ -68,6 +68,7 @@ enum class InteractiveType : int {
     padDirection,
     globalDirection,
     padGlobalMixer,
+    menuReset,
 };
 
 class PadPressTracker {
@@ -359,6 +360,7 @@ struct InteractionContext {
     bool chopSplitMode = false;
     bool menuOpen = false;
     bool skinsAvailable = false;
+    bool resetEnabled = true;
     layout::MenuSubmenu menuSubmenu = layout::MenuSubmenu::none;
     sms::ui::ContextMenuGeometry skinMenu;
     int skinMenuItemCount = 0;
@@ -434,6 +436,8 @@ interactiveTargetAt(const sms::ui::Point point, const InteractionContext& contex
             return target(InteractiveType::menuPadLayouts);
         if (uiLayout::bankModeMenuButton.contains(point))
             return target(InteractiveType::menuBankModes);
+        if (context.resetEnabled && uiLayout::resetMenuButton(context.skinsAvailable).contains(point))
+            return target(InteractiveType::menuReset);
         for (int index = 0; index < 2; ++index) {
             if (uiLayout::menuLinkOption(index, context.skinsAvailable).contains(point))
                 return target(InteractiveType::menuLink, index);

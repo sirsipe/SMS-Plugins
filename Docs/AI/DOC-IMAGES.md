@@ -37,6 +37,9 @@ For each view, add `-finnish-dream`, `-looks-like-wu`, and
 captures (`arm-view.png`, `context-menu.png`,
 `hamburger-menu.png`) always use the built-in appearance. Keep working captures
 under ignored build output.
+For `hamburger-menu.png`, leave the hamburger and PAD LAYOUT submenu open so
+all top-level actions and layout choices are visible; keep the pointer away
+from other menu rows. This is the exception to closing menus before capture.
 
 Both READMEs share the Main View captures. The plugin README also shows each
 editor in all four appearances. Markdown tables and linked HTML `img` elements

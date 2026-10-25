@@ -44,6 +44,8 @@ struct ViewState {
     int pressedPad = -1;
     bool clearArmed = false;
     bool menuOpen = false;
+    bool resetArmed = false;
+    bool resetEnabled = true;
     bool padContextMenuOpen = false;
     sms::ui::ContextMenuGeometry padContextMenu;
     std::span<const sms::ui::ContextMenuItemView> padContextMenuItems;

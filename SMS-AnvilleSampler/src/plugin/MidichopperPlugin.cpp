@@ -689,6 +689,8 @@ protected:
             return;
 #if DISTRHO_PLUGIN_WANT_DIRECT_ACCESS
         const bool transient = std::strcmp(key, kWaveformRequestKey) == 0 ||
+            (std::strcmp(key, midichopper::plugin::kCaptureActionRequestKey) == 0 &&
+                value != nullptr && std::strcmp(value, "reset") == 0) ||
             std::strcmp(key, kWaveformDetailRequestKey) == 0 ||
             std::strcmp(key, kPadFileRequestKey) == 0 ||
             std::strcmp(key, kPadClipboardRequestKey) == 0 ||
@@ -713,6 +715,15 @@ protected:
     void applyState(const char* const key, const char* const value)
     {
         if (std::strcmp(key, midichopper::plugin::kCaptureActionRequestKey) == 0) {
+            if (value != nullptr && std::strcmp(value, "reset") == 0) {
+                padWorkflows_.reset();
+                // The initiating UI invalidates its snapshots/colors locally;
+                // per-slot replies would overflow the bounded UI message bus.
+                for (std::uint32_t pad = 0; pad < midichopper::kPadCount; ++pad)
+                    padColors_[pad].store(0, std::memory_order_relaxed);
+                publishUiState(kPadFileStatusKey, "Reset to defaults");
+                return;
+            }
             pendingCommands_.fetch_or(midichopper::plugin::captureActionRequestMask(
                 value != nullptr ? value : ""), std::memory_order_release);
             return;
@@ -975,7 +986,9 @@ protected:
 private:
     void reportControlFailure(const char* key, const char* value)
     {
-        if (std::strcmp(key, kPadFileRequestKey) == 0) {
+        if (std::strcmp(key, midichopper::plugin::kCaptureActionRequestKey) == 0) {
+            publishUiState(kPadFileStatusKey, "Reset failed; retry when audio is running");
+        } else if (std::strcmp(key, kPadFileRequestKey) == 0) {
             publishUiState(kPadFileStatusKey, "WAV action failed; retry when audio is running");
             publishUiState(kPadFileBusyKey, "0");
             publishFileResult(midichopper::plugin::PadFileResultCode::failed);
@@ -1023,10 +1036,10 @@ private:
         return samplerAccess_.withPaused(std::forward<Callback>(callback));
     }
 
-    void clipboardAvailable() noexcept override
+    void clipboardAvailable(const bool available) noexcept override
     {
         parameters_[midichopper::plugin::kParameterPadClipboardAvailable].store(
-            1.0f, std::memory_order_relaxed);
+            available ? 1.0f : 0.0f, std::memory_order_relaxed);
     }
 
     void publishFileResult(const midichopper::plugin::PadFileResultCode result) noexcept override

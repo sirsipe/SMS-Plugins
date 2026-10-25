@@ -565,7 +565,10 @@ private:
         if (state_.skinsAvailable)
             submenuButton(uiLayout::skinMenuButton, "SKIN",
                 uiLayout::MenuSubmenu::skin, InteractiveType::menuSkins);
-        text(1060.0f, state_.skinsAvailable ? 199.0f : 163.0f, "LINKS", nullptr);
+        sms::ui::dpf::drawSegment(canvas_, uiLayout::resetMenuButton(state_.skinsAvailable),
+            state_.resetArmed ? "CONFIRM: RESET" : "RESET", state_.resetArmed,
+            colors.selection, hovered(InteractiveType::menuReset), state_.resetEnabled);
+        text(1060.0f, state_.skinsAvailable ? 235.0f : 199.0f, "LINKS", nullptr);
         static constexpr const char* linkLabels[] = {"ONLINE HELP", "REPORT ISSUE"};
         for (int index = 0; index < 2; ++index)
             sms::ui::dpf::drawSegment(canvas_,

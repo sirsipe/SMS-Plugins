@@ -847,6 +847,10 @@ protected:
             fClearArmed = false;
             requestRepaint();
         }
+        if (fResetArmed && (!fMenuOpen || now >= fResetDeadline)) {
+            fResetArmed = false;
+            requestRepaint();
+        }
         if (fPadContextClearArmed && now >= fPadContextClearDeadline) {
             fPadContextClearArmed = false;
             requestRepaint();
@@ -978,6 +982,7 @@ protected:
             fGlobalLowpass, fGlobalHighpass, fGlobalFilterSlope, fGlobalDirty, fGlobalReverse,
             fMaxVoices, fBank, fLayout,
             fSelectedPad, fCurrentPad, fPadPress.pad(), fClearArmed, fMenuOpen,
+            fResetArmed, resetEnabled(),
             fPadContextMenuOpen, fPadContextMenu,
             std::span<const sms::ui::ContextMenuItemView>{contextMenuItems},
             fPadColorMenuOpen, fPadColorMenu,
@@ -1146,12 +1151,27 @@ protected:
                     clicked, midichopper::ui::InteractiveType::menuButton))
             {
                 fMenuOpen = !fMenuOpen;
+                fResetArmed = false;
                 fMenuSubmenu = uiLayout::MenuSubmenu::none;
                 requestRepaint();
                 return true;
             }
             if (fMenuOpen)
             {
+                if (midichopper::ui::isTarget(clicked, midichopper::ui::InteractiveType::menuReset)) {
+                    fMenuSubmenu = uiLayout::MenuSubmenu::none;
+                    const auto now = std::chrono::steady_clock::now();
+                    if (fResetArmed && now < fResetDeadline) {
+                        resetToDefaults();
+                    } else {
+                        fResetArmed = true;
+                        fResetDeadline = now + kClearConfirmationTimeout;
+                        setLocalStatus("Click RESET again to confirm");
+                    }
+                    requestRepaint();
+                    return true;
+                }
+                fResetArmed = false;
                 if (midichopper::ui::isTarget(clicked, midichopper::ui::InteractiveType::menuPadLayouts) ||
                     midichopper::ui::isTarget(clicked, midichopper::ui::InteractiveType::menuBankModes)) {
                     fMenuSubmenu = midichopper::ui::isTarget(clicked,
@@ -1689,7 +1709,8 @@ protected:
                 submenu = uiLayout::MenuSubmenu::bankMode;
             else if (midichopper::ui::isTarget(hovered, midichopper::ui::InteractiveType::menuSkins))
                 submenu = uiLayout::MenuSubmenu::skin;
-            else if (midichopper::ui::isTarget(hovered, midichopper::ui::InteractiveType::menuLink))
+            else if (midichopper::ui::isTarget(hovered, midichopper::ui::InteractiveType::menuLink) ||
+                     midichopper::ui::isTarget(hovered, midichopper::ui::InteractiveType::menuReset))
                 submenu = uiLayout::MenuSubmenu::none;
             if (submenu != fMenuSubmenu) {
                 if (submenu == uiLayout::MenuSubmenu::skin) openSkinMenu();
@@ -1992,6 +2013,7 @@ protected:
             return true;
         }
         if (fMenuOpen) {
+            fResetArmed = false;
             if (fMenuSubmenu != uiLayout::MenuSubmenu::none) fMenuSubmenu = uiLayout::MenuSubmenu::none;
             else fMenuOpen = false;
             (void)fHover.clear();
@@ -2132,6 +2154,8 @@ private:
     midichopper::ui::SpaceKeyTracker fSpaceKey;
     bool fClearArmed;
     std::chrono::steady_clock::time_point fClearDeadline{};
+    bool fResetArmed = false;
+    std::chrono::steady_clock::time_point fResetDeadline{};
     bool fMenuOpen;
     bool fPadContextMenuOpen;
     bool fPadColorMenuOpen = false;
@@ -2256,6 +2280,7 @@ private:
         context.chopEditorMode = fChopEditor.active();
         context.chopSplitMode = fChopEditor.split();
         context.menuOpen = fMenuOpen;
+        context.resetEnabled = resetEnabled();
         context.skinsAvailable = fSkinCatalog.selectable();
         context.menuSubmenu = fMenuOpen ? fMenuSubmenu : uiLayout::MenuSubmenu::none;
         context.skinMenu = fSkinMenu;
@@ -2946,6 +2971,48 @@ private:
         editParameter(parameter, true);
         setControlValue(parameter, value);
         editParameter(parameter, false);
+    }
+
+    [[nodiscard]] bool resetEnabled() const noexcept
+    {
+        return !padActionBusy() && !fChopEditor.applying() &&
+            fPendingFileDialog == PendingFileDialog::none;
+    }
+
+    void resetToDefaults()
+    {
+        releasePressedPad();
+        stopEditorAudition();
+        if (fChopEditor.active())
+            fChopEditor.cancel();
+        closePadContextMenu();
+        fMixerValueEntry.cancel();
+        // Notify the host of each restored control so automation/state caches
+        // agree with the DSP. Layout and bank-mode preferences stay untouched.
+        for (const auto parameter : midichopper::plugin::kResetParameters)
+            setControlValueFromWheel(parameter, parameterRange(parameter).defaultValue);
+        fEditorMode = false;
+        fEditorAuditionMode = midichopper::ui::EditorAuditionMode::Play;
+        fSelectedPad = fLastPlayedPad = fCurrentPad = -1;
+        fEditorSettingsPad = fMixerSettingsPad = -1;
+        fEditorSettings = {};
+        fMixerSettings = {};
+        fEditorSnapshot.complete();
+        fHasWaveform = false;
+        fWaveform = {};
+        fWaveformDetail.reset();
+        stopLocalPlayhead(false);
+        fPadState.fill('0');
+        fPadStatus.fill('0');
+        fPadColors.fill(0);
+        fPadClipboardAvailable = false;
+        fClearArmed = fResetArmed = fMenuOpen = false;
+        fMenuSubmenu = uiLayout::MenuSubmenu::none;
+        (void)fHover.clear();
+#if DISTRHO_PLUGIN_WANT_STATE
+        setState(midichopper::plugin::kCaptureActionRequestKey, "reset");
+#endif
+        setLocalStatus("Reset requested");
     }
 
     void pressPlaybackPad(const int localPad)

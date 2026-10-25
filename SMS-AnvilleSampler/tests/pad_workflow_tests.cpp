@@ -33,7 +33,7 @@ struct Observer final : PadWorkflowObserver {
     void publishFileResult(PadFileResultCode result) noexcept override { fileResult = result; }
     void publishClipboardResult(PadClipboardResultCode result) noexcept override
     { clipboardResult = result; }
-    void clipboardAvailable() noexcept override { available = true; }
+    void clipboardAvailable(const bool value) noexcept override { available = value; }
     std::string latest(const char* key) const
     {
         for (auto i = messages.rbegin(); i != messages.rend(); ++i)
@@ -170,6 +170,53 @@ void clipboardSnapshotAndReplies()
     check(observer.fileResult == PadFileResultCode::failed &&
           observer.latest(kPadFileStatusKey) == "Invalid pad file request",
           "invalid WAV action reports failure to adapter");
+}
+
+void resetClearsPadsAndClipboard()
+{
+    SamplerEngine engine(48000, 0.001);
+    sms::audio::RealtimeCommandDispatcher dispatcher;
+    engine.setControlDispatcher(&dispatcher,
+        &sms::audio::RealtimeCommandDispatcher::dispatchFromEngine);
+    Observer observer;
+    PadWorkflows workflows(engine, dispatcher, observer);
+    for (std::uint32_t pad = 0; pad < kPadCount; ++pad) {
+        check(engine.importPad(pad, sample()), "seed every pad before reset");
+        auto playback = engine.padPlaybackSettings(pad);
+        playback.start = 0.25f;
+        playback.releaseSeconds = 0.2f;
+        engine.setPadPlaybackSettings(pad, playback);
+        auto mixer = engine.padMixerSettings(pad);
+        mixer.gainDecibels = -6;
+        mixer.reverse = 1;
+        mixer.globalMixer = 0;
+        engine.setPadMixerSettings(pad, mixer);
+    }
+    workflows.handlePadClipboardRequest(encodePadClipboardRequest(PadClipboardAction::copy, 0));
+    check(observer.available, "seed clipboard before reset");
+    engine.clearPad(1);
+    workflows.handlePadStructureRequest(encodePadStructureRequest(
+        {PadStructureAction::prepareSplit, 0, 16, 0}));
+    SplitPlanReady plan;
+    check(decodeSplitPlanReady(observer.latest(kPadStructureStatusKey), plan),
+          "prepare split plan before reset");
+    engine.auditionPad(0, true);
+    check(engine.anyPlaybackActive(), "reset begins with active playback");
+    workflows.reset();
+    check(!observer.available && !engine.anyPlaybackActive(), "reset stops playback and clears clipboard");
+    for (std::uint32_t pad = 0; pad < kPadCount; ++pad) {
+        const auto snapshot = snapshotPad(engine, pad);
+        check(snapshot.audio.frames == 0 && samePlayback(snapshot.playback, {}) &&
+              sameMixer(snapshot.mixer, {}), "reset empties all banks and restores every pad setting");
+    }
+    workflows.handlePadClipboardRequest(encodePadClipboardRequest(PadClipboardAction::paste, 0));
+    check(observer.clipboardResult == PadClipboardResultCode::failed &&
+          snapshotPad(engine, 0).audio.frames == 0, "old clipboard audio cannot return after reset");
+    workflows.handlePadStructureRequest(encodePadStructureRequest(
+        {PadStructureAction::applySplit, 0, 16, 0, plan.planId, 4}));
+    check(snapshotPad(engine, 0).audio.frames == 0 &&
+          observer.latest(kPadStructureStatusKey).starts_with("PS1;E;"),
+          "reset invalidates an outstanding split plan");
 }
 
 void clipboardEmptyAndSamePadReplies()
@@ -426,6 +473,7 @@ void chopApplyRevisionAndReplies()
 int main()
 {
     clipboardSnapshotAndReplies();
+    resetClearsPadsAndClipboard();
     clipboardEmptyAndSamePadReplies();
     splitPlanAndConflict();
     splitPlanLifecycle();

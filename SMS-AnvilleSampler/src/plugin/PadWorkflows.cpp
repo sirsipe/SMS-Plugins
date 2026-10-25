@@ -22,6 +22,19 @@ namespace {
 
 } // namespace
 
+void PadWorkflows::reset()
+{
+    const std::lock_guard lock(padMutationMutex_);
+    controlDispatcher_.invoke([&]() noexcept {
+        sampler_.reset();
+        sampler_.clearAllPads();
+    });
+    // Release clipboard PCM on this control thread, never in the audio callback.
+    padClipboard_ = {};
+    pendingSplitPlan_ = {};
+    observer_.clipboardAvailable(false);
+}
+
 void PadWorkflows::publishPadSettings(const std::uint32_t firstPad,
                         const std::uint32_t padCount)
 {
@@ -296,7 +309,7 @@ void PadWorkflows::handlePadClipboardRequestImpl(const std::string_view encoded)
             : midichopper::plugin::PadClipboardResultCode::pasted;
 
     if (result == midichopper::plugin::PadClipboardResultCode::copied)
-        observer_.clipboardAvailable();
+        observer_.clipboardAvailable(true);
     if (result == midichopper::plugin::PadClipboardResultCode::pasted) {
         const std::string editor = midichopper::plugin::encodePlaybackSettings(
             sampler_.padPlaybackSettings(request.pad));

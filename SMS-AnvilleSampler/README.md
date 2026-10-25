@@ -25,22 +25,21 @@ _Stereo chopping sampler._ [Downloads](https://github.com/sirsipe/SMS-Plugins/re
 
 Captures: v0.0.13.
 
-**VST3 is preferred** for GUI loading and testing. LV2 is mostly AI-tested; Windows VST3 has minimal testing.
+**VST3 preferred** for GUI/testing. LV2 is mostly AI-tested; Windows VST3 has minimal testing.
 
 Tested in **REAPER**, **Ardour**, **Carla**.
 
-- MIDI control; capture/chop input or load samples into pads.
-- Waveform editing and splitting.
+- MIDI capture/chop or sample loading; waveform editing and splitting.
 - Pad/global FX: per-pad Forward/Reverse, Gain, Pan, Dirty, Tune and filters; per-sample ADSR.
-- 2x4, 3x4, or 4x4 pads; four MIDI banks; pad colors.
+- 2x4/3x4/4x4 pads; four MIDI banks; pad colors.
 - VST3 presets transfer samples/settings between Ardour and REAPER; Carla lacks support.
 
 > v1.0.0+ is incompatible with alpha sessions (v0.0.1–v0.9.9). Alpha releases were removed from GitHub to avoid confusion.
 
 ## Basic Usage
 
-1. Insert on a REAPER instrument track receiving stereo audio/MIDI, or an Ardour
-   MIDI track with stereo input sidechain. Rescan if listed as FX.
+1. Insert on a REAPER instrument track with stereo audio/MIDI, or an Ardour
+   MIDI track with stereo sidechain. Rescan if listed as FX.
 
 2. Press **ARM** (red circle) to arm; release for PLAY. Indicators are red
    ARMED and green PLAY by default; skins can recolor them. The first empty pad is selected; click another while idle.
@@ -61,15 +60,19 @@ Tested in **REAPER**, **Ardour**, **Carla**.
 
 ![Context menu](Docs/context-menu.png)
 
-Hamburger: **PAD LAYOUT**, **BANK MODE**, **SKIN**, **LINKS**. Online Help opens this guide; Report Issue opens issues.
+Hamburger: **PAD LAYOUT**, **BANK MODE**, **SKIN**, **RESET**, **LINKS**. Online Help opens this guide; Report Issue opens issues.
+
+Click **RESET**, then **CONFIRM: RESET** within two seconds to clear pads/settings/colors/clipboard
+and restore defaults. Layout, bank mode and skin remain. Dismissing the menu or
+choosing another item cancels confirmation. Reset is unavailable during pad operations.
 
 **All Banks** (default) uses unique notes for gapless play; **Selected Bank** shares
 notes within the active bank. All Banks base note is limited to 64.
 
-Layouts preserve samples. Menu selections remember startup defaults in
+Layouts preserve samples. Menu selections remember defaults in
 `SMS-AnvilleSampler/selected-layout` and `selected-bank-mode`, beside the
 [skin preference](Docs/SKINS.md#remembering-a-choice). Host values always win;
-LV2 normally initializes to 16 pads/All Banks. Missing/invalid preferences use
+LV2 normally initializes to 16 pads/All Banks. Invalid preferences use
 those defaults. Host changes do not update preferences.
 
 ![Hamburger menu](Docs/hamburger-menu.png)
@@ -77,8 +80,8 @@ those defaults. Host changes do not update preferences.
 ### Sample Editor view
 
 **SAMPLE EDITOR** opens waveform, ADSR, and pad mixing; **MAIN VIEW** returns.
-Selection cycles Play on Select (once), Loop on Select, and Off. Loop repeats
-Start/End after release, restarting ADSR. Audition is independent of main playback. See the [mixing guide](Docs/MIXING.md) for mixer controls.
+Selection cycles Play on Select (once), Loop on Select, Off. Loop repeats
+Start/End after release, restarting ADSR. Audition is independent of main playback. See the [mixing guide](Docs/MIXING.md) for controls.
 
 **Ctrl + wheel** zooms; **Shift + wheel** scrolls. Changing pads resets the view.
 
@@ -121,15 +124,14 @@ Right-click for **Split Sample**; following samples shift right without being ov
 - **Shift** gives 10× knob precision; **Ctrl** steps Gain/Volume 1 dB, Pan 10%, and Tune one semitone.
 - Double-click values to enter exact values; double/middle-click knobs, ADSR, or
   edge faders to reset.
-- The wheel adjusts ADSR, Start/End, and cuts.
-- Click for keyboard focus. **Space** plays/stops in PLAY/editor or
+- Wheel adjusts ADSR, Start/End, cuts.
+- Click for focus. **Space** plays/stops in PLAY/editor or
   starts/chops ARM capture; holding does not repeat. Menus, dialogs, numeric
-  entry, and cut-point views suppress Space. Enable sending keys to the plug-in
-  if the DAW intercepts it.
+  entry, and cut-point views suppress Space. Enable key sending if the DAW intercepts it.
 
 ## Other controls
 
-- Sample memory: ~8 minutes.
+- Memory: ~8 minutes.
 
 - Monitor cycles Off, On, and Auto (on when ARMed).
 
@@ -144,10 +146,10 @@ the note still releases its original pad, including in shared MIDI bank mode.
 - Pre-roll moves boundaries earlier for late taps; Fixed mode records one fixed
 length slice per note-on.
 
-- New sessions start with Auto monitoring, one voice, Play on Select, and
+- Defaults: Auto monitoring, one voice, Play on Select, and
 6 dB/octave filter slopes.
 
-- Pad right-click: copy, paste, import, export, clear, split, collapse gaps.
+- Pad actions: copy/paste/import/export/clear/split/collapse gaps.
   Split/Collapse Gap stay within the active bank; copies can cross banks.
 
 - Right-click a pad for **Color**; tint persists when empty.
@@ -160,7 +162,7 @@ length slice per note-on.
 
 ## Vision, Contributions, License
 
-Development/testing: [Contributing](../CONTRIBUTING.md).
+[Contributing](../CONTRIBUTING.md).
 
 License: [MIT](LICENSE).
 

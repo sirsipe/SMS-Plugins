@@ -10,27 +10,27 @@ python3 scripts/check_docs.py
 git diff --check
 ```
 
-Filter with `ctest --test-dir build --output-on-failure -R NAME`:
+Filter: `ctest --test-dir build --output-on-failure -R NAME`:
 
 | CTest name | Coverage |
 | --- | --- |
-| `preview-mailbox` | Coherent play/stop ranges under concurrent writers, latest-wins, no replay |
-| `pad-workflows` | Clipboard, collapse, split cancellation/replay/conflict, revision-checked chops; exact PCM/settings and replies |
-| `sampler-core` | Capture, MIDI/banks/layouts, storage/voices, region/ADSR, mixers/filter/Dirty, raw preview/repartition, resampling, clipboard/lifecycle, >1,024 events/block, literal parameter IDs |
-| `buffer-timing` | Stereo playback/capture across fixed/irregular blocks, MIDI offsets/order, pre-roll ring wrap, zero-frame callbacks, resampling/effects |
-| `adsr-envelope` | Exact stage sequences, early note-off, retrigger, zero-duration/live edits, sanitization, automatic-release resume |
+| `preview-mailbox` | Concurrent coherent play/stop ranges, latest-wins, no replay |
+| `pad-workflows` | Reset, clipboard, collapse, split cancel/replay/conflict, revision-checked chops; exact PCM/settings/replies |
+| `sampler-core` | Capture, MIDI/banks/layouts, storage/voices, region/ADSR, mixer/filter/Dirty, preview/repartition, resampling, clipboard/lifecycle, >1,024 events/block, parameter IDs |
+| `buffer-timing` | Stereo playback/capture, fixed/irregular blocks, MIDI offsets/order, pre-roll wrap, zero-frame callbacks, resampling/effects |
+| `adsr-envelope` | Stage sequences, early note-off, retrigger, zero-duration/live edits, sanitization, release resume |
 | `sampler-transfer` | Concurrent transfers; exact monitoring/MIDI/recording continuity; retained storage, stale commits, capacity, host snapshots, dispatcher lifecycle, callback allocation/destruction |
-| `state-codec` | Audio/editor/mixer compatibility, cut/waveform protocols; truncation, corrupt headers/payloads, numeric rejection, unchanged destinations |
-| `ui-skin` | Bounded/versioned manifests, scalar/UTF-8/printf fallback, Unicode bundle/image paths, confined images, startup snapshots |
-| `ui-skin-catalog` | Discovery, forced precedence, missing choices, native config folders, Unicode atomic preferences and concurrent writes |
+| `state-codec` | Audio/editor/mixer compatibility, cut/waveform protocols; truncation, corruption, numeric rejection, unchanged destinations |
+| `ui-skin` | Bounded/versioned manifests, scalar/UTF-8/printf fallback, Unicode paths, confined images, startup snapshots |
+| `ui-skin-catalog` | Discovery, forced precedence, missing choices, config folders, Unicode atomic preferences/concurrent writes |
 | `layout-*` | [Preferences, startup/host precedence, dummy metadata](LAYOUT-PREFERENCE.md) |
-| `ui-skin-theme` | Placeholder completeness, RGBA/metric bounds, envelope point RGBA/hover, opacities, logo decoding/glow, nested/thread scopes |
-| `ui-bundled-skins` | Three bundled skins in enabled formats, Default, selectable/remembered choices, embedded logo and asset/color validity |
-| `ui-geometry` | Instrument metadata/ports, identity/help URLs, pad mapping, editor snapshots, waveform/chop geometry, viewport mapping, logo halo/pulse geometry, hit testing, wheel editing, Space press/repeat routing |
-| `ui-message-bus` | Bounded VST3 message ordering, independent view cursors, explicit gap reporting on wrap, and large replies |
-| `wav-codec` | WAV formats, chunk/truncation/header/nonfinite validation, file actions, offline render, real-time access gate |
+| `ui-skin-theme` | Placeholder completeness, RGBA/metric bounds, envelope RGBA/hover, opacity, logo decode/glow, nested/thread scopes |
+| `ui-bundled-skins` | Three bundled skins, Default, selectable/remembered choices, embedded logo, asset/color validity |
+| `ui-geometry` | Metadata/ports, identity/help URLs, pad mapping, editor snapshots, waveform/chop/viewport geometry, logo halo/pulse, hit testing, wheel editing, Space routing |
+| `ui-message-bus` | Bounded VST3 ordering, independent view cursors, wrap gap reporting, large replies |
+| `wav-codec` | WAV formats, chunk/truncation/header/nonfinite validation, file actions, offline render, real-time gate |
 
-Rebuild targets; run all tests. Long audio:
+Rebuild; run all tests. Long audio:
 
 ```bash
 ./build/anvillesampler_transfer_tests "/path/to/long-sample.wav"
@@ -113,6 +113,10 @@ Checks:
   match the copy-time snapshot, and that an empty clipboard disables Paste.
 - State: save populated pads/settings, close, reload, and compare playback.
   Check DAW restoration.
+- Reset: change controls, pad edits/colors, clipboard, layout/bank mode/skin. Verify
+  timeout and menu dismissal cancel confirmation. Confirm within two seconds:
+  audio/settings/colors/clipboard clear; controls/editor options default; layout/bank
+  mode/skin remain. Save/reopen and verify.
 - Layout/bank-mode: follow the [preference acceptance checks](LAYOUT-PREFERENCE.md).
 
 ## UI tooling
@@ -133,4 +137,4 @@ VST3:
 `carla-single native vst3 "$PWD/build/bin/SMS-AnvilleSampler.vst3"` on this desktop. Import a WAV; open Sample Editor and switch pads; check waveform/settings. Exercise Split Sample or Adjust Cut Points. Then save,
 close, delete the source WAV, reload, and compare audio and editor values.
 
-Report host, rate/buffer, results/skips. CI: CTest/`lv2info`.
+Report host/rate/buffer/results/skips. CI: CTest/`lv2info`.

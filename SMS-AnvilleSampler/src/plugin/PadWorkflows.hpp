@@ -20,7 +20,7 @@ public:
     virtual void publishUiState(const char* key, const char* value) = 0;
     virtual void publishFileResult(PadFileResultCode result) noexcept = 0;
     virtual void publishClipboardResult(PadClipboardResultCode result) noexcept = 0;
-    virtual void clipboardAvailable() noexcept = 0;
+    virtual void clipboardAvailable(bool available) noexcept = 0;
 };
 
 /** Control-thread pad workflows. Owns clipboard and split plans; serializes
@@ -35,6 +35,7 @@ public:
         : sampler_(sampler), controlDispatcher_(dispatcher), observer_(observer) {}
 
     [[nodiscard]] std::mutex& mutationMutex() const noexcept { return padMutationMutex_; }
+    void reset();
     void handlePadStructureRequest(std::string_view encoded);
     void handleChopApplyRequest(std::string_view encoded);
     void handlePadClipboardRequest(std::string_view encoded);

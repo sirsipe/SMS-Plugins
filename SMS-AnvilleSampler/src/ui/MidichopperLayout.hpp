@@ -41,10 +41,15 @@ inline constexpr sms::ui::Rect sidePanel{974.0f, 96.0f, 266.0f, 596.0f};
 inline constexpr sms::ui::Rect menuButton{1208.0f, 25.0f, 32.0f, 32.0f};
 enum class MenuSubmenu { none, padLayout, bankMode, skin };
 
-inline constexpr sms::ui::Rect menuPanel{1048.0f, 68.0f, 192.0f, 226.0f};
+inline constexpr sms::ui::Rect menuPanel{1048.0f, 68.0f, 192.0f, 262.0f};
 inline constexpr sms::ui::Rect layoutMenuButton{1060.0f, 80.0f, 168.0f, 28.0f};
 inline constexpr sms::ui::Rect bankModeMenuButton{1060.0f, 116.0f, 168.0f, 28.0f};
 inline constexpr sms::ui::Rect skinMenuButton{1060.0f, 152.0f, 168.0f, 28.0f};
+
+[[nodiscard]] constexpr sms::ui::Rect resetMenuButton(const bool hasSkins) noexcept
+{
+    return {1060.0f, hasSkins ? 188.0f : 152.0f, 168.0f, 28.0f};
+}
 
 [[nodiscard]] constexpr sms::ui::Rect menuPanelBounds(const bool hasSkins) noexcept
 {
@@ -156,7 +161,7 @@ inline constexpr sms::ui::Rect clearAction{1146.0f, 610.0f, 70.0f, 34.0f};
 [[nodiscard]] constexpr sms::ui::Rect menuLinkOption(
     const int index, const bool hasSkins = true) noexcept
 {
-    return {1060.0f, (hasSkins ? 220.0f : 184.0f) +
+    return {1060.0f, (hasSkins ? 256.0f : 220.0f) +
             static_cast<float>(index) * 34.0f, 168.0f, 27.0f};
 }
 

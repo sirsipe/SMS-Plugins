@@ -9,15 +9,15 @@
   `MidichopperInteraction` resolves gestures and `MidichopperView` draws.
   `ChopEditorController` owns cut/split sessions; `EditorSnapshotSession` matches
   waveform/settings replies. `WaveformDetailSession` owns zoom/detail requests,
-  `PlaybackIndicator` displays host source positions, and `MixerValueEntry` owns text editing.
+  `PlaybackIndicator` displays host source positions; `MixerValueEntry` edits text.
 - `Common-Src` provides framework-neutral DSP, codecs, audio handoff, geometry.
   `Common-UI` provides shared controls, pads, waveform editing and DPF rendering.
 
-Skins use per-instance scopes outside DSP/project state. [Skins](SKINS.md) covers discovery and images.
+Skins are per-instance, outside DSP/project state. [Guide](SKINS.md).
 
 ## MIDI mapping
 
-`midi_bank_mode` selects two mappings. All Banks maps four gapless pages from the base note. Note-on updates the active bank; note-off does not. Layouts regroup slots without changing notes.
+`midi_bank_mode` selects mappings. All Banks maps four gapless pages from the base note. Note-on updates the active bank; note-off does not. Layouts regroup slots without changing notes.
 Playback note-on reports the global pad index through an alternating-range hidden
 output. Views follow bank, notes, and selection.
 A hidden output reports pad/preview activity.
@@ -47,7 +47,7 @@ duration after each note-on.
 
 ## Real-time behavior
 
-Preallocated stereo pool supports 64 pads and about eight minutes. Any pad can use all free blocks; clearing returns them to every bank.
+Preallocated stereo pool: 64 pads, about eight minutes. Pads share free blocks; clearing returns them to every bank.
 `process()` pulls
 sample-offset MIDI without a fixed event cap or allocation, locking, I/O, or
 exceptions. Each pad is one voice, with a global limit of
@@ -75,13 +75,12 @@ stage affected PCM and validate generations before atomic commit. Recording,
 resets, audio, and settings changes invalidate stale plans. Structure actions
 stay within the active visible bank/page.
 
-Four outputs report peaks; LED redraws cap at 30 FPS. Host hard
-bypass cannot be metered.
+Four peak outputs; LEDs redraw at ≤30 FPS. Hard bypass cannot be metered.
 
 ## Project state
 
 `pad_layout` and `midi_bank_mode` use remembered startup defaults; host values win.
-See [preferences](../../Docs/AI/LAYOUT-PREFERENCE.md) for initialization and format limits.
+[Initialization/format limits](../../Docs/AI/LAYOUT-PREFERENCE.md).
 
 Pad state stores versioned, CRC-checked PCM16 as Base64; decoding validates it.
 Durable restoration stages per-pad desired updates without waiting for
@@ -100,6 +99,8 @@ until matching detail arrives. Pad/editor changes reset zoom and cache. [Editor 
 tint; colors stay with slots through sample edits and moves.
 
 `pad_clear_request` publishes an atomic command consumed at the next block.
+RESET restores host controls, preserving layout/bank mode/skin. The control worker
+resets pads at block boundaries and clears clipboard, split plans and colors.
 `pad_file_request` carries an action, pad, and UTF-8 path. VST3 queues transient transfers on an instance-owned worker; LV2 executes
 them through its required host worker. Busy/status states contain small messages, while a hidden
 output signals completion where wrapper state callbacks cannot return status

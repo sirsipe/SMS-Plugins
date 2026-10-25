@@ -179,14 +179,16 @@ void hamburgerMenuGeometry()
         const auto panel = menu::menuPanelBounds(skins);
         const auto firstLink = menu::menuLinkOption(0, skins);
         const auto lastLink = menu::menuLinkOption(1, skins);
+        const auto reset = menu::resetMenuButton(skins);
         check(menu::layoutMenuButton.y + menu::layoutMenuButton.height < menu::bankModeMenuButton.y &&
               menu::bankModeMenuButton.y + menu::bankModeMenuButton.height < menu::skinMenuButton.y &&
-              firstLink.y > (skins ? menu::skinMenuButton.y + menu::skinMenuButton.height
+              reset.y > (skins ? menu::skinMenuButton.y + menu::skinMenuButton.height
                                    : menu::bankModeMenuButton.y + menu::bankModeMenuButton.height) &&
+              firstLink.y > reset.y + reset.height &&
               lastLink.y > firstLink.y + firstLink.height &&
               panel.contains({firstLink.x, firstLink.y}) && panel.contains({lastLink.x, lastLink.y}) &&
               lastLink.y + lastLink.height <= panel.y + panel.height,
-              "hamburger orders layout, bank mode, optional skin, then browser links without overlap");
+              "hamburger orders layout, bank mode, optional skin, reset, then links without overlap");
     }
     check(midichopper::ui::onlineHelpUrl("main") ==
               "https://github.com/sirsipe/SMS-Plugins/tree/main/SMS-AnvilleSampler" &&
@@ -381,6 +383,18 @@ void skinMenuGeometryAndTargets()
               InteractiveType::pad, 0),
           "a hidden skin menu does not capture the underlying pad");
     context.menuOpen = true;
+    for (const bool skins : {false, true}) {
+        context.skinsAvailable = skins;
+        context.resetEnabled = true;
+        check(interaction::isTarget(
+                  interaction::interactiveTargetAt(center(layout::resetMenuButton(skins)), context),
+                  interaction::InteractiveType::menuReset),
+              "reset can be clicked with and without the skin selector");
+        context.resetEnabled = false;
+        check(!interaction::interactiveTargetAt(center(layout::resetMenuButton(skins)), context).valid(),
+              "busy reset cannot click through to underlying controls");
+    }
+    context.resetEnabled = true;
     check(interaction::isTarget(interaction::interactiveTargetAt(point, context),
               InteractiveType::skinItem, 0),
           "an open skin submenu captures the underlying pad");

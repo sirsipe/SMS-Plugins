@@ -1,12 +1,16 @@
 #include "LayoutPreference.hpp"
 #include "BankModePreference.hpp"
 #include "Parameters.hpp"
+#include "CaptureActionProtocol.hpp"
+#include "StateKeys.hpp"
 #include "src/DistrhoPluginInternal.hpp"
 
 #include <chrono>
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
 #include <stdexcept>
+#include <thread>
 
 namespace {
 namespace fs = std::filesystem;
@@ -145,11 +149,50 @@ void initialization()
     }
     DISTRHO::d_nextPluginIsDummy = false;
 }
+
+void resetControls()
+{
+    using namespace midichopper::plugin;
+    Fixture fixture;
+    PluginExporter plugin(nullptr, nullptr, nullptr, nullptr);
+    plugin.setParameterValue(kParameterPadLayout, 2);
+    plugin.setParameterValue(kParameterMidiBankMode, 0);
+    for (std::uint32_t index = 0; index < kParameterCount; ++index) {
+        const bool reset = std::find(kResetParameters.begin(), kResetParameters.end(), index) !=
+            kResetParameters.end();
+        const bool expected = plugin.isParameterInput(index) && !plugin.isParameterTrigger(index) &&
+            (plugin.getParameterHints(index) & DISTRHO::kParameterIsHidden) == 0 &&
+            index != kParameterPadLayout && index != kParameterMidiBankMode;
+        check(reset == expected, "reset covers every visible persistent control except layout and bank mode");
+        if (reset) {
+            const auto range = parameterRange(index);
+            plugin.setParameterValue(index,
+                range.defaultValue == range.maximum ? range.minimum : range.maximum);
+        }
+    }
+    plugin.setState(kPadColorStateKeys[63].c_str(), "3");
+    for (const auto index : kResetParameters)
+        plugin.setParameterValue(index, parameterRange(index).defaultValue);
+    plugin.setState(kCaptureActionRequestKey, "reset");
+    // VST3 serializes the transient request on its control worker; LV2 is inline here.
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+    while (plugin.getStateValue(kPadColorStateKeys[63].c_str()) != "0" &&
+           std::chrono::steady_clock::now() < deadline)
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    check(plugin.getStateValue(kPadColorStateKeys[63].c_str()) == "0", "reset clears saved pad colors");
+    check(plugin.getStateValue(kCaptureActionRequestKey).isEmpty(), "reset requests are never persisted");
+    for (const auto index : kResetParameters)
+        check(plugin.getParameterValue(index) == parameterRange(index).defaultValue,
+              "reset restores factory control defaults");
+    check(plugin.getParameterValue(kParameterPadLayout) == 2 &&
+          plugin.getParameterValue(kParameterMidiBankMode) == 0,
+          "reset retains selected layout and bank mode");
+}
 } // namespace
 
 int main()
 {
-    try { initialization(); }
+    try { initialization(); resetControls(); }
     catch (const std::exception& error) {
         std::cerr << "FAIL: " << error.what() << '\n';
         return 1;
