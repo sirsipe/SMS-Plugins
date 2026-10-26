@@ -9,6 +9,7 @@
 #include "Interaction.hpp"
 #include "MidichopperLayout.hpp"
 #include "EditorAuditionMode.hpp"
+#include "GlobalControlMenu.hpp"
 #include "WaveformViewport.hpp"
 
 #include <array>
@@ -95,6 +96,9 @@ struct ViewState {
     std::span<const sms::ui::ContextMenuItemView> skinMenuItems;
     int skinMenuOffset = 0;
     int skinMenuTotal = 0;
+    GlobalControlMenu globalControlMenu;
+    std::array<plugin::GlobalValueSettings, 5> globalValueSettings =
+        plugin::defaultGlobalValueSettings();
 };
 
 void draw(DGL_NAMESPACE::NanoVG& canvas, const ViewState& state);

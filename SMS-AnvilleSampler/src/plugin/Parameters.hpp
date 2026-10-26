@@ -59,18 +59,6 @@ inline constexpr std::uint32_t kFirstPadStatusParameter = kParameterPadOccupied1
 inline constexpr std::uint32_t kFirstPadActivityParameter = kParameterPadActivity1;
 inline constexpr std::uint32_t kParameterPadCount = kPadsPerBank;
 
-/** Persistent controls reset by the menu, excluding the user's layout/bank mapping.
- * Keep triggers, internal requests, and output notifications out of this list. */
-inline constexpr std::array kResetParameters{
-    kParameterMode, kParameterStartPad, kParameterPreRollMs,
-    kParameterCaptureMode, kParameterFixedLengthSeconds, kParameterPlaybackMode,
-    kParameterInputMonitor, kParameterBaseMidiNote, kParameterOutputGainDb,
-    kParameterMaxVoices, kParameterActiveBank, kParameterGlobalPan,
-    kParameterGlobalTuneSemitones, kParameterGlobalLowpass, kParameterGlobalHighpass,
-    kParameterGlobalFilterSlope, kParameterGlobalDirty, kParameterMonitorGainDb,
-    kParameterGlobalReverse,
-};
-
 struct ParameterRange {
     float defaultValue;
     float minimum;

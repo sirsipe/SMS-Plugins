@@ -5,6 +5,7 @@
 #include "ChopEditorController.hpp"
 #include "EditorSnapshotSession.hpp"
 #include "MixerValueEntry.hpp"
+#include "MixerValueNavigation.hpp"
 #include "PlaybackIndicator.hpp"
 #include "SampleWaveform.hpp"
 #include "EditorAuditionMode.hpp"
@@ -985,6 +986,262 @@ void wheelAdjustment()
           "integer wheel controls stay integral");
     check(sms::ui::wheelAdjustedValue(0.5f, 0.0f, 0.1f, 0.0f, 1.0f) == 0.5f,
           "zero wheel delta does not change a control");
+}
+
+void globalValueModes()
+{
+    using namespace midichopper::ui;
+    using namespace midichopper::plugin;
+    for (int index = 1; index <= 4; ++index) {
+        const auto knob = target(InteractiveType::globalMixerKnob, index);
+        const auto label = target(InteractiveType::globalMixerValueLabel, index);
+        const auto parameter = globalValueParameterForTarget(knob);
+        check(parameter != kParameterCount && globalValueParameterForTarget(label) == parameter,
+              "global continuous knobs and labels address the same private settings");
+        check(globalValueParameterForTarget(target(InteractiveType::mixerKnob, index)) ==
+                  kParameterCount, "pad knobs have no global settings");
+    }
+    check(globalValueParameterForTarget(target(InteractiveType::levelFader, 1)) ==
+              kParameterOutputGainDb &&
+          globalValueParameterForTarget(target(InteractiveType::levelValueLabel, 1)) ==
+              kParameterOutputGainDb &&
+          globalValueParameterForTarget(target(InteractiveType::levelFader, 0)) == kParameterCount &&
+          globalValueParameterForTarget(target(InteractiveType::globalMixerKnob, 5)) == kParameterCount &&
+          globalValueParameterForTarget(target(InteractiveType::globalMixerKnob, 6)) == kParameterCount,
+          "OUT offers settings while IN and discrete mixer controls do not");
+    InteractionContext context;
+    context.globalControlMenu.open(kParameterGlobalTuneSemitones, {1240.0f, 730.0f});
+    context.globalControlSettings = defaultGlobalValueSettings(kParameterGlobalTuneSemitones);
+    const auto center = [](const sms::ui::Rect rect) {
+        return sms::ui::Point{rect.x + rect.width * 0.5f, rect.y + rect.height * 0.5f};
+    };
+    const auto parent = context.globalControlMenu.menu;
+    check(!interactiveTargetAt(center(parent.item(0)), context).valid() &&
+          isTarget(interactiveTargetAt(center(parent.item(1)), context),
+                   InteractiveType::globalSettingsGroup, 1) &&
+          !interactiveTargetAt(center(layout::levelFader(1)), context).valid(),
+          "header is not interactive, groups have distinct hits, overlay blocks underlying controls");
+    context.globalControlMenu.select(GlobalSettingsSubmenu::valueMode);
+    for (int row = 0; row < 3; ++row)
+        check(isTarget(interactiveTargetAt(center(context.globalControlMenu.submenu.item(row)), context),
+                       InteractiveType::valueModeItem, row),
+              "Normal, Quantized and Zero Snap are independently selectable");
+    context.globalControlSettings = {GlobalValueMode::normal, 1.0f, 6.0f};
+    check(!interactiveTargetAt(center(context.globalControlMenu.submenu.item(2)), context).valid(),
+          "Zero Snap is disabled for ranges excluding zero");
+    context.globalControlSettings = {GlobalValueMode::normal, 0.1f, 0.2f};
+    check(!interactiveTargetAt(center(context.globalControlMenu.submenu.item(1)), context).valid(),
+          "Quantized is disabled when a range contains no semitone step");
+    context.globalControlMenu.select(GlobalSettingsSubmenu::range);
+    for (int row = 0; row < 2; ++row)
+        check(isTarget(interactiveTargetAt(center(context.globalControlMenu.submenu.item(row)), context),
+                       InteractiveType::globalRangeEntry, row),
+              "Minimum and Maximum rows support distinct numeric entries");
+    const auto separator = context.globalControlMenu.submenu.item(2);
+    check(separator.height < context.globalControlMenu.submenu.item(1).height &&
+          !interactiveTargetAt(center(separator), context).valid(),
+          "Range separator is shorter than value rows and cannot be selected");
+    context.globalControlSettings = defaultGlobalValueSettings(kParameterGlobalTuneSemitones);
+    const auto resetPoint = center(context.globalControlMenu.submenu.item(3));
+    check(!context.globalControlMenu.rangeResetEnabled(context.globalControlSettings) &&
+          !interactiveTargetAt(resetPoint, context).valid(),
+          "factory range disables Reset");
+    context.globalControlSettings.mode = GlobalValueMode::zeroSnap;
+    check(!context.globalControlMenu.rangeResetEnabled(context.globalControlSettings),
+          "mode changes alone cannot enable range Reset");
+    context.globalControlSettings.minimum = -6.0f;
+    context.globalControlSettings.maximum = 6.0f;
+    check(isTarget(interactiveTargetAt(resetPoint, context), InteractiveType::globalRangeReset),
+          "a changed range enables the distinct Reset action");
+    const auto minRestored = context.globalControlMenu.originalRangeSettings(context.globalControlSettings, 0);
+    check(minRestored.minimum == -24.0f && minRestored.maximum == 6.0f &&
+          minRestored.mode == GlobalValueMode::zeroSnap &&
+          context.globalControlMenu.rangeResetEnabled(minRestored),
+          "restoring Min preserves Max and value mode, leaving range Reset enabled");
+    const auto maxRestored = context.globalControlMenu.originalRangeSettings(context.globalControlSettings, 1);
+    check(maxRestored.minimum == -6.0f && maxRestored.maximum == 24.0f &&
+          maxRestored.mode == GlobalValueMode::zeroSnap,
+          "restoring Max preserves Min and value mode");
+    const auto restored = context.globalControlMenu.originalRangeSettings(context.globalControlSettings);
+    check(restored.minimum == -24.0f && restored.maximum == 24.0f &&
+          restored.mode == GlobalValueMode::zeroSnap &&
+          !context.globalControlMenu.rangeResetEnabled(restored),
+          "range Reset restores both bounds while retaining value mode");
+    context.globalControlMenu.rangeResetArmed = true;
+    context.globalControlMenu.select(GlobalSettingsSubmenu::valueMode);
+    check(!context.globalControlMenu.rangeResetArmed, "switching submenus cancels range confirmation");
+    context.globalControlMenu.select(GlobalSettingsSubmenu::range);
+    const auto submenu = context.globalControlMenu.submenu.bounds();
+    check(submenu.x >= layout::contentBounds.x && submenu.y >= layout::contentBounds.y &&
+          submenu.x + submenu.width <= layout::contentBounds.width &&
+          submenu.y + submenu.height <= layout::contentBounds.height,
+          "settings submenus remain visible near canvas edges");
+
+    for (const auto& control : kGlobalValueControls) {
+        GlobalControlMenu menu;
+        menu.open(control.parameter, {});
+        auto settings = defaultGlobalValueSettings(control.parameter);
+        const auto original = parameterRange(control.parameter);
+        settings.mode = GlobalValueMode::quantized;
+        settings.minimum = original.minimum + (original.maximum - original.minimum) * 0.25f;
+        check(menu.rangeResetEnabled(settings), "one modified bound enables range Reset for each control");
+        const auto reset = menu.originalRangeSettings(settings);
+        check(reset.minimum == original.minimum && reset.maximum == original.maximum &&
+              reset.mode == settings.mode && !menu.rangeResetEnabled(reset),
+              "each control restores its own original bounds and retains its mode");
+        menu.rangeResetArmed = true;
+        menu.close();
+        check(!menu.rangeResetArmed, "dismissing the menu cancels range confirmation");
+    }
+    auto tune = defaultGlobalValueSettings(kParameterGlobalTuneSemitones);
+    tune.mode = GlobalValueMode::quantized;
+    auto lowpass = defaultGlobalValueSettings(kParameterGlobalLowpass);
+    lowpass.mode = GlobalValueMode::quantized;
+    for (const auto adjustment : {KnobAdjustment::normal, KnobAdjustment::fine,
+                                 KnobAdjustment::stepped}) {
+        check(globalKnobWheelAdjustedValue(kParameterGlobalTuneSemitones, 0.3f,
+                  1.0f, 0.25f, adjustment, tune) == 1.0f &&
+              globalKnobWheelAdjustedValue(kParameterGlobalTuneSemitones, 0.3f,
+                  -1.0f, 0.25f, adjustment, tune) == -1.0f,
+              "quantized wheel steps from audible tune regardless of modifiers");
+        check(std::abs(globalKnobWheelAdjustedValue(kParameterGlobalLowpass, 0.16f,
+                  1.0f, 0.025f, adjustment, lowpass) - 0.3f) < 1.0e-6f,
+              "quantized filters use Ctrl+wheel tenths");
+        tune.minimum = -6.0f; tune.maximum = 6.0f;
+        const float wheel = globalKnobWheelAdjustedValue(kParameterGlobalTuneSemitones, 0.3f,
+            1.0f, 0.25f, adjustment, tune);
+        check(std::abs(wheel - 4.0f) < 1.0e-6f &&
+              effectiveGlobalValue(kParameterGlobalTuneSemitones, wheel, tune) == 1.0f,
+              "narrow range wheel edits invert to the original host range");
+        const float drag = globalKnobDraggedValue(kParameterGlobalTuneSemitones,
+            0.3f, 100.0f, 99.0f, 1.0f, adjustment, tune);
+        check(std::abs(drag - 0.7f) < 1.0e-5f &&
+              effectiveGlobalValue(kParameterGlobalTuneSemitones, drag, tune) == 0.0f,
+              "quantized drag retains continuous raw precision and ignores modifiers");
+        tune = defaultGlobalValueSettings(kParameterGlobalTuneSemitones);
+        tune.mode = GlobalValueMode::quantized;
+    }
+    tune = defaultGlobalValueSettings(kParameterGlobalTuneSemitones);
+    check(std::abs(globalKnobWheelAdjustedValue(kParameterGlobalTuneSemitones, 0.3f,
+              1.0f, 0.25f, KnobAdjustment::fine, tune) - 0.325f) < 1.0e-6f &&
+          globalKnobWheelAdjustedValue(kParameterGlobalTuneSemitones, 0.3f,
+              1.0f, 0.25f, KnobAdjustment::stepped, tune) == 1.0f,
+          "Normal preserves continuous fine and directional Ctrl+wheel behavior");
+    for (const auto mode : {GlobalValueMode::normal, GlobalValueMode::quantized, GlobalValueMode::zeroSnap}) {
+        const GlobalValueSettings settings{mode, -6.0f, 6.0f};
+        const auto bounds = layout::levelFader(1);
+        const auto track = layout::levelFaderTrack(bounds);
+        for (const float raw : {-12.3f, -0.3f, 6.3f}) {
+            const float displayed = effectiveGlobalValue(kParameterOutputGainDb, raw, settings);
+            const float y = track.y + track.height *
+                (1.0f - (displayed - settings.minimum) / (settings.maximum - settings.minimum));
+            const float grab = globalLevelFaderGrabY(kParameterOutputGainDb, raw, y, bounds, settings);
+            const float mapped = levelFaderValueAtY(y - grab, bounds,
+                {0.0f, settings.minimum, settings.maximum});
+            auto linear = settings; linear.mode = GlobalValueMode::normal;
+            check(std::abs(rawGlobalValue(kParameterOutputGainDb, mapped, linear) - raw) < 1.0e-5f,
+                  "grabbing the displayed OUT cap preserves raw and audible values without a jump");
+        }
+    }
+    // Hosts can echo the native parameter through normalized floats. Each wheel
+    // event must advance exactly one audible grid point despite both round trips.
+    for (const auto& control : kGlobalValueControls) {
+        const auto parameter = control.parameter;
+        const auto native = parameterRange(parameter);
+        const auto hostEcho = [native](const float raw) {
+            const float normalized = (raw - native.minimum) / (native.maximum - native.minimum);
+            return native.minimum + normalized * (native.maximum - native.minimum);
+        };
+        const bool unitStep = control.step == 1.0f;
+        const float asymmetricMinimum = unitStep ? -7.25f : native.minimum < 0 ? -0.73f : 0.13f;
+        const float asymmetricMaximum = unitStep ? 8.125f : 0.86f;
+        const float narrowMinimum = unitStep ? -0.2f : native.minimum < 0 ? -0.12f : 0.17f;
+        const float narrowMaximum = unitStep ? 2.2f : 0.32f;
+        for (const auto mode : {GlobalValueMode::normal, GlobalValueMode::quantized,
+                               GlobalValueMode::zeroSnap}) {
+            for (const int rangeCase : {0, 1, 2, 3}) {
+                const bool narrow = rangeCase == 1;
+                const GlobalValueSettings settings{mode,
+                    rangeCase == 2 ? native.minimum :
+                    rangeCase == 3 ? (native.minimum < 0.0f ? native.minimum * 0.93f : 0.0f) :
+                    mode == GlobalValueMode::zeroSnap && native.minimum == 0.0f ? 0.0f :
+                        narrow ? narrowMinimum : asymmetricMinimum,
+                    rangeCase == 2 ? native.maximum : rangeCase == 3 ? native.maximum * 0.89f :
+                        narrow ? narrowMaximum : asymmetricMaximum};
+                check(validGlobalValueSettings(parameter, settings), "wheel regression range is valid");
+                const auto low = static_cast<int>(globalGridMinimum(settings, control.step));
+                const auto high = static_cast<int>(globalGridMaximum(settings, control.step));
+                const float tolerance = unitStep ? 0.00005f : 0.000002f;
+                for (const auto adjustment : {KnobAdjustment::normal, KnobAdjustment::fine,
+                                             KnobAdjustment::stepped}) {
+                    if (mode != GlobalValueMode::quantized && adjustment != KnobAdjustment::stepped)
+                        continue;
+                    for (const bool echo : {false, true}) {
+                        const auto wheel = [&](float raw, const float direction) {
+                            raw = globalKnobWheelAdjustedValue(parameter, raw, direction,
+                                control.step * 0.25f, adjustment, settings);
+                            return echo ? hostEcho(raw) : raw;
+                        };
+                        // Begin at the lowest grid point, cross zero in both directions,
+                        // and repeat to catch errors accumulating after each inversion.
+                        float raw = rawGlobalValue(parameter, static_cast<float>(low) * control.step,
+                                                   settings);
+                        if (echo) raw = hostEcho(raw);
+                        for (int pass = 0; pass < 3; ++pass) {
+                            for (int grid = low + 1; grid <= high; ++grid) {
+                                raw = wheel(raw, 1.0f);
+                                check(std::abs(effectiveGlobalValue(parameter, raw, settings) -
+                                               static_cast<float>(grid) * control.step) < tolerance,
+                                      "custom range wheel advances one audible grid point without repeats or skips");
+                            }
+                            for (int grid = high - 1; grid >= low; --grid) {
+                                raw = wheel(raw, -1.0f);
+                                check(std::abs(effectiveGlobalValue(parameter, raw, settings) -
+                                               static_cast<float>(grid) * control.step) < tolerance,
+                                      "custom range wheel descends one audible grid point without repeats or skips");
+                            }
+                        }
+                        // Stepped edits stop at the outermost in-range grid point,
+                        // even when the configured endpoints are fractional.
+                        for (const float direction : {-1.0f, 1.0f}) {
+                            raw = direction < 0.0f ? native.minimum : native.maximum;
+                            for (int event = 0; event < 3; ++event) raw = wheel(raw, direction);
+                            const float expected = static_cast<float>(direction < 0.0f ? low : high) * control.step;
+                            check(std::abs(effectiveGlobalValue(parameter, raw, settings) - expected) < tolerance,
+                                  "repeated outward wheel remains at the outermost in-range grid point");
+                            raw = wheel(raw, -direction);
+                            const int grid = std::clamp(direction < 0.0f ? low + 1 : high - 1, low, high);
+                            check(std::abs(effectiveGlobalValue(parameter, raw, settings) -
+                                           static_cast<float>(grid) * control.step) < tolerance,
+                                  "wheel reverses from the selected boundary without skipping the first grid point");
+                        }
+                    }
+                }
+            }
+        }
+    }
+    for (const auto& control : kGlobalValueControls) {
+        const GlobalValueSettings noGrid{GlobalValueMode::normal, control.step * 0.2f,
+                                        control.step * 0.9f};
+        check(validGlobalValueSettings(control.parameter, noGrid), "continuous range without a grid is valid");
+        const auto native = parameterRange(control.parameter);
+        for (const float raw : {native.minimum, native.defaultValue, native.maximum})
+            for (const float direction : {-1.0f, 1.0f})
+                check(globalKnobWheelAdjustedValue(control.parameter, raw, direction,
+                          control.step * 0.25f, KnobAdjustment::stepped, noGrid) == raw,
+                      "Ctrl wheel preserves raw exactly when the custom range contains no grid point");
+    }
+    const GlobalValueSettings fractionalOutput{GlobalValueMode::normal, -22.32f, 10.68f};
+    const float outputGrid = rawGlobalValue(kParameterOutputGainDb, 10.0f, fractionalOutput);
+    const float outputWheel = globalKnobWheelAdjustedValue(kParameterOutputGainDb, outputGrid,
+        1.0f, 0.5f, KnobAdjustment::stepped, fractionalOutput);
+    check(std::abs(effectiveGlobalValue(kParameterOutputGainDb, outputWheel, fractionalOutput) - 10.0f) < 0.00001f,
+          "Ctrl wheel stops at 10 rather than the fractional 10.68 output endpoint");
+    tune = {GlobalValueMode::zeroSnap, -6.0f, 6.0f};
+    const float wheel = globalKnobWheelAdjustedValue(kParameterGlobalTuneSemitones,
+        0.3f, 1.0f, 0.25f, KnobAdjustment::fine, tune);
+    check(std::abs(effectiveGlobalValue(kParameterGlobalTuneSemitones, wheel, tune) - 0.025f) < 1.0e-6f,
+          "Zero Snap wheel edits leave the plateau in audible units without dead wheel events");
 }
 
 void mainSliderDragging()
@@ -2156,6 +2413,73 @@ void playbackIndicator()
           "a nonlooping cursor outside an edited interval clamps into the mirrored cuts");
 }
 
+void mixerValueNavigation()
+{
+    using namespace midichopper::ui;
+    check(isMixerValueCommitKey(0x0dU) && isMixerValueCommitKey(0xe06aU) &&
+          isMixerValueCommitKey(0xe070U) && !isMixerValueCommitKey(0x09U),
+          "normal Enter, declared keypad Enter and delivered Pugl keypad Enter all commit");
+    const auto input = target(InteractiveType::levelValueLabel, 0);
+    const auto output = target(InteractiveType::levelValueLabel, 1);
+    check(mixerValueEntryTargetForControl(target(InteractiveType::levelFader, 0)) == input &&
+          mixerValueEntryTargetForControl(target(InteractiveType::levelFader, 1)) == output,
+          "both faders and their labels open the same value editor");
+    for (int i = 0; i < 5; ++i) {
+        check(mixerValueEntryTargetForControl(target(InteractiveType::mixerKnob, i)) ==
+                  target(InteractiveType::mixerValueLabel, i) &&
+              mixerValueEntryTargetForControl(target(InteractiveType::globalMixerKnob, i)) ==
+                  target(InteractiveType::globalMixerValueLabel, i),
+              "double clicking each continuous knob addresses its own value editor");
+    }
+    check(!mixerValueEntryTargetForControl(target(InteractiveType::mixerKnob, 5)).valid() &&
+          !mixerValueEntryTargetForControl(target(InteractiveType::globalMixerKnob, 6)).valid(),
+          "discrete slope and Dirty controls do not open numeric editors");
+    for (const auto view : {MixerValueEntryView::main, MixerValueEntryView::sampleEditor,
+                            MixerValueEntryView::cutPoints}) {
+        std::array<sms::ui::InteractiveTarget, 7> expected{};
+        std::size_t size = 0U;
+        expected[size++] = input;
+        if (view == MixerValueEntryView::main) {
+            expected[size++] = target(InteractiveType::globalMixerValueLabel, 1);
+            expected[size++] = target(InteractiveType::globalMixerValueLabel, 2);
+            expected[size++] = target(InteractiveType::globalMixerValueLabel, 3);
+            expected[size++] = target(InteractiveType::globalMixerValueLabel, 4);
+        } else if (view == MixerValueEntryView::sampleEditor) {
+            expected[size++] = target(InteractiveType::mixerValueLabel, 0);
+            expected[size++] = target(InteractiveType::mixerValueLabel, 1);
+            expected[size++] = target(InteractiveType::mixerValueLabel, 2);
+            expected[size++] = target(InteractiveType::mixerValueLabel, 3);
+            expected[size++] = target(InteractiveType::mixerValueLabel, 4);
+        }
+        expected[size++] = output;
+        auto current = input;
+        for (std::size_t i = 1; i <= size; ++i) {
+            current = nextMixerValueEntryTarget(current, view, false);
+            check(current == expected[i % size], "Tab traverses visible numeric controls in order and wraps");
+        }
+        current = input;
+        for (std::size_t i = 1; i <= size; ++i) {
+            current = nextMixerValueEntryTarget(current, view, true);
+            check(current == expected[(size - i) % size], "Shift+Tab traverses the same order backwards");
+        }
+    }
+    MixerValueEntry entry;
+    entry.begin(input, -1, 0.0f);
+    check(entry.type('9') && entry.type('9'), "out-of-range digits enter the value editor");
+    check(!entry.value(1.0f, -24.0f, 12.0f) && entry.target() == input,
+          "out-of-range text stays invalid and retains focus for Tab correction");
+    entry.clear();
+    check(entry.type('-'), "unfinished sign enters the value editor");
+    check(!entry.value(1.0f, -24.0f, 12.0f) && entry.target() == input,
+          "unfinished numeric text cannot advance focus");
+    check(entry.type('3'), "digit completes the signed value");
+    check(entry.value(1.0f, -24.0f, 12.0f) == -3.0f,
+          "corrected text becomes eligible to commit and advance");
+    entry.begin(input, -1, 10.0f);
+    check(entry.value(0.01f, 0.1f, 0.2f) == 0.1f,
+          "exact percentage endpoints survive display scaling without becoming invalid");
+}
+
 void mixerValueEntry()
 {
     midichopper::ui::MixerValueEntry entry;
@@ -2210,7 +2534,9 @@ int main()
     editorAuditionModes();
     playbackIndicator();
     mixerValueEntry();
+    mixerValueNavigation();
     wheelAdjustment();
+    globalValueModes();
     mainSliderDragging();
     levelFaderTargets();
     levelMeterGeometry();

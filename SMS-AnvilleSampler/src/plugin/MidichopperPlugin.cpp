@@ -18,6 +18,8 @@
 #include "PadFileActionProtocol.hpp"
 #include "PadStructureProtocol.hpp"
 #include "Parameters.hpp"
+#include "GlobalValueMode.hpp"
+#include "KnobPreference.hpp"
 #include "LayoutPreference.hpp"
 #include "BankModePreference.hpp"
 #include "CaptureActionProtocol.hpp"
@@ -74,7 +76,8 @@ constexpr std::uint32_t kChopSnapshotRequestState = kPlayStopRequestState + 1U;
 constexpr std::uint32_t kChopSnapshotDataState = kChopSnapshotRequestState + 1U;
 constexpr std::uint32_t kCaptureActionRequestState = kChopSnapshotDataState + 1U;
 constexpr std::uint32_t kPadDirectionRequestState = kCaptureActionRequestState + 1U;
-constexpr std::uint32_t kStateCount = kPadDirectionRequestState + 1U;
+constexpr std::uint32_t kGlobalControlStateOffset = kPadDirectionRequestState + 1U;
+constexpr std::uint32_t kStateCount = kGlobalControlStateOffset + kGlobalControlStateKeys.size();
 static_assert(midichopper::kPadCount <= 64U,
               "pending clear requests use one bit per pad");
 
@@ -140,6 +143,8 @@ public:
           initialLayout_(isDummyInstance() ? 0 : LayoutPreference::read(LayoutPreference::configPath())),
           initialBankMode_(isDummyInstance() ? BankModePreference::defaultMode
               : BankModePreference::read(BankModePreference::configPath())),
+          initialGlobalValueSettings_(isDummyInstance() ? defaultGlobalValueSettings()
+              : KnobPreference::read(KnobPreference::configPath())),
           sampler_(getSampleRate()),
           padWorkflows_(sampler_, controlDispatcher_, *this)
     {
@@ -440,7 +445,13 @@ protected:
 
     void initState(const uint32_t index, State& state) override
     {
-        if (index < kAudioStateCount) {
+        if (index >= kGlobalControlStateOffset) {
+            const auto control = index - kGlobalControlStateOffset;
+            state.key = kGlobalControlStateKeys[control];
+            state.label = "Global Knob Settings";
+            state.defaultValue = encodeGlobalValueSettings(initialGlobalValueSettings_[control]).c_str();
+            state.hints = 0; // Private durable DPF state, never a host parameter.
+        } else if (index < kAudioStateCount) {
             state.key = kPadStateKeys[index].c_str();
             state.label = "Pad Sample Audio";
             state.defaultValue = "";
@@ -614,6 +625,12 @@ protected:
 
     String getState(const char* const key) const override
     {
+        for (std::size_t i = 0; i < kGlobalControlStateKeys.size(); ++i) {
+            if (std::strcmp(key, kGlobalControlStateKeys[i]) == 0) {
+                const std::lock_guard lock(globalValueSettingsMutex_);
+                return String(encodeGlobalValueSettings(desiredGlobalValueSettings_[i]).c_str());
+            }
+        }
         const std::lock_guard lock(padWorkflows_.mutationMutex());
         for (std::uint32_t pad = 0; pad < midichopper::kPadCount; ++pad) {
             if (std::strcmp(key, kPadStateKeys[pad].c_str()) != 0)
@@ -714,6 +731,21 @@ protected:
 
     void applyState(const char* const key, const char* const value)
     {
+        for (std::size_t i = 0; i < kGlobalControlStateKeys.size(); ++i) {
+            if (std::strcmp(key, kGlobalControlStateKeys[i]) != 0)
+                continue;
+            GlobalValueSettings settings;
+            if (value != nullptr && decodeGlobalValueSettings(
+                    kGlobalValueControls[i].parameter, value, settings)) {
+                const std::lock_guard lock(globalValueSettingsMutex_);
+                desiredGlobalValueSettings_[i] = settings;
+                globalValueSettingsMailbox_.publish(desiredGlobalValueSettings_);
+                // Publish while control writers are serialized so views see accepted order.
+                const auto encoded = encodeGlobalValueSettings(settings);
+                publishUiState(key, encoded.c_str());
+            }
+            return;
+        }
         if (std::strcmp(key, midichopper::plugin::kCaptureActionRequestKey) == 0) {
             if (value != nullptr && std::strcmp(value, "reset") == 0) {
                 padWorkflows_.reset();
@@ -721,7 +753,7 @@ protected:
                 // per-slot replies would overflow the bounded UI message bus.
                 for (std::uint32_t pad = 0; pad < midichopper::kPadCount; ++pad)
                     padColors_[pad].store(0, std::memory_order_relaxed);
-                publishUiState(kPadFileStatusKey, "Reset to defaults");
+                publishUiState(kPadFileStatusKey, "Pads cleared");
                 return;
             }
             pendingCommands_.fetch_or(midichopper::plugin::captureActionRequestMask(
@@ -987,7 +1019,7 @@ private:
     void reportControlFailure(const char* key, const char* value)
     {
         if (std::strcmp(key, midichopper::plugin::kCaptureActionRequestKey) == 0) {
-            publishUiState(kPadFileStatusKey, "Reset failed; retry when audio is running");
+            publishUiState(kPadFileStatusKey, "Clear pads failed; retry when audio is running");
         } else if (std::strcmp(key, kPadFileRequestKey) == 0) {
             publishUiState(kPadFileStatusKey, "WAV action failed; retry when audio is running");
             publishUiState(kPadFileBusyKey, "0");
@@ -1090,9 +1122,16 @@ private:
         return std::clamp(parameter(index), range.minimum, range.maximum);
     }
 
+    [[nodiscard]] float effectiveGlobalParameter(const std::uint32_t index) const noexcept
+    {
+        return midichopper::plugin::effectiveGlobalValue(index, parameter(index),
+            activeGlobalValueSettings_[midichopper::plugin::globalControlIndex(index)]);
+    }
+
     void applySettings() noexcept
     {
         using namespace midichopper::plugin;
+        static_cast<void>(globalValueSettingsMailbox_.tryConsume(activeGlobalValueSettings_));
         midichopper::EngineSettings settings;
         settings.armed = parameter(kParameterMode) >= 0.5f;
         settings.startPad = static_cast<std::uint8_t>(
@@ -1106,12 +1145,12 @@ private:
         settings.monitorInput = inputMonitorEnabled(
             clampedParameter(kParameterInputMonitor), settings.armed);
         settings.baseNote = static_cast<std::uint8_t>(clampedParameter(kParameterBaseMidiNote));
-        settings.gain = decibelsToGain(clampedParameter(kParameterOutputGainDb));
+        settings.gain = decibelsToGain(effectiveGlobalParameter(kParameterOutputGainDb));
         settings.monitorGain = decibelsToGain(clampedParameter(kParameterMonitorGainDb));
-        settings.pan = clampedParameter(kParameterGlobalPan);
-        settings.tuneSemitones = clampedParameter(kParameterGlobalTuneSemitones);
-        settings.lowpass = clampedParameter(kParameterGlobalLowpass);
-        settings.highpass = clampedParameter(kParameterGlobalHighpass);
+        settings.pan = effectiveGlobalParameter(kParameterGlobalPan);
+        settings.tuneSemitones = effectiveGlobalParameter(kParameterGlobalTuneSemitones);
+        settings.lowpass = effectiveGlobalParameter(kParameterGlobalLowpass);
+        settings.highpass = effectiveGlobalParameter(kParameterGlobalHighpass);
         settings.filterSlope = clampedParameter(kParameterGlobalFilterSlope);
         settings.dirty = clampedParameter(kParameterGlobalDirty);
         settings.reverse = clampedParameter(kParameterGlobalReverse) >= 0.5f;
@@ -1317,11 +1356,17 @@ private:
 
     const int initialLayout_;
     const int initialBankMode_;
+    using GlobalSettingsArray = decltype(defaultGlobalValueSettings());
+    const GlobalSettingsArray initialGlobalValueSettings_;
     midichopper::SamplerEngine sampler_;
     sms::dsp::StereoPeakMeter inputMeter_;
     sms::dsp::StereoPeakMeter outputMeter_;
     std::array<std::atomic<float>, midichopper::plugin::kParameterCount> parameters_{};
     std::array<std::atomic<int>, midichopper::kPadCount> padColors_{};
+    mutable std::mutex globalValueSettingsMutex_;
+    GlobalSettingsArray desiredGlobalValueSettings_ = initialGlobalValueSettings_;
+    GlobalSettingsArray activeGlobalValueSettings_ = initialGlobalValueSettings_; // Audio-owned.
+    sms::audio::RealtimeLatestMailbox<GlobalSettingsArray> globalValueSettingsMailbox_;
     std::atomic<std::uint32_t> pendingCommands_{0};
     std::atomic<std::uint32_t> pendingPlaybackRequest_{0};
     std::atomic<std::uint64_t> pendingClearPads_{0};

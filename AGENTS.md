@@ -47,8 +47,8 @@ format; DPF also provides LV2 and CLAP builds.
   moved Markdown page in the task index; repair links and remove obsolete text.
   No session transcripts, duplicated plans, or speculative features as facts.
 - Limits: this file 600 words; index 350; Copilot adapter 100; human pages 1000;
-  AI reference pages 900. These are ceilings, not targets. Split by task only
-  when useful; do not create many pages merely to bypass limits.
+  AI reference pages 900; plugin README/manual 1800. These are ceilings, not
+  targets. Split by task only when useful; do not create many pages merely to bypass limits.
 - Run `python3 scripts/check_docs.py` and `git diff --check` before handoff.
   The checker verifies structure, not factual accuracy: compare affected claims
   with source/tests and report documentation changes, or why none were needed.

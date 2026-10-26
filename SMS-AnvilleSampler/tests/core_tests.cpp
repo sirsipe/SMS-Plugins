@@ -177,7 +177,7 @@ void live_peak_meter() {
           kParameterAnyPlaybackActive == kParameterStopAllPlayback + 1U &&
           kParameterMonitorGainDb == kParameterAnyPlaybackActive + 1U &&
           kParameterGlobalReverse == kParameterMonitorGainDb + 1U &&
-          kParameterGlobalReverse + 1U == kParameterCount,
+          kParameterGlobalReverse + 1U == kParameterCount && kParameterCount == 71U,
           "new controls remain appended after released and hidden parameters");
 }
 

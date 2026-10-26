@@ -39,6 +39,7 @@
 #include "PlaybackRequest.hpp"
 #include "PadDirectionRequest.hpp"
 #include "MixerValueEntry.hpp"
+#include "MixerValueNavigation.hpp"
 #include "WaveformDetailSession.hpp"
 #include "ChopEditorProtocol.hpp"
 #include "Configuration.hpp"
@@ -58,6 +59,7 @@
 #include "PadLayout.hpp"
 #include "LayoutPreference.hpp"
 #include "BankModePreference.hpp"
+#include "KnobPreference.hpp"
 #include "WaveformEditor.hpp"
 #include "WaveformViewport.hpp"
 #include "MidichopperLayout.hpp"
@@ -70,6 +72,7 @@
 #include "PadFileActionProtocol.hpp"
 #include "PadStructureProtocol.hpp"
 #include "Parameters.hpp"
+#include "StateKeys.hpp"
 #include "CaptureActionProtocol.hpp"
 #include "PluginUiBridge.hpp"
 #include "anvillesampler_artwork.hpp"
@@ -84,6 +87,7 @@
 #include <string>
 #include <string_view>
 #include <optional>
+#include <limits>
 
 #if defined(__linux__)
 # include <cerrno>
@@ -197,21 +201,6 @@ enum class PendingFileDialog : std::uint8_t {
     exportProcessed,
     import,
 };
-
-std::array<std::string, midichopper::kPadCount> makePadStateKeys(const char* const prefix)
-{
-    std::array<std::string, midichopper::kPadCount> keys;
-    for (uint pad = 0; pad < midichopper::kPadCount; ++pad) {
-        char key[24];
-        std::snprintf(key, sizeof(key), "%s%02u", prefix, pad + 1U);
-        keys[pad] = key;
-    }
-    return keys;
-}
-
-const auto kPadEditStateKeys = makePadStateKeys("pad_edit_");
-const auto kPadMixerStateKeys = makePadStateKeys("pad_mix_");
-const auto kPadColorStateKeys = makePadStateKeys("pad_color_");
 
 } // namespace
 
@@ -439,6 +428,7 @@ protected:
             if (!changed)
                 break;
             closePadContextMenu();
+            closeValueModeMenu();
             fMixerValueEntry.cancel();
             if (fGlobalMixerDragIndex == 5)
                 editParameter(kParameterGlobalFilterSlope, false);
@@ -700,6 +690,15 @@ protected:
         if (key == nullptr || value == nullptr)
             return;
 
+        for (std::size_t i = 0; i < kGlobalControlStateKeys.size(); ++i) {
+            if (std::strcmp(key, kGlobalControlStateKeys[i]) == 0) {
+                if (decodeGlobalValueSettings(kGlobalValueControls[i].parameter,
+                        value, fGlobalValueSettings[i]))
+                    requestRepaint();
+                return;
+            }
+        }
+
         if (std::strcmp(key, "pad_mask") == 0) {
             parsePadMask(value, fPadState);
             closePadContextMenu();
@@ -851,6 +850,11 @@ protected:
             fResetArmed = false;
             requestRepaint();
         }
+        if (fGlobalControlMenu.rangeResetArmed && (now >= fRangeResetDeadline ||
+                !fGlobalControlMenu.rangeResetEnabled(globalControlSettings(fGlobalControlMenu.parameter)))) {
+            fGlobalControlMenu.rangeResetArmed = false;
+            requestRepaint();
+        }
         if (fPadContextClearArmed && now >= fPadContextClearDeadline) {
             fPadContextClearArmed = false;
             requestRepaint();
@@ -978,8 +982,12 @@ protected:
         const auto editorSettings = displayEditorSettings();
         const midichopper::ui::ViewState view{
             fArm, fRecordMode, fFixedLength, fPlaybackMode, fMonitor,
-            fStartPad, fPreRoll, fBaseNote, fMidiBankMode, fGain, fMonitorGain, fGlobalPan, fGlobalTune,
-            fGlobalLowpass, fGlobalHighpass, fGlobalFilterSlope, fGlobalDirty, fGlobalReverse,
+            fStartPad, fPreRoll, fBaseNote, fMidiBankMode,
+            effectiveGlobal(kParameterOutputGainDb, fGain), fMonitorGain,
+            effectiveGlobal(kParameterGlobalPan, fGlobalPan),
+            effectiveGlobal(kParameterGlobalTuneSemitones, fGlobalTune),
+            effectiveGlobal(kParameterGlobalLowpass, fGlobalLowpass),
+            effectiveGlobal(kParameterGlobalHighpass, fGlobalHighpass), fGlobalFilterSlope, fGlobalDirty, fGlobalReverse,
             fMaxVoices, fBank, fLayout,
             fSelectedPad, fCurrentPad, fPadPress.pad(), fClearArmed, fMenuOpen,
             fResetArmed, resetEnabled(),
@@ -1011,6 +1019,7 @@ protected:
             std::span<const sms::ui::ContextMenuItemView>{skinMenuItems.data(),
                 static_cast<std::size_t>(skinRows)}, fSkinMenuOffset,
             static_cast<int>(fSkinCatalog.entries.size()),
+            fGlobalControlMenu, fGlobalValueSettings,
         };
         midichopper::ui::draw(*this, view);
         endLogicalDisplay();
@@ -1024,6 +1033,64 @@ protected:
         const auto position = toLogicalPosition(ev.pos);
         const float x = position.getX() - uiLayout::contentOffsetX;
         const float y = position.getY();
+
+        if (fGlobalControlMenu.active() && ev.press) {
+            const auto clicked = resolveInteractiveTarget(x, y);
+            if (ev.button == DGL_NAMESPACE::kMouseButtonMiddle && midichopper::ui::isTarget(
+                    clicked, midichopper::ui::InteractiveType::globalRangeEntry)) {
+                resetGlobalRange(clicked.index);
+                fResetPointerCaptured = true;
+                return true;
+            }
+            if (ev.button != DGL_NAMESPACE::kMouseButtonLeft) {
+                closeValueModeMenu();
+                return true;
+            }
+            fPadContextPointerCaptured = true;
+            if (midichopper::ui::isTarget(clicked,
+                    midichopper::ui::InteractiveType::globalSettingsGroup)) {
+                fMixerValueEntry.cancel();
+                fGlobalControlMenu.select(clicked.index == 1
+                    ? midichopper::ui::GlobalSettingsSubmenu::valueMode
+                    : midichopper::ui::GlobalSettingsSubmenu::range);
+                requestRepaint();
+            } else if (midichopper::ui::isTarget(clicked,
+                    midichopper::ui::InteractiveType::valueModeItem)) {
+                auto settings = globalControlSettings(fGlobalControlMenu.parameter);
+                const auto selected = static_cast<GlobalValueMode>(clicked.index);
+                const bool closeAfterSelection = settings.mode == selected;
+                settings.mode = selected;
+                commitGlobalControlSettings(fGlobalControlMenu.parameter, settings);
+                if (closeAfterSelection)
+                    closeValueModeMenu();
+            } else if (midichopper::ui::isTarget(clicked,
+                    midichopper::ui::InteractiveType::globalRangeReset)) {
+                fMixerValueEntry.cancel();
+                const auto now = std::chrono::steady_clock::now();
+                if (fGlobalControlMenu.rangeResetArmed && now < fRangeResetDeadline) {
+                    resetGlobalRange();
+                } else {
+                    fGlobalControlMenu.rangeResetArmed = true;
+                    fRangeResetDeadline = now + kClearConfirmationTimeout;
+                    requestRepaint();
+                }
+            } else if (midichopper::ui::isTarget(clicked,
+                    midichopper::ui::InteractiveType::globalRangeEntry)) {
+                fGlobalControlMenu.rangeResetArmed = false;
+                if (fMixerValueEntry.target() != clicked) {
+                    const auto settings = globalControlSettings(fGlobalControlMenu.parameter);
+                    const float value = clicked.index == 0 ? settings.minimum : settings.maximum;
+                    fMixerValueEntry.begin(clicked, -1,
+                        value / globalDisplayScale(fGlobalControlMenu.parameter));
+                    requestRepaint();
+                }
+            } else if (!fGlobalControlMenu.menu.bounds().contains({x, y}) &&
+                       (fGlobalControlMenu.group == midichopper::ui::GlobalSettingsSubmenu::none ||
+                        !fGlobalControlMenu.submenu.bounds().contains({x, y}))) {
+                closeValueModeMenu();
+            }
+            return true;
+        }
 
         if (ev.button == DGL_NAMESPACE::kMouseButtonMiddle)
         {
@@ -1053,8 +1120,17 @@ protected:
                 return true;
             }
             if (!ev.press)
-                return fPadContextMenuOpen;
+                return fPadContextMenuOpen || fGlobalControlMenu.active();
             fMixerValueEntry.cancel();
+            const auto parameter = midichopper::ui::globalValueParameterForTarget(
+                resolveInteractiveTarget(x, y));
+            if (parameter != kParameterCount) {
+                closePadContextMenu();
+                fGlobalControlMenu.open(parameter, {x, y});
+                (void)fHover.clear();
+                requestRepaint();
+                return true;
+            }
             if (fArm || fChopEditor.active())
                 return false;
 
@@ -1113,16 +1189,22 @@ protected:
                     if (doubleClick)
                         beginMixerValueEntry(clicked);
                 } else if (doubleClick) {
-                    fResetPointerCaptured = resetMixerControl(clicked);
+                    beginMixerValueEntry(clicked);
+                    fMixerEntryPointerCaptured = true;
                 } else {
                     fLevelFaderDrag = clicked.index;
                     const auto bounds = uiLayout::levelFader(clicked.index);
                     const auto track = uiLayout::levelFaderTrack(bounds);
-                    const auto range = parameterRanges::outputGainDb;
-                    const float value = clicked.index == 0 ? fMonitorGain : fGain;
+                    const auto settings = globalControlSettings(levelParameter(clicked.index));
+                    const auto range = ParameterRange{0.0f, settings.minimum, settings.maximum};
+                    const float value = clicked.index == 0 ? fMonitorGain
+                        : effectiveGlobal(kParameterOutputGainDb, fGain);
                     const float capY = track.y + track.height *
                         (1.0f - (value - range.minimum) / (range.maximum - range.minimum));
-                    fLevelFaderGrabY = std::abs(y - capY) <= 17.0f ? y - capY : 0.0f;
+                    fLevelFaderGrabY = clicked.index == 0
+                        ? (std::abs(y - capY) <= 17.0f ? y - capY : 0.0f)
+                        : midichopper::ui::globalLevelFaderGrabY(kParameterOutputGainDb,
+                            fGain, y, bounds, settings);
                     editParameter(levelParameter(clicked.index), true);
                     updateLevelFaderDrag(y);
                 }
@@ -1162,11 +1244,11 @@ protected:
                     fMenuSubmenu = uiLayout::MenuSubmenu::none;
                     const auto now = std::chrono::steady_clock::now();
                     if (fResetArmed && now < fResetDeadline) {
-                        resetToDefaults();
+                        clearAllPadContents();
                     } else {
                         fResetArmed = true;
                         fResetDeadline = now + kClearConfirmationTimeout;
-                        setLocalStatus("Click RESET again to confirm");
+                        setLocalStatus("Click CLEAR PADS again to confirm");
                     }
                     requestRepaint();
                     return true;
@@ -1310,18 +1392,18 @@ protected:
                     }
                     return true;
                 }
-                if (midichopper::ui::isResettableMixerControl(clicked)) {
-                    if (fDoubleClick.press(clicked, {x, y},
-                            static_cast<std::uint64_t>(now))) {
+                if (midichopper::ui::isTarget(clicked,
+                        midichopper::ui::InteractiveType::mixerKnob)) {
+                    if (fDoubleClick.press(clicked, {x, y}, static_cast<std::uint64_t>(now))) {
                         fDragTarget = WaveformEditTarget::none;
                         fMixerDragIndex = -1;
-                        fResetPointerCaptured = resetMixerControl(clicked);
-                        return fResetPointerCaptured;
+                        beginMixerValueEntry(clicked);
+                        fMixerEntryPointerCaptured = true;
+                        return true;
                     }
                 } else
                     static_cast<void>(fDoubleClick.press(
-                        sms::ui::kNoInteractiveTarget, {x, y},
-                        static_cast<std::uint64_t>(now)));
+                        sms::ui::kNoInteractiveTarget, {x, y}, static_cast<std::uint64_t>(now)));
                 if (midichopper::ui::isTarget(
                         clicked, midichopper::ui::InteractiveType::closeEditor))
                 {
@@ -1446,8 +1528,9 @@ protected:
                     clicked, midichopper::ui::InteractiveType::globalMixerKnob)) {
                 if (fDoubleClick.press(clicked, {x, y}, static_cast<std::uint64_t>(now))) {
                     fGlobalMixerDragIndex = -1;
-                    fResetPointerCaptured = resetMixerControl(clicked);
-                    return fResetPointerCaptured;
+                    beginMixerValueEntry(clicked);
+                    fMixerEntryPointerCaptured = true;
+                    return true;
                 }
             } else {
                 static_cast<void>(fDoubleClick.press(
@@ -1592,6 +1675,11 @@ protected:
                 return true;
             }
         }
+        else if (fMixerEntryPointerCaptured)
+        {
+            fMixerEntryPointerCaptured = false;
+            return true;
+        }
         else if (fResetPointerCaptured)
         {
             fResetPointerCaptured = false;
@@ -1730,13 +1818,26 @@ protected:
                 requestRepaint();
             }
         }
+        if (fGlobalControlMenu.active() && midichopper::ui::isTarget(
+                hovered, midichopper::ui::InteractiveType::globalSettingsGroup)) {
+            const auto group = hovered.index == 1 ? midichopper::ui::GlobalSettingsSubmenu::valueMode
+                                                  : midichopper::ui::GlobalSettingsSubmenu::range;
+            if (group != fGlobalControlMenu.group) {
+                fMixerValueEntry.cancel();
+                fGlobalControlMenu.select(group);
+                requestRepaint();
+            }
+        }
         if (fHover.update(hovered))
             requestRepaint();
-        return hovered.valid() || fMenuOpen || fPadContextMenuOpen;
+        return hovered.valid() || fMenuOpen || fPadContextMenuOpen ||
+            fGlobalControlMenu.active();
     }
 
     bool onScroll(const ScrollEvent& ev) override
     {
+        if (fGlobalControlMenu.active())
+            return true;
         const auto position = toLogicalPosition(ev.pos);
         const float x = position.getX() - uiLayout::contentOffsetX;
         const float y = position.getY();
@@ -1773,9 +1874,12 @@ protected:
             midichopper::ui::isTarget(hovered, midichopper::ui::InteractiveType::levelValueLabel)) {
             const auto range = parameterRanges::outputGainDb;
             setControlValueFromWheel(levelParameter(hovered.index),
-                midichopper::ui::knobWheelAdjustedValue(
-                    hovered.index == 0 ? fMonitorGain : fGain, delta, 0.5f, 1.0f,
-                    range.minimum, range.maximum, knobAdjustment(ev.mod)));
+                hovered.index == 0 ? midichopper::ui::knobWheelAdjustedValue(
+                    fMonitorGain, delta, 0.5f, 1.0f,
+                    range.minimum, range.maximum, knobAdjustment(ev.mod))
+                : midichopper::ui::globalKnobWheelAdjustedValue(
+                    kParameterOutputGainDb, fGain, delta, 0.5f, knobAdjustment(ev.mod),
+                    globalControlSettings(kParameterOutputGainDb)));
             return true;
         }
 
@@ -1888,36 +1992,19 @@ protected:
         }
         if (midichopper::ui::isTarget(
                 hovered, midichopper::ui::InteractiveType::globalMixerKnob)) {
-            const auto adjustment = knobAdjustment(ev.mod);
+            if (hovered.index >= 0 && hovered.index < 5) {
+                const auto parameter = midichopper::ui::globalValueParameterForTarget(hovered);
+                const std::array<float, 5> values{fGain, fGlobalPan, fGlobalTune,
+                    fGlobalLowpass, fGlobalHighpass};
+                constexpr std::array<float, 5> increments{0.5f, 0.05f, 0.25f, 0.025f, 0.025f};
+                setControlValueFromWheel(parameter,
+                    midichopper::ui::globalKnobWheelAdjustedValue(parameter,
+                        values[static_cast<std::size_t>(hovered.index)], delta,
+                        increments[static_cast<std::size_t>(hovered.index)],
+                        knobAdjustment(ev.mod), globalControlSettings(parameter)));
+                return true;
+            }
             switch (hovered.index) {
-            case 0:
-                setControlValueFromWheel(kParameterOutputGainDb,
-                    midichopper::ui::knobWheelAdjustedValue(fGain, delta, 0.5f, 1.0f,
-                        parameterRanges::outputGainDb.minimum,
-                        parameterRanges::outputGainDb.maximum, adjustment));
-                break;
-            case 1:
-                setControlValueFromWheel(kParameterGlobalPan,
-                    midichopper::ui::knobWheelAdjustedValue(fGlobalPan, delta, 0.05f, 0.1f,
-                        parameterRanges::globalPan.minimum,
-                        parameterRanges::globalPan.maximum, adjustment));
-                break;
-            case 2:
-                setControlValueFromWheel(kParameterGlobalTuneSemitones,
-                    midichopper::ui::knobWheelAdjustedValue(fGlobalTune, delta, 0.25f, 1.0f,
-                        parameterRanges::globalTuneSemitones.minimum,
-                        parameterRanges::globalTuneSemitones.maximum, adjustment));
-                break;
-            case 3:
-                setControlValueFromWheel(kParameterGlobalLowpass,
-                    midichopper::ui::knobWheelAdjustedValue(fGlobalLowpass, delta,
-                        0.025f, 0.1f, 0.0f, 1.0f, adjustment));
-                break;
-            case 4:
-                setControlValueFromWheel(kParameterGlobalHighpass,
-                    midichopper::ui::knobWheelAdjustedValue(fGlobalHighpass, delta,
-                        0.025f, 0.1f, 0.0f, 1.0f, adjustment));
-                break;
             case 5:
                 setControlValueFromWheel(kParameterGlobalFilterSlope,
                     std::clamp(fGlobalFilterSlope + static_cast<float>(delta > 0 ? 1 : -1),
@@ -1972,7 +2059,8 @@ protected:
             // includes synthetic releases, so suppress it while Space is held.
             getWindow().setIgnoringKeyRepeat(ev.press);
             const bool blocked = fMixerValueEntry.target().valid() || fMenuOpen ||
-                fPadContextMenuOpen || fChopEditor.active() ||
+                fPadContextMenuOpen || fGlobalControlMenu.active() ||
+                fChopEditor.active() ||
                 fPendingFileDialog != PendingFileDialog::none;
             const auto action = fSpaceKey.update(ev.press, blocked, fArm);
             if (action == midichopper::ui::SpaceAction::playStop)
@@ -1994,8 +2082,29 @@ protected:
             if (ev.key == DGL_NAMESPACE::kKeyEscape) {
                 fMixerValueEntry.cancel();
                 requestRepaint();
-            } else if (ev.key == DGL_NAMESPACE::kKeyEnter) {
-                commitMixerValueEntry();
+            } else if (midichopper::ui::isMixerValueCommitKey(ev.key)) {
+                static_cast<void>(commitMixerValueEntry());
+            } else if (ev.key == DGL_NAMESPACE::kKeyTab) {
+                const auto current = fMixerValueEntry.target();
+                const bool backward = (ev.mod & DGL_NAMESPACE::kModifierShift) != 0U;
+                const auto view = fChopEditor.active() || fArm
+                    ? midichopper::ui::MixerValueEntryView::cutPoints
+                    : fEditorMode ? midichopper::ui::MixerValueEntryView::sampleEditor
+                                  : midichopper::ui::MixerValueEntryView::main;
+                const auto next = midichopper::ui::nextMixerValueEntryTarget(current, view, backward);
+                if (commitMixerValueEntry()) {
+                    if (midichopper::ui::isTarget(current,
+                            midichopper::ui::InteractiveType::globalRangeEntry)) {
+                        const auto entry = midichopper::ui::target(
+                            midichopper::ui::InteractiveType::globalRangeEntry, current.index == 0 ? 1 : 0);
+                        const auto settings = globalControlSettings(fGlobalControlMenu.parameter);
+                        fMixerValueEntry.begin(entry, -1, (entry.index == 0 ? settings.minimum : settings.maximum) /
+                            globalDisplayScale(fGlobalControlMenu.parameter));
+                        requestRepaint();
+                    } else {
+                        beginMixerValueEntry(next);
+                    }
+                }
             } else if (ev.key == DGL_NAMESPACE::kKeyBackspace) {
                 fMixerValueEntry.backspace();
                 requestRepaint();
@@ -2007,6 +2116,10 @@ protected:
         }
         if (!ev.press || ev.key != DGL_NAMESPACE::kKeyEscape)
             return false;
+        if (fGlobalControlMenu.active()) {
+            closeValueModeMenu();
+            return true;
+        }
         if (fPadContextMenuOpen) {
             closePadContextMenu();
             requestRepaint();
@@ -2041,6 +2154,7 @@ protected:
     void uiFocus(const bool focus, DGL_NAMESPACE::CrossingMode) override
     {
         if (!focus) {
+            closeValueModeMenu();
             fSpaceKey.reset();
             getWindow().setIgnoringKeyRepeat(false);
             if (fLevelFaderDrag >= 0) {
@@ -2142,6 +2256,10 @@ private:
     float fGlobalFilterSlope = 0.0f;
     float fGlobalDirty = 0.0f;
     bool fGlobalReverse = false;
+    bool fMixerEntryPointerCaptured = false;
+    std::array<GlobalValueSettings, 5> fGlobalValueSettings = defaultGlobalValueSettings();
+    midichopper::ui::GlobalControlMenu fGlobalControlMenu;
+    std::chrono::steady_clock::time_point fRangeResetDeadline{};
     int fMaxVoices;
     bool fAnyPlaybackActive = false;
     bool fPlayButtonPressCaptured = false;
@@ -2236,6 +2354,62 @@ private:
     midichopper::ui::PlaybackIndicator fPlaybackIndicator;
     char fStatus[160];
 
+    [[nodiscard]] GlobalValueSettings globalControlSettings(const std::uint32_t parameter) const noexcept
+    {
+        const auto index = globalControlIndex(parameter);
+        return index < fGlobalValueSettings.size() ? fGlobalValueSettings[index]
+                                                  : defaultGlobalValueSettings(parameter);
+    }
+
+    [[nodiscard]] static float globalDisplayScale(const std::uint32_t parameter) noexcept
+    {
+        return parameter == kParameterGlobalPan || parameter == kParameterGlobalLowpass ||
+            parameter == kParameterGlobalHighpass ? 0.01f : 1.0f;
+    }
+
+    [[nodiscard]] float effectiveGlobal(const std::uint32_t parameter, const float raw) const noexcept
+    {
+        return effectiveGlobalValue(parameter, raw, globalControlSettings(parameter));
+    }
+
+    void commitGlobalControlSettings(const std::uint32_t parameter,
+                                      const GlobalValueSettings& settings)
+    {
+        const auto index = globalControlIndex(parameter);
+        if (index >= fGlobalValueSettings.size() || !validGlobalValueSettings(parameter, settings))
+            return;
+        fGlobalValueSettings[index] = settings;
+        fGlobalControlMenu.rangeResetArmed = false;
+        fStatus[0] = '\0';
+#if DISTRHO_PLUGIN_WANT_STATE
+        const auto encoded = encodeGlobalValueSettings(settings);
+        setState(kGlobalControlStateKeys[index], encoded.c_str());
+#endif
+        if (!KnobPreference::write(KnobPreference::configPath(), parameter, settings))
+            setLocalStatus("Knob settings changed, but defaults could not be saved");
+        requestRepaint();
+    }
+
+    void resetGlobalRange(const int bound = -1)
+    {
+        const auto parameter = fGlobalControlMenu.parameter;
+        const auto settings = fGlobalControlMenu.originalRangeSettings(globalControlSettings(parameter), bound);
+        fMixerValueEntry.cancel();
+        commitGlobalControlSettings(parameter, settings);
+    }
+
+    void closeValueModeMenu()
+    {
+        if (!fGlobalControlMenu.active())
+            return;
+        if (midichopper::ui::isTarget(fMixerValueEntry.target(),
+                midichopper::ui::InteractiveType::globalRangeEntry))
+            fMixerValueEntry.cancel();
+        fGlobalControlMenu.close();
+        (void)fHover.clear();
+        requestRepaint();
+    }
+
     void openSkinMenu()
     {
         if (!fSkinCatalog.selectable()) return;
@@ -2286,6 +2460,8 @@ private:
         context.skinMenu = fSkinMenu;
         context.skinMenuItemCount = uiLayout::skinMenuVisibleCount(
             static_cast<int>(fSkinCatalog.entries.size()));
+        context.globalControlMenu = fGlobalControlMenu;
+        context.globalControlSettings = globalControlSettings(fGlobalControlMenu.parameter);
         context.padContextMenuOpen = fPadContextMenuOpen;
         context.padColorMenuOpen = fPadColorMenuOpen;
         context.armed = fArm;
@@ -2324,9 +2500,14 @@ private:
 
     void updateLevelFaderDrag(const float y)
     {
-        setControlValue(levelParameter(fLevelFaderDrag), midichopper::ui::levelFaderValueAtY(
+        const auto parameter = levelParameter(fLevelFaderDrag);
+        auto settings = globalControlSettings(parameter);
+        const float mapped = midichopper::ui::levelFaderValueAtY(
             y - fLevelFaderGrabY, uiLayout::levelFader(fLevelFaderDrag),
-            parameterRanges::outputGainDb));
+            {0.0f, settings.minimum, settings.maximum});
+        settings.mode = GlobalValueMode::normal;
+        setControlValue(parameter, parameter == kParameterMonitorGainDb ? mapped
+            : rawGlobalValue(parameter, mapped, settings));
     }
 
     bool beginViewportDrag(const sms::ui::InteractiveTarget clicked,
@@ -2979,20 +3160,16 @@ private:
             fPendingFileDialog == PendingFileDialog::none;
     }
 
-    void resetToDefaults()
+    void clearAllPadContents()
     {
         releasePressedPad();
         stopEditorAudition();
         if (fChopEditor.active())
             fChopEditor.cancel();
         closePadContextMenu();
+        closeValueModeMenu();
         fMixerValueEntry.cancel();
-        // Notify the host of each restored control so automation/state caches
-        // agree with the DSP. Layout and bank-mode preferences stay untouched.
-        for (const auto parameter : midichopper::plugin::kResetParameters)
-            setControlValueFromWheel(parameter, parameterRange(parameter).defaultValue);
         fEditorMode = false;
-        fEditorAuditionMode = midichopper::ui::EditorAuditionMode::Play;
         fSelectedPad = fLastPlayedPad = fCurrentPad = -1;
         fEditorSettingsPad = fMixerSettingsPad = -1;
         fEditorSettings = {};
@@ -3012,7 +3189,7 @@ private:
 #if DISTRHO_PLUGIN_WANT_STATE
         setState(midichopper::plugin::kCaptureActionRequestKey, "reset");
 #endif
-        setLocalStatus("Reset requested");
+        setLocalStatus("Clear pads requested");
     }
 
     void pressPlaybackPad(const int localPad)
@@ -3120,7 +3297,8 @@ private:
     void updateLocalPlayhead(const std::chrono::steady_clock::time_point now)
     {
         if (fPlaybackIndicator.update(now, fSelectedPad, fHasWaveform, fWaveform,
-                displayEditorSettings(), fMixerSettings, fGlobalTune) && fEditorMode)
+                displayEditorSettings(), fMixerSettings,
+                effectiveGlobal(kParameterGlobalTuneSemitones, fGlobalTune)) && fEditorMode)
             requestRepaint();
     }
 
@@ -3411,8 +3589,9 @@ private:
         }
     }
 
-    void beginMixerValueEntry(const sms::ui::InteractiveTarget target)
+    void beginMixerValueEntry(sms::ui::InteractiveTarget target)
     {
+        target = midichopper::ui::mixerValueEntryTargetForControl(target);
         if (!midichopper::ui::isMixerValueLabel(target) ||
             target.index < 0 || target.index >= 5)
             return;
@@ -3420,15 +3599,16 @@ private:
         float displayedValue = 0.0f;
         int entryPad = -1;
         if (midichopper::ui::isTarget(target, midichopper::ui::InteractiveType::levelValueLabel)) {
-            displayedValue = target.index == 0 ? fMonitorGain : fGain;
+            displayedValue = target.index == 0 ? fMonitorGain
+                : effectiveGlobal(kParameterOutputGainDb, fGain);
         } else if (midichopper::ui::isTarget(
                 target, midichopper::ui::InteractiveType::globalMixerValueLabel)) {
             switch (target.index) {
-            case 0: displayedValue = fGain; break;
-            case 1: displayedValue = fGlobalPan * 100.0f; break;
-            case 2: displayedValue = fGlobalTune; break;
-            case 3: displayedValue = fGlobalLowpass * 100.0f; break;
-            case 4: displayedValue = fGlobalHighpass * 100.0f; break;
+            case 0: displayedValue = effectiveGlobal(kParameterOutputGainDb, fGain); break;
+            case 1: displayedValue = effectiveGlobal(kParameterGlobalPan, fGlobalPan) * 100.0f; break;
+            case 2: displayedValue = effectiveGlobal(kParameterGlobalTuneSemitones, fGlobalTune); break;
+            case 3: displayedValue = effectiveGlobal(kParameterGlobalLowpass, fGlobalLowpass) * 100.0f; break;
+            case 4: displayedValue = effectiveGlobal(kParameterGlobalHighpass, fGlobalHighpass) * 100.0f; break;
             default: return;
             }
         } else {
@@ -3451,12 +3631,43 @@ private:
         requestRepaint();
     }
 
-    void commitMixerValueEntry()
+    bool commitMixerValueEntry()
     {
         const auto target = fMixerValueEntry.target();
+        if (midichopper::ui::isTarget(target,
+                midichopper::ui::InteractiveType::globalRangeEntry) && fGlobalControlMenu.active()) {
+            const auto parameter = fGlobalControlMenu.parameter;
+            auto settings = globalControlSettings(parameter);
+            const auto value = fMixerValueEntry.value(globalDisplayScale(parameter),
+                -std::numeric_limits<float>::max(), std::numeric_limits<float>::max());
+            if (!value) {
+                setLocalStatus("Enter a numeric range limit");
+                return false;
+            }
+            if (target.index == 0) settings.minimum = *value;
+            else settings.maximum = *value;
+            if (settings.mode == GlobalValueMode::zeroSnap &&
+                (settings.minimum > 0.0f || settings.maximum < 0.0f))
+                settings.mode = GlobalValueMode::normal;
+            if (!validGlobalValueSettings(parameter, settings)) {
+                const auto range = parameterRange(parameter);
+                if (settings.minimum < range.minimum || settings.maximum > range.maximum ||
+                    settings.minimum >= settings.maximum)
+                    setLocalStatus("Keep limits within the allowed range, with minimum below maximum");
+                else if (settings.mode == GlobalValueMode::zeroSnap)
+                    setLocalStatus("Zero Snap requires a range that includes zero");
+                else
+                    setLocalStatus("The range must include a quantized step");
+                return false;
+            }
+            commitGlobalControlSettings(parameter, settings);
+            fMixerValueEntry.cancel();
+            requestRepaint();
+            return true;
+        }
         if (!midichopper::ui::isMixerValueLabel(target) ||
             target.index < 0 || target.index >= 5)
-            return;
+            return false;
 
         float minimum = 0.0f;
         float maximum = 1.0f;
@@ -3495,13 +3706,13 @@ private:
             case 4:
                 parameter = kParameterGlobalHighpass;
                 break;
-            default: return;
+            default: return false;
             }
         } else {
             if (fMixerValueEntry.pad() != fSelectedPad) {
                 fMixerValueEntry.cancel();
                 requestRepaint();
-                return;
+                return false;
             }
             switch (target.index) {
             case 0:
@@ -3519,20 +3730,26 @@ private:
             case 3:
             case 4:
                 break;
-            default: return;
+            default: return false;
             }
         }
 
+        if (global && globalControlIndex(parameter) < fGlobalValueSettings.size()) {
+            const auto settings = globalControlSettings(parameter);
+            minimum = settings.minimum;
+            maximum = settings.maximum;
+        }
         const auto value = fMixerValueEntry.value(displayScale, minimum, maximum);
         if (!value) {
-            setLocalStatus("Enter a numeric mixer value");
-            return;
+            setLocalStatus("Enter a number within the control's range");
+            return false;
         }
 
         fMixerValueEntry.cancel();
         if (global) {
             editParameter(parameter, true);
-            setControlValue(parameter, *value);
+            setControlValue(parameter, globalControlIndex(parameter) < fGlobalValueSettings.size()
+                ? rawGlobalValue(parameter, *value, globalControlSettings(parameter)) : *value);
             editParameter(parameter, false);
         } else {
             switch (target.index) {
@@ -3541,18 +3758,21 @@ private:
             case 2: fMixerSettings.tuneSemitones = *value; break;
             case 3: fMixerSettings.lowpass = *value; break;
             case 4: fMixerSettings.highpass = *value; break;
-            default: return;
+            default: return false;
             }
             commitMixerSettings();
         }
         requestRepaint();
+        return true;
     }
 
     bool resetMixerControl(const sms::ui::InteractiveTarget clicked)
     {
         if (midichopper::ui::isTarget(clicked, midichopper::ui::InteractiveType::levelFader) ||
             midichopper::ui::isTarget(clicked, midichopper::ui::InteractiveType::levelValueLabel)) {
-            setControlValueFromWheel(levelParameter(clicked.index), 0.0f);
+            setControlValueFromWheel(levelParameter(clicked.index), clicked.index == 0 ? 0.0f
+                : rawGlobalValue(kParameterOutputGainDb, 0.0f,
+                    globalControlSettings(kParameterOutputGainDb)));
             requestRepaint();
             return true;
         }
@@ -3561,11 +3781,11 @@ private:
             midichopper::ui::isTarget(
                 clicked, midichopper::ui::InteractiveType::globalMixerValueLabel)) {
             switch (clicked.index) {
-            case 0: setControlValue(kParameterOutputGainDb, 0.0f); break;
-            case 1: setControlValue(kParameterGlobalPan, 0.0f); break;
-            case 2: setControlValue(kParameterGlobalTuneSemitones, 0.0f); break;
-            case 3: setControlValue(kParameterGlobalLowpass, 0.0f); break;
-            case 4: setControlValue(kParameterGlobalHighpass, 0.0f); break;
+            case 0: setControlValue(kParameterOutputGainDb, rawGlobalValue(kParameterOutputGainDb, 0.0f, globalControlSettings(kParameterOutputGainDb))); break;
+            case 1: setControlValue(kParameterGlobalPan, rawGlobalValue(kParameterGlobalPan, 0.0f, globalControlSettings(kParameterGlobalPan))); break;
+            case 2: setControlValue(kParameterGlobalTuneSemitones, rawGlobalValue(kParameterGlobalTuneSemitones, 0.0f, globalControlSettings(kParameterGlobalTuneSemitones))); break;
+            case 3: setControlValue(kParameterGlobalLowpass, rawGlobalValue(kParameterGlobalLowpass, 0.0f, globalControlSettings(kParameterGlobalLowpass))); break;
+            case 4: setControlValue(kParameterGlobalHighpass, rawGlobalValue(kParameterGlobalHighpass, 0.0f, globalControlSettings(kParameterGlobalHighpass))); break;
             case 5: setControlValue(kParameterGlobalFilterSlope, 1.0f); break;
             case 6: setControlValue(kParameterGlobalDirty, 0.0f); break;
             default: return false;
@@ -3602,38 +3822,28 @@ private:
         if (fGlobalMixerDragIndex < 0 || fGlobalMixerDragIndex >= 5)
             return;
         float startValue = 0.0f;
-        float minimum = 0.0f;
-        float maximum = 1.0f;
         float steppedIncrement = 1.0f;
         std::uint32_t parameter = kParameterOutputGainDb;
         switch (fGlobalMixerDragIndex) {
         case 0:
-            minimum = parameterRanges::outputGainDb.minimum;
-            maximum = parameterRanges::outputGainDb.maximum;
             startValue = fGlobalMixerDragStart.gainDecibels;
             parameter = kParameterOutputGainDb;
             break;
         case 1:
-            minimum = parameterRanges::globalPan.minimum;
-            maximum = parameterRanges::globalPan.maximum;
             startValue = fGlobalMixerDragStart.pan;
             steppedIncrement = 0.1f;
             parameter = kParameterGlobalPan;
             break;
         case 2:
-            minimum = parameterRanges::globalTuneSemitones.minimum;
-            maximum = parameterRanges::globalTuneSemitones.maximum;
             startValue = fGlobalMixerDragStart.tuneSemitones;
             parameter = kParameterGlobalTuneSemitones;
             break;
         case 3:
-            minimum = 0.0f; maximum = 1.0f;
             startValue = fGlobalMixerDragStart.lowpass;
             steppedIncrement = 0.05f;
             parameter = kParameterGlobalLowpass;
             break;
         case 4:
-            minimum = 0.0f; maximum = 1.0f;
             startValue = fGlobalMixerDragStart.highpass;
             steppedIncrement = 0.05f;
             parameter = kParameterGlobalHighpass;
@@ -3641,9 +3851,9 @@ private:
         default:
             return;
         }
-        setControlValue(parameter, midichopper::ui::knobDraggedValue(
-            startValue, fGlobalMixerDragStartY, y, minimum, maximum,
-            steppedIncrement, fGlobalMixerDragAdjustment));
+        setControlValue(parameter, midichopper::ui::globalKnobDraggedValue(
+            parameter, startValue, fGlobalMixerDragStartY, y, steppedIncrement,
+            fGlobalMixerDragAdjustment, globalControlSettings(parameter)));
     }
 
     bool parseEditorState(const char* const key, const char* const value)

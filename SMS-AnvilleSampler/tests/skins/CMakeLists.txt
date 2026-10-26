@@ -7,7 +7,7 @@ find_package(Threads REQUIRED)
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../Common-UI"
   "${CMAKE_CURRENT_BINARY_DIR}/Common-UI")
 
-foreach(name skin skin_catalog)
+foreach(name skin skin_catalog defaults_file)
   add_executable(${name}_tests "../${name}_tests.cpp")
   target_link_libraries(${name}_tests PRIVATE sms_common_ui Threads::Threads)
   if(MSVC)
@@ -16,6 +16,7 @@ foreach(name skin skin_catalog)
     target_compile_options(${name}_tests PRIVATE -Wall -Wextra -Wpedantic)
   endif()
 endforeach()
+add_test(NAME defaults-file COMMAND defaults_file_tests)
 add_test(NAME ui-skin COMMAND skin_tests)
 add_test(NAME ui-skin-catalog COMMAND skin_catalog_tests)
 

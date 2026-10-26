@@ -24,6 +24,11 @@ inline const auto kPadEditStateKeys = makePadStateKeys("pad_edit_");
 inline const auto kPadMixerStateKeys = makePadStateKeys("pad_mix_");
 inline const auto kPadColorStateKeys = makePadStateKeys("pad_color_");
 
+inline constexpr std::array<const char*, 5> kGlobalControlStateKeys{{
+    "global_output_settings", "global_pan_settings", "global_tune_settings",
+    "global_lowpass_settings", "global_highpass_settings",
+}};
+
 inline constexpr const char* kWaveformRequestKey = "waveform_request";
 inline constexpr const char* kWaveformDataKey = "waveform_data";
 inline constexpr const char* kWaveformDetailRequestKey = "waveform_detail_request";

@@ -3,23 +3,21 @@
 ## Ask an LLM to create a skin
 
 Supply this guide, the [AI authoring reference](../../Docs/AI/SKINS.md), and
-[placeholder/skin.ini](../skins/placeholder/skin.ini), the key catalog. Specify
-style, name, language and folder. Keep personal skins under ignored `build/skins/`
-or outside the checkout; Git maintains bundled skins and the placeholder.
+[placeholder/skin.ini](../skins/placeholder/skin.ini). Specify style, name, language
+and folder. Keep personal skins under ignored `build/skins/` or outside the checkout.
 
 ## Bundled appearance
 
-**Default** is the built-in appearance without a skin. Three skins are bundled
+**Default** is the built-in appearance. Three skins are bundled
 as choices under **hamburger → Skin**: [Finnish Dream](<../skins/Finnish Dream/skin.ini>),
 [Looks like Wu](<../skins/Looks like Wu/skin.ini>), and
-[White Cadillac Vinyl](<../skins/White Cadillac Vinyl/skin.ini>). Selection restores on reopening.
+[White Cadillac Vinyl](<../skins/White Cadillac Vinyl/skin.ini>). Reopening restores selection.
 
 Builds refresh all three in `skins/` (CLAP: sibling `SMS-AnvilleSampler.skins`).
 Reused build output removes retired `AnvilleGraffiti`, `Anville Graffiti`, and
 `FinnishDream` folders. Builds also remove the old forced `skin`, including
 CLAP's `SMS-AnvilleSampler.skin`. Create `skin` in installed bundles to override
-the collection. The Finnish Dream ID changed from `FinnishDream`; its old saved
-preference falls back to Default until the user selects Finnish Dream again.
+the collection. The retired `FinnishDream` ID falls back to Default; reselect Finnish Dream.
 
 ## Loading skins
 
@@ -38,14 +36,13 @@ Without `skin`, collections live under `skins/`, one subfolder per skin:
 SMS-AnvilleSampler.vst3/skins/<id>/skin.ini
 ```
 
-If at least one named skin is available, **hamburger → Skin** lists **Default**
-(the built-in appearance) first, followed by skin names sorted alphabetically.
-Names appear literally. Selection is marked; wheel scrolling keeps Default at
-the top. Only immediate subfolders are scanned. Invalid names, manifests, and
+With named skins available, **hamburger → Skin** lists **Default** first, then
+alphabetized literal names. Selection is marked; wheel scrolling keeps Default
+at the top. Discovery scans immediate subfolders. Invalid names, manifests, and
 paths escaping the collection are skipped. Selecting a skin that has since
 become unreadable keeps the current skin and reports an error.
 
-The bundle root contains `Contents`.
+Bundle roots contain `Contents`.
 LV2 uses the same `skin`/`skins` directories inside `SMS-AnvilleSampler.lv2`.
 For single-file CLAP, use sibling `SMS-AnvilleSampler.skin` for an override or
 `SMS-AnvilleSampler.skins` for a collection. CLAP host integration remains
@@ -57,7 +54,8 @@ labels, formats and image slots.
 
 ## Remembering a choice
 
-Choices are saved per user under `SMS-AnvilleSampler/selected-skin`:
+All startup choices share the per-user file `SMS-AnvilleSampler/defaults.ini`:
+layout, bank mode, skin, and global knob modes/ranges. The parent folder is:
 
 | Platform | Parent folder |
 | --- | --- |
@@ -65,19 +63,23 @@ Choices are saved per user under `SMS-AnvilleSampler/selected-skin`:
 | Windows 10 (1607+) | Native Roaming AppData (normally `%APPDATA%`) |
 | macOS | `~/Library/Application Support` |
 
-Selections replace preferences atomically. Unavailable config reports
-that the appearance changed but could not be remembered.
+Explicit selections atomically merge one key, preserving other choices and
+unknown valid keys. Failed writes report that the setting changed without being
+remembered. The [preference reference](../../Docs/AI/LAYOUT-PREFERENCE.md) owns
+schema/validation. Old separate preference files are not migrated.
 
-Preferences store subfolder IDs, shared across LV2/VST3.
-New editors restore them; already-open editors retain their appearance. A missing or unavailable remembered skin uses Default. A forced
-`skin` ignores the preference without overwriting it. Choosing Default also
-persists. Skins do not change host parameters or DAW project state.
+The `skin` key stores subfolder IDs, shared across LV2/VST3.
+New editors restore them; open editors retain their appearance. Missing/unavailable
+skins use Default. Forced `skin` ignores preferences without overwriting them.
+Choosing Default persists an empty `skin` value. Skins leave host parameters and
+DAW state unchanged. **CLEAR PADS** preserves skin and all saved
+startup defaults.
 
 ## Edit the manifest
 
 `skin.ini` is UTF-8 text with case-sensitive keys. `[skin]` must contain
 `version=1`; collections also require `name=Display name`. Names share the
-512-byte UTF-8 text limit. Each setting occupies one line. Comments begin with
+512-byte UTF-8 text limit. Each setting uses one line. Comments begin with
 `;` or `#`
 on their own line. Surrounding spaces are trimmed; internal spaces are kept.
 Values are literal: do not add quotes, inline comments, or escape sequences.
@@ -109,7 +111,7 @@ controlPanelAlpha=0.50
 background=background.png
 ```
 
-Keep replacement labels short: the layout and font sizes remain fixed.
+Keep labels short: layout and font sizes remain fixed.
 Headings and numeric readouts also accept translations: preserve each printf
 conversion exactly, including order, width, precision, and `%%`. Incompatible
 formats fall back; added conversions, `%n`, dynamic widths, and positional

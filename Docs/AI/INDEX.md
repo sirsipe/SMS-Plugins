@@ -10,7 +10,7 @@ Read [AGENTS.md](../../AGENTS.md), then the relevant row.
 | Tests, LV2 discovery, host/UI checks | [Testing](TESTING.md) | [Tests](../../SMS-AnvilleSampler/tests/) |
 | Screenshots | [Images](DOC-IMAGES.md) | [Captures](../../SMS-AnvilleSampler/Docs/) |
 | Engine, state, UI | [Anville Sampler architecture](../../SMS-AnvilleSampler/Docs/ARCHITECTURE.md) | [Plugin source](../../SMS-AnvilleSampler/src/) |
-| Layout/bank-mode defaults | [Preferences](LAYOUT-PREFERENCE.md) | Startup and host precedence |
+| Startup defaults and persistence | [Preferences](LAYOUT-PREFERENCE.md) | Startup and host precedence |
 | Filter and Dirty implementation | [Mixing contract](MIXING.md) | [DSP](../../Common-Src/DSP/ColorEffects.hpp) |
 | Shared DSP, codecs, geometry | [Common-Src map](../../Common-Src/README.md) | [Common-Src](../../Common-Src/) |
 | Shared DPF UI, pads, waveform | [Common-UI map](../../Common-UI/README.md) | [Common-UI](../../Common-UI/) |

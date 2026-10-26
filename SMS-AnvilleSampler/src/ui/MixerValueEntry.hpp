@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cstring>
 #include <optional>
+#include <limits>
 #include <string_view>
 
 namespace midichopper::ui {
@@ -75,7 +76,17 @@ public:
                                             const float minimum,
                                             const float maximum) const noexcept
     {
-        return mixerValueFromText({fText.data(), fLength}, displayScale, minimum, maximum);
+        const auto parsed = mixerValueFromText({fText.data(), fLength}, displayScale,
+            -std::numeric_limits<float>::max(), std::numeric_limits<float>::max());
+        if (!parsed)
+            return std::nullopt;
+        // Percentage scaling and display round trips can differ by a few float ULPs.
+        const float tolerance = std::max({1.0f, std::abs(minimum), std::abs(maximum)}) *
+            (4.0f * std::numeric_limits<float>::epsilon());
+        if ((*parsed < minimum && minimum - *parsed > tolerance) ||
+            (*parsed > maximum && *parsed - maximum > tolerance))
+            return std::nullopt;
+        return std::clamp(*parsed, minimum, maximum);
     }
 
 private:

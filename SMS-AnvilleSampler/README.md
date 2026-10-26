@@ -60,22 +60,71 @@ Tested in **REAPER**, **Ardour**, **Carla**.
 
 ![Context menu](Docs/context-menu.png)
 
-Hamburger: **PAD LAYOUT**, **BANK MODE**, **SKIN**, **RESET**, **LINKS**. Online Help opens this guide; Report Issue opens issues.
+Hamburger: **PAD LAYOUT**, **BANK MODE**, **SKIN**, **CLEAR PADS**, **LINKS**. Online Help opens this guide; Report Issue opens issues.
 
-Click **RESET**, then **CONFIRM: RESET** within two seconds to clear pads/settings/colors/clipboard
-and restore defaults. Layout, bank mode and skin remain. Dismissing the menu or
-choosing another item cancels confirmation. Reset is unavailable during pad operations.
+Click **CLEAR PADS**, then **Confirm: CLEAR PADS** within two seconds to clear
+all banks' audio, pad edits, colors, and clipboard. Global control values,
+knob settings, layout, bank mode, skin, and editor audition mode remain.
+Dismissing the menu or choosing another item cancels confirmation. CLEAR PADS
+is unavailable during pad operations.
 
 **All Banks** (default) uses unique notes for gapless play; **Selected Bank** shares
 notes within the active bank. All Banks base note is limited to 64.
 
-Layouts preserve samples. Menu selections remember defaults in
-`SMS-AnvilleSampler/selected-layout` and `selected-bank-mode`, beside the
-[skin preference](Docs/SKINS.md#remembering-a-choice). Host values always win;
-LV2 normally initializes to 16 pads/All Banks. Invalid preferences use
-those defaults. Host changes do not update preferences.
+Layouts preserve samples. Explicit menu choices remember startup defaults in
+`SMS-AnvilleSampler/defaults.ini`, beside the
+[skin preference](Docs/SKINS.md#remembering-a-choice). The same file stores knob
+settings. Existing instances retain their choices; new instances use the last
+saved defaults. Host-restored settings always win and do not overwrite this
+file. LV2 normally initializes layout/bank mode to 16 pads/All Banks. Missing
+or invalid choices use factory defaults. Old separate preference files are
+ignored; previous startup selections must be chosen again.
 
 ![Hamburger menu](Docs/hamburger-menu.png)
+
+### Knob settings
+
+Right-click global **PAN**, **TUNE**, **LOWPASS**, **HIGHPASS**, or the **OUT**
+fader to open **Settings: <control>**. These settings belong to that control;
+IN and pad controls retain their usual behavior.
+
+[<img src="Docs/knob-context-menu.png" width="672" alt="TUNE settings with the Value Mode submenu open">](Docs/knob-context-menu.png)
+
+**Value Mode** chooses how incoming positions are interpreted:
+
+- **Normal** (default) gives continuous values across the selected range.
+- **Quantized** rounds to the same steps as Ctrl+wheel: 1 semitone for Tune,
+  1 dB for OUT, and 10 percentage points for Pan and filters. All adjustments
+  use these steps, including fine adjustment and typed values.
+- **Zero Snap** holds exactly zero within ±5% of full control travel around
+  its zero position, then smoothly sweeps to each endpoint. On strongly
+  asymmetric ranges, the snap region narrows on the shorter side so that side
+  remains adjustable. Other values stay continuous.
+
+Selecting a different mode keeps the menu open; selecting the current mode
+closes it. Escape or clicking outside also closes the menu.
+
+**Range** maps the entire incoming host/controller range to your chosen audible
+limits. For example, setting Tune to −6…+6 st spreads those 12 semitones across
+the controller's full 0–127 travel, giving finer control. Click **Min** or
+**Max**, type a value, and press Enter or numpad Enter. Tab accepts a valid
+limit and edits the other one; Escape cancels. Invalid entries remain open.
+Limits must stay inside the original range, with Min below Max. Quantized
+requires at least one available step. A range excluding zero is accepted and
+switches Zero Snap to Normal.
+
+Original limits appear right-aligned in parentheses. Middle-click either row
+to restore that limit alone. **RESET → Confirm: RESET** restores both limits
+while preserving Value Mode; confirm within two seconds. RESET is disabled
+when both limits already match the originals.
+
+Mode and range changes immediately reinterpret current positions in both the
+UI and audio, including existing automation. The full raw values remain
+stored, so switching settings does not discard their precision. Knob settings
+save with the DAW session as private plugin state without extra automation
+parameters. Explicit choices also become startup defaults for new instances;
+CLEAR PADS preserves them. Host controls still expose their original ranges,
+while the plugin shows the interpreted values.
 
 ### Sample Editor view
 
@@ -121,9 +170,15 @@ Right-click for **Split Sample**; following samples shift right without being ov
 ## General Controls
 
 - Drag/wheel knobs and sliders.
-- **Shift** gives 10× knob precision; **Ctrl** steps Gain/Volume 1 dB, Pan 10%, and Tune one semitone.
-- Double-click values to enter exact values; double/middle-click knobs, ADSR, or
-  edge faders to reset.
+- **Shift** gives 10× knob precision; **Ctrl** steps Gain/Volume 1 dB, Pan and filters 10 percentage points, and Tune one semitone.
+- Double-click a continuous mixer knob, its value, or an edge fader to type a
+  value. Enter and numpad Enter accept; Escape cancels. Middle-click resets.
+  ADSR and waveform handles retain double/middle-click reset.
+- While typing, **Tab** accepts a valid value and opens the next control;
+  **Shift+Tab** goes backwards. Invalid values retain focus. Order wraps:
+  Main View uses IN → Pan → Tune → Lowpass → Highpass → OUT; Sample Editor
+  adds pad Gain before pad Pan and uses pad controls. ARM, Adjust Cut Points,
+  and Split Sample use IN → OUT.
 - Wheel adjusts ADSR, Start/End, cuts.
 - Click for focus. **Space** plays/stops in PLAY/editor or
   starts/chops ARM capture; holding does not repeat. Menus, dialogs, numeric

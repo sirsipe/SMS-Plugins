@@ -7,11 +7,14 @@
 #include "DSP/SampleMixerSettings.hpp"
 #include "Interaction.hpp"
 #include "MidichopperLayout.hpp"
+#include "GlobalControlMenu.hpp"
 #include "PadLayout.hpp"
 #include "../plugin/Parameters.hpp"
+#include "../plugin/GlobalValueMode.hpp"
 #include "WaveformEditor.hpp"
 #include "WaveformViewport.hpp"
 
+#include <array>
 #include <cstdint>
 #include <optional>
 #include <span>
@@ -69,6 +72,10 @@ enum class InteractiveType : int {
     globalDirection,
     padGlobalMixer,
     menuReset,
+    valueModeItem,
+    globalSettingsGroup,
+    globalRangeEntry,
+    globalRangeReset,
 };
 
 class PadPressTracker {
@@ -354,6 +361,88 @@ target(const InteractiveType type, const int index = -1) noexcept
     return candidate.is(static_cast<int>(type), index);
 }
 
+/** Only the global continuous controls offer a persisted value mode. */
+[[nodiscard]] inline std::uint32_t globalValueParameterForTarget(
+    const sms::ui::InteractiveTarget candidate) noexcept
+{
+    using namespace midichopper::plugin;
+    if (isTarget(candidate, InteractiveType::levelFader, 1) ||
+        isTarget(candidate, InteractiveType::levelValueLabel, 1))
+        return kParameterOutputGainDb;
+    if (!isTarget(candidate, InteractiveType::globalMixerKnob) &&
+        !isTarget(candidate, InteractiveType::globalMixerValueLabel))
+        return kParameterCount;
+    constexpr std::array<std::uint32_t, 5> parameters{
+        kParameterOutputGainDb, kParameterGlobalPan, kParameterGlobalTuneSemitones,
+        kParameterGlobalLowpass, kParameterGlobalHighpass};
+    return candidate.index >= 0 && candidate.index < static_cast<int>(parameters.size())
+        ? parameters[static_cast<std::size_t>(candidate.index)] : kParameterCount;
+}
+
+/** Wheel edits use audible units, then invert the mapping to preserve host identities. */
+[[nodiscard]] inline float globalKnobWheelAdjustedValue(
+    const std::uint32_t parameter, const float raw, const float delta,
+    const float normalIncrement, const KnobAdjustment adjustment,
+    const midichopper::plugin::GlobalValueSettings& settings) noexcept
+{
+    using namespace midichopper::plugin;
+    const auto effectiveAdjustment = settings.mode == GlobalValueMode::quantized
+        ? KnobAdjustment::stepped : adjustment;
+    float current = effectiveGlobalValue(parameter, raw, settings);
+    const float step = globalValueStep(parameter);
+    float minimum = settings.minimum;
+    float maximum = settings.maximum;
+    if (effectiveAdjustment == KnobAdjustment::stepped && step > 0.0f) {
+        const double firstGrid = globalGridMinimum(settings, step);
+        const double lastGrid = globalGridMaximum(settings, step);
+        if (firstGrid > lastGrid)
+            return raw; // A continuous range can legitimately contain no grid point.
+        minimum = static_cast<float>(firstGrid * step);
+        maximum = static_cast<float>(lastGrid * step);
+        // Inverting the range/snap mapping and a host's normalized float echo
+        // can leave a grid point a few ULPs to either side. Stabilize that point
+        // before directional floor/ceil so repeated events never stall or skip.
+        const float grid = std::round(current / step) * step;
+        const float tolerance = 8.0f * std::numeric_limits<float>::epsilon() *
+            std::max({std::abs(settings.minimum), std::abs(settings.maximum),
+                      settings.maximum - settings.minimum});
+        if (std::abs(current - grid) <= tolerance)
+            current = grid;
+    }
+    const float value = knobWheelAdjustedValue(current, delta,
+        normalIncrement, step, minimum, maximum, effectiveAdjustment);
+    return rawGlobalValue(parameter, value, settings);
+}
+
+/** Drag keeps continuous range-mapped input; snapping is applied when displayed/heard. */
+[[nodiscard]] inline float globalKnobDraggedValue(
+    const std::uint32_t parameter, const float rawStart, const float startY,
+    const float y, const float steppedIncrement, const KnobAdjustment adjustment,
+    const midichopper::plugin::GlobalValueSettings& settings) noexcept
+{
+    using namespace midichopper::plugin;
+    const float mapped = knobDraggedValue(mappedGlobalValue(parameter, rawStart, settings),
+        startY, y, settings.minimum, settings.maximum, steppedIncrement,
+        settings.mode == GlobalValueMode::quantized ? KnobAdjustment::normal : adjustment);
+    auto linear = settings;
+    linear.mode = GlobalValueMode::normal;
+    return rawGlobalValue(parameter, mapped, linear);
+}
+
+/** Grabbing a snapped fader cap must retain its continuous input position. */
+[[nodiscard]] inline float globalLevelFaderGrabY(
+    const std::uint32_t parameter, const float raw, const float pointerY,
+    const sms::ui::Rect bounds, const plugin::GlobalValueSettings& settings) noexcept
+{
+    const auto track = layout::levelFaderTrack(bounds);
+    const auto capY = [&](const float value) {
+        return track.y + track.height *
+            (1.0f - (value - settings.minimum) / (settings.maximum - settings.minimum));
+    };
+    return std::abs(pointerY - capY(plugin::effectiveGlobalValue(parameter, raw, settings))) <= 17.0f
+        ? pointerY - capY(plugin::mappedGlobalValue(parameter, raw, settings)) : 0.0f;
+}
+
 struct InteractionContext {
     bool editorMode = false;
     bool chopEditorMode = false;
@@ -364,6 +453,8 @@ struct InteractionContext {
     layout::MenuSubmenu menuSubmenu = layout::MenuSubmenu::none;
     sms::ui::ContextMenuGeometry skinMenu;
     int skinMenuItemCount = 0;
+    GlobalControlMenu globalControlMenu;
+    midichopper::plugin::GlobalValueSettings globalControlSettings;
     bool padContextMenuOpen = false;
     bool padColorMenuOpen = false;
     bool armed = false;
@@ -392,6 +483,29 @@ struct InteractionContext {
 interactiveTargetAt(const sms::ui::Point point, const InteractionContext& context) noexcept
 {
     namespace uiLayout = layout;
+
+    if (context.globalControlMenu.active()) {
+        const auto& menu = context.globalControlMenu;
+        const int row = menu.submenu.hit(point);
+        if (menu.group == GlobalSettingsSubmenu::valueMode && row >= 0) {
+            auto settings = context.globalControlSettings;
+            settings.mode = static_cast<plugin::GlobalValueMode>(row);
+            return plugin::validGlobalValueSettings(menu.parameter, settings)
+                ? target(InteractiveType::valueModeItem, row) : sms::ui::kNoInteractiveTarget;
+        }
+        if (menu.group == GlobalSettingsSubmenu::range) {
+            if (row == 0 || row == 1)
+                return target(InteractiveType::globalRangeEntry, row);
+            if (row == 3 && menu.rangeResetEnabled(context.globalControlSettings))
+                return target(InteractiveType::globalRangeReset);
+        }
+        if (menu.group != GlobalSettingsSubmenu::none && menu.submenu.bounds().contains(point))
+            return sms::ui::kNoInteractiveTarget;
+        const int parent = menu.menu.hit(point);
+        if (parent == 1 || parent == 2)
+            return target(InteractiveType::globalSettingsGroup, parent);
+        return sms::ui::kNoInteractiveTarget;
+    }
 
     if (context.padContextMenuOpen) {
         if (context.padColorMenuOpen) {

@@ -239,6 +239,10 @@ if(ANVILLESAMPLER_BUILD_CLAP)
 endif()
 
 if(BUILD_TESTING)
+  add_executable(anvillesampler_defaults_file_tests tests/defaults_file_tests.cpp)
+  target_link_libraries(anvillesampler_defaults_file_tests PRIVATE sms_file_io Threads::Threads)
+  add_test(NAME defaults-file COMMAND anvillesampler_defaults_file_tests)
+
   add_executable(anvillesampler_layout_preference_tests tests/layout_preference_tests.cpp)
   target_include_directories(anvillesampler_layout_preference_tests PRIVATE src/plugin src/core)
   target_link_libraries(anvillesampler_layout_preference_tests PRIVATE sms_common_ui)
@@ -255,6 +259,13 @@ if(BUILD_TESTING)
         ${anvillesampler_target}-dsp ${CMAKE_DL_LIBS})
       add_test(NAME layout-initialization-${anvillesampler_target}
         COMMAND ${anvillesampler_target}-layout-initialization-tests)
+      add_executable(${anvillesampler_target}-global-value-mode-tests
+        tests/global_value_mode_tests.cpp
+        "${SMS_DPF_ROOT}/distrho/src/DistrhoPlugin.cpp")
+      target_link_libraries(${anvillesampler_target}-global-value-mode-tests PRIVATE
+        ${anvillesampler_target}-dsp ${CMAKE_DL_LIBS})
+      add_test(NAME global-value-mode-${anvillesampler_target}
+        COMMAND ${anvillesampler_target}-global-value-mode-tests)
     endforeach()
   endif()
 

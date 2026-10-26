@@ -58,7 +58,10 @@ and macOS, including Unicode installation paths. Windows symlink cases report
 skips when privileges are unavailable; other coverage still runs. The checks
 cover manifests, discovery, native config folders, Unicode paths/artwork reads,
 and concurrent atomic preferences, including held Windows readers. The suite
-also checks [layout/bank-mode preferences](LAYOUT-PREFERENCE.md) serialization and failures. Windows
+also checks the shared `defaults-file` parser, bounded atomic merges and
+concurrent writers, plus [layout/bank-mode preferences](LAYOUT-PREFERENCE.md)
+serialization, failures and sibling-key preservation. Global knob startup/host
+state checks run in the full Unix adapter suites; see [testing](TESTING.md). Windows
 persistence requires Windows 10 version 1607 or newer. They do not validate a
 native DAW/editor or establish Windows/macOS plugin release support.
 
@@ -105,6 +108,10 @@ global prune. Close the VS Code remote window before wiping.
 - Engine/timing: `SMS-AnvilleSampler/src/core`; `sampler-core` tests.
 - Parameters/host transport: `SMS-AnvilleSampler/src/plugin/Parameters.hpp`,
   `MidichopperPlugin.cpp`, and `src/ui/MidichopperUI.cpp`. Keep DSP/UI in sync.
+- Startup preferences: `Common-Src/IO/DefaultsFile.*`, plugin
+  `LayoutPreference`, `BankModePreference`, `KnobPreference`, and shared UI
+  `SkinPreference`; [schema/precedence](LAYOUT-PREFERENCE.md). Preserve sibling
+  keys and keep filesystem work off audio.
 - Project state: `src/plugin/StateCodec.*`, adapter state callbacks, and
   `Common-Src/State`; `state-codec` tests plus host save/restore.
 - Product UI: `src/ui/MidichopperUI.cpp` handles interaction/host communication;

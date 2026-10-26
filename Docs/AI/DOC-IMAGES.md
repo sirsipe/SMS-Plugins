@@ -35,11 +35,13 @@ Store sixteen separate, full-resolution PNGs in `SMS-AnvilleSampler/Docs`:
 For each view, add `-finnish-dream`, `-looks-like-wu`, and
 `-white-cadillac-vinyl` before `.png` for the other appearances. Basic Usage
 captures (`arm-view.png`, `context-menu.png`,
-`hamburger-menu.png`) always use the built-in appearance. Keep working captures
+`hamburger-menu.png`, `knob-context-menu.png`) always use the built-in appearance. Keep working captures
 under ignored build output.
 For `hamburger-menu.png`, leave the hamburger and PAD LAYOUT submenu open so
-all top-level actions and layout choices are visible; keep the pointer away
-from other menu rows. This is the exception to closing menus before capture.
+all top-level actions and layout choices, including CLEAR PADS, are visible;
+keep the pointer away from other menu rows. For `knob-context-menu.png`, open
+TUNE's Settings menu and its Value Mode submenu, with all three modes visible.
+These menu captures are exceptions to closing menus before capture.
 
 Both READMEs share the Main View captures. The plugin README also shows each
 editor in all four appearances. Markdown tables and linked HTML `img` elements

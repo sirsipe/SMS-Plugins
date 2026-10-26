@@ -78,6 +78,8 @@ public:
                     hovered(InteractiveType::padColorItem)
                         ? state_.hoveredTarget.index : -1);
         }
+        if (state_.globalControlMenu.active())
+            drawGlobalControlMenu();
         canvas_.restore();
     }
 
@@ -98,6 +100,124 @@ private:
         return isTarget(state_.hoveredTarget, type, index);
     }
 
+    void drawGlobalControlMenu()
+    {
+        const sms::ui::dpf::ScopedCanvasState canvasState(canvas_);
+        const auto& colors = sms::ui::dpf::theme();
+        const auto& menu = state_.globalControlMenu;
+        const auto index = plugin::globalControlIndex(menu.parameter);
+        if (index >= state_.globalValueSettings.size())
+            return;
+        const auto& settings = state_.globalValueSettings[index];
+        const sms::ui::ContextMenuItemView parentItems[] = {
+            {" ", false},
+            {"Value Mode", true, false, sms::ui::ContextMenuItemKind::action,
+                menu.group == GlobalSettingsSubmenu::valueMode, -1, true},
+            {"Range", true, false, sms::ui::ContextMenuItemKind::action,
+                menu.group == GlobalSettingsSubmenu::range, -1, true},
+        };
+        const int parentHover = hovered(InteractiveType::globalSettingsGroup)
+            ? state_.hoveredTarget.index : -1;
+        sms::ui::dpf::drawContextMenu(canvas_, menu.menu, parentItems, parentHover);
+
+        const auto header = menu.menu.item(0);
+        constexpr const char* names[] = {"OUT", "PAN", "TUNE", "LOWPASS", "HIGHPASS"};
+        char title[48];
+        std::snprintf(title, sizeof(title), "%s %s", sms::ui::dpf::themeText("Settings:"), names[index]);
+        canvas_.fontFace(NANOVG_DEJAVU_SANS_TTF);
+        canvas_.fontSize(10.0f);
+        canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_LEFT |
+                          DGL_NAMESPACE::NanoVG::ALIGN_MIDDLE);
+        canvas_.fillColor(colors.contentSecondary);
+        canvas_.text(header.x + 11.0f, header.y + header.height * 0.5f, title, nullptr);
+
+        if (menu.group == GlobalSettingsSubmenu::valueMode) {
+            auto quantized = settings;
+            quantized.mode = plugin::GlobalValueMode::quantized;
+            auto zeroSnap = settings;
+            zeroSnap.mode = plugin::GlobalValueMode::zeroSnap;
+            const sms::ui::ContextMenuItemView modeItems[] = {
+                {"Normal", true, false, sms::ui::ContextMenuItemKind::action,
+                    settings.mode == plugin::GlobalValueMode::normal},
+                {"Quantized", plugin::validGlobalValueSettings(menu.parameter, quantized),
+                    false, sms::ui::ContextMenuItemKind::action,
+                    settings.mode == plugin::GlobalValueMode::quantized},
+                {"Zero Snap", plugin::validGlobalValueSettings(menu.parameter, zeroSnap),
+                    false, sms::ui::ContextMenuItemKind::action,
+                    settings.mode == plugin::GlobalValueMode::zeroSnap},
+            };
+            sms::ui::dpf::drawContextMenu(canvas_, menu.submenu, modeItems,
+                hovered(InteractiveType::valueModeItem) ? state_.hoveredTarget.index : -1);
+        } else if (menu.group == GlobalSettingsSubmenu::range) {
+            const bool percentage = index == 1U || index == 3U || index == 4U;
+            const char* unit = percentage ? "%" : index == 0U ? " dB" : " st";
+            const auto originalRange = plugin::parameterRange(menu.parameter);
+            const bool bipolar = originalRange.minimum < 0.0f;
+            const sms::ui::ContextMenuItemView rangeItems[] = {
+                {" ", true},
+                {" ", true},
+                {"", false, false, sms::ui::ContextMenuItemKind::separator},
+                {menu.rangeResetArmed ? "Confirm: RESET" : "RESET",
+                    menu.rangeResetEnabled(settings), true},
+            };
+            const int rangeHover = hovered(InteractiveType::globalRangeEntry)
+                ? state_.hoveredTarget.index
+                : hovered(InteractiveType::globalRangeReset) ? 3 : -1;
+            sms::ui::dpf::drawContextMenu(canvas_, menu.submenu, rangeItems, rangeHover);
+            canvas_.fontFace(NANOVG_DEJAVU_SANS_TTF);
+            canvas_.fontSize(11.0f);
+            for (int row = 0; row < 2; ++row) {
+                const auto bounds = menu.submenu.item(row);
+                const float centerY = bounds.y + bounds.height * 0.5f;
+                const float scale = percentage ? 100.0f : 1.0f;
+                const float originalValue =
+                    (row == 0 ? originalRange.minimum : originalRange.maximum) * scale;
+                char original[48];
+                std::snprintf(original, sizeof(original),
+                    bipolar && originalValue > 0.0f ? "(+%.6g%s)" : "(%.6g%s)",
+                    originalValue, unit);
+                canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_RIGHT |
+                                  DGL_NAMESPACE::NanoVG::ALIGN_MIDDLE);
+                const float originalX = bounds.x + bounds.width - 11.0f;
+                DGL_NAMESPACE::Rectangle<float> originalBounds;
+                canvas_.textBounds(originalX, centerY, original, nullptr, originalBounds);
+                const float currentRight = originalX - originalBounds.getWidth() - 8.0f;
+                canvas_.fillColor(colors.contentSecondary);
+                canvas_.text(originalX, centerY, original, nullptr);
+
+                const bool editing = isTarget(state_.mixerValueEntryTarget,
+                    InteractiveType::globalRangeEntry, row);
+                char current[96];
+                if (editing) {
+                    canvas_.beginPath();
+                    canvas_.roundedRect(bounds.x + 2.0f, bounds.y + 2.0f,
+                        std::max(0.0f, currentRight - bounds.x), bounds.height - 4.0f, 3.0f);
+                    canvas_.fillColor(colors.recess);
+                    canvas_.fill();
+                    canvas_.strokeColor(colors.selection);
+                    canvas_.strokeWidth(1.0f);
+                    canvas_.stroke();
+                    std::snprintf(current, sizeof(current), "%s: %s_%s",
+                        sms::ui::dpf::themeText(row == 0 ? "Min" : "Max"),
+                        state_.mixerValueEntryText, unit);
+                } else {
+                    const float value = (row == 0 ? settings.minimum : settings.maximum) * scale;
+                    std::snprintf(current, sizeof(current), "%s: %.6g%s",
+                        sms::ui::dpf::themeText(row == 0 ? "Min" : "Max"), value, unit);
+                }
+                canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_LEFT |
+                                  DGL_NAMESPACE::NanoVG::ALIGN_MIDDLE);
+                canvas_.fillColor(editing ? colors.selection
+                    : rangeHover == row ? colors.controlAccent : colors.contentPrimary);
+                canvas_.save();
+                canvas_.intersectScissor(bounds.x + 11.0f, bounds.y,
+                    std::max(0.0f, currentRight - bounds.x - 11.0f), bounds.height);
+                canvas_.text(bounds.x + 11.0f, centerY, current, nullptr);
+                canvas_.restore();
+            }
+        }
+    }
+
     void drawLevelFader(const int index, const sms::ui::Rect bounds,
                         const std::array<float, 2>& levels, const float gainDb,
                         const char* const label)
@@ -110,7 +230,8 @@ private:
                             bounds.height - 4.0f, 3.0f);
         canvas_.fillColor(colors.recessEdge);
         canvas_.fill();
-        const auto range = plugin::parameterRanges::outputGainDb;
+        const auto range = index == 1 ? state_.globalValueSettings[0]
+            : plugin::defaultGlobalValueSettings(plugin::kParameterOutputGainDb);
         for (int tick = 0; tick <= 12; ++tick) {
             const float y = track.y + track.height * static_cast<float>(tick) / 12.0f;
             const float cx = bounds.x + bounds.width * 0.5f;
@@ -390,18 +511,20 @@ private:
         std::snprintf(low, sizeof(low), sms::ui::dpf::themeFormat("%.0f%%"), state_.globalLowpass * 100.0f);
         std::snprintf(high, sizeof(high), sms::ui::dpf::themeFormat("%.0f%%"), state_.globalHighpass * 100.0f);
         drawMixerKnob(uiLayout::globalMixerKnob(1), InteractiveType::globalMixerKnob,
-            1, "PAN", state_.globalPan, plugin::parameterRanges::globalPan.minimum,
-            plugin::parameterRanges::globalPan.maximum, pan);
+            1, "PAN", state_.globalPan, state_.globalValueSettings[1].minimum,
+            state_.globalValueSettings[1].maximum, pan);
         drawDirtySwitch(uiLayout::globalMixerKnob(6), InteractiveType::globalMixerKnob,
             state_.globalDirty >= 0.5f);
         drawMixerKnob(uiLayout::globalMixerKnob(2), InteractiveType::globalMixerKnob,
             2, "TUNE", state_.globalTuneSemitones,
-            plugin::parameterRanges::globalTuneSemitones.minimum,
-            plugin::parameterRanges::globalTuneSemitones.maximum, tune);
+            state_.globalValueSettings[2].minimum,
+            state_.globalValueSettings[2].maximum, tune);
         drawMixerKnob(uiLayout::globalMixerKnob(3), InteractiveType::globalMixerKnob,
-            3, "LOWPASS", state_.globalLowpass, 0.0f, 1.0f, low);
+            3, "LOWPASS", state_.globalLowpass, state_.globalValueSettings[3].minimum,
+            state_.globalValueSettings[3].maximum, low);
         drawMixerKnob(uiLayout::globalMixerKnob(4), InteractiveType::globalMixerKnob,
-            4, "HIGHPASS", state_.globalHighpass, 0.0f, 1.0f, high);
+            4, "HIGHPASS", state_.globalHighpass, state_.globalValueSettings[4].minimum,
+            state_.globalValueSettings[4].maximum, high);
         drawSlopeSlider(uiLayout::globalMixerKnob(5), InteractiveType::globalMixerKnob,
             state_.globalFilterSlope);
     }
@@ -566,8 +689,8 @@ private:
             submenuButton(uiLayout::skinMenuButton, "SKIN",
                 uiLayout::MenuSubmenu::skin, InteractiveType::menuSkins);
         sms::ui::dpf::drawSegment(canvas_, uiLayout::resetMenuButton(state_.skinsAvailable),
-            state_.resetArmed ? "CONFIRM: RESET" : "RESET", state_.resetArmed,
-            colors.selection, hovered(InteractiveType::menuReset), state_.resetEnabled);
+            state_.resetArmed ? "Confirm: CLEAR PADS" : "CLEAR PADS", state_.resetArmed,
+            colors.intentDanger, hovered(InteractiveType::menuReset), state_.resetEnabled);
         text(1060.0f, state_.skinsAvailable ? 235.0f : 199.0f, "LINKS", nullptr);
         static constexpr const char* linkLabels[] = {"ONLINE HELP", "REPORT ISSUE"};
         for (int index = 0; index < 2; ++index)

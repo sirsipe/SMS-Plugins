@@ -133,7 +133,7 @@ void unicodeCatalog()
           "Unicode collection folder discovered as UTF8 ID");
     check(pathToUtf8(c.entries[1].directory.filename()) == id && c.load(1).name == "Unicode skin 雪",
           "Unicode catalog directory and manifest load");
-    const auto preference = f.root / pathFromUtf8("設定") / "selected-skin";
+    const auto preference = f.root / pathFromUtf8("設定") / "defaults.ini";
     check(SkinPreference::write(preference, c.entries[1].id) &&
           c.selectedIndex(SkinPreference::read(preference)) == 1,
           "Unicode catalog selection survives preference roundtrip");
@@ -176,12 +176,14 @@ void preferences()
     check(!SkinPreference::write(path, std::string(513, 'x')), "oversize ID rejected");
     check(SkinPreference::write(path, "雪 🔨") && SkinPreference::read(path) == "雪 🔨",
           "Unicode preference overwrites existing file");
-    std::ifstream persisted(path, std::ios::binary);
-    const std::string bytes((std::istreambuf_iterator<char>(persisted)), std::istreambuf_iterator<char>());
-    check(bytes == "SMS-SKIN-PREFERENCE 1\n雪 🔨\n", "Unicode ID retains version 1 UTF8 file format");
-    persisted.close();
+    check(sms::io::DefaultsFile::get(path, "skin") == "雪 🔨", "Unicode ID stored under skin key");
+    for (const auto* id : {" leading and trailing ", "a=b", "#folder", ";folder", "\"quoted\""}) {
+        check(SkinCatalog::safeId(id) && SkinPreference::write(path, id) &&
+              SkinPreference::read(path) == id, "INI quoting preserves every safe folder ID");
+    }
 #ifdef _WIN32
     check(SkinPreference::write(path, "old"), "initial held-reader preference");
+    const auto previousBytes = sms::io::readBytes(path, 64 * 1024);
     const HANDLE heldReader = ::CreateFileW(path.c_str(), GENERIC_READ,
         FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
         FILE_ATTRIBUTE_NORMAL, nullptr);
@@ -191,16 +193,17 @@ void preferences()
     char heldBytes[128]{};
     DWORD heldCount = 0;
     check(::ReadFile(heldReader, heldBytes, static_cast<DWORD>(sizeof(heldBytes)), &heldCount, nullptr) != 0 &&
-          std::string(heldBytes, heldCount) == "SMS-SKIN-PREFERENCE 1\nold\n",
+          std::string(heldBytes, heldCount) == std::string(previousBytes.begin(), previousBytes.end()),
           "held Windows reader retains complete previous preference after replacement");
     check(::CloseHandle(heldReader) != 0, "close held Windows preference reader");
 #endif
     check(SkinPreference::write(path, "") && SkinPreference::read(path).empty(), "Default persists empty ID");
-    for (const auto* malformed : {"folder\n", "SMS-SKIN-PREFERENCE 2\nfolder\n", "SMS-SKIN-PREFERENCE 1\n../bad\n", "SMS-SKIN-PREFERENCE 1\nfolder", "SMS-SKIN-PREFERENCE 1\na\nb\n"}) {
+    check(sms::io::DefaultsFile::read(path).count("skin") == 1, "Default persists explicit empty skin key");
+    for (const auto* malformed : {"folder\n", "other=folder\n", "skin=../bad\n", "skin=nested/name\n", "skin=\"unterminated\n"}) {
         Fixture::file(path, malformed);
         check(SkinPreference::read(path).empty(), "malformed preference defaults");
     }
-    Fixture::file(path, std::string(1025, 'x'));
+    Fixture::file(path, "skin=folder\nfuture=" + std::string(64 * 1024, 'x'));
     check(SkinPreference::read(path).empty(), "oversize preference defaults");
     Fixture::file(f.root / "blocked", "file");
     check(!SkinPreference::write(f.root / "blocked" / "choice", "skin"), "parent directory error handled");
@@ -208,14 +211,23 @@ void preferences()
     check(!SkinPreference::write(f.root / "target-directory", "skin") &&
           fs::is_directory(f.root / "target-directory"), "failed atomic rename preserves destination");
     check(!SkinPreference::write({}, "skin"), "empty preference path rejected");
+    fs::remove(path); // An oversized store cannot be safely merged by a preference writer.
     check(SkinPreference::write(path, "a"), "initial concurrent preference");
+    check(sms::io::DefaultsFile::set(path, "future_option", "keep"), "prepare unknown concurrent sibling");
     auto writer = [&](const char* id) { for (int i = 0; i < 100; ++i) check(SkinPreference::write(path, id), "concurrent write succeeds"); };
     std::thread first(writer, "a"), second(writer, "b");
+    std::thread sibling([&] {
+        for (int i = 0; i < 100; ++i)
+            check(sms::io::DefaultsFile::set(path, "bank_mode", "selected"), "concurrent sibling write succeeds");
+    });
     for (int i = 0; i < 200; ++i) {
         const auto id = SkinPreference::read(path);
         check(id == "a" || id == "b", "reader observes only complete concurrent writes");
     }
-    first.join(); second.join();
+    first.join(); second.join(); sibling.join();
+    check(sms::io::DefaultsFile::get(path, "bank_mode") == "selected" &&
+          sms::io::DefaultsFile::get(path, "future_option") == "keep",
+          "concurrent skin writes preserve sibling and unknown keys");
     check(SkinPreference::write(path, "Ääni folder"), "initial Unicode concurrent preference");
     std::thread unicodeFirst(writer, "Ääni folder"), unicodeSecond(writer, "雪 🔨");
     for (int i = 0; i < 200; ++i) {
@@ -256,7 +268,7 @@ void configuration()
     const auto homeRoot = f.root / pathFromUtf8("家-home");
 #ifdef _WIN32
     const auto native = SkinPreference::configPath();
-    check(native.is_absolute() && native.filename() == "selected-skin" &&
+    check(native.is_absolute() && native.filename() == "defaults.ini" &&
           native.parent_path().filename() == "SMS-AnvilleSampler", "Windows native config path is absolute with plugin suffix");
 #endif
     Environment::set("XDG_CONFIG_HOME", pathToUtf8(xdgRoot));
@@ -264,19 +276,19 @@ void configuration()
 #if defined(_WIN32)
     check(SkinPreference::configPath() == native, "Windows native config ignores XDG and HOME overrides");
 #elif defined(__APPLE__)
-    check(SkinPreference::configPath() == homeRoot / "Library" / "Application Support" / "SMS-AnvilleSampler" / "selected-skin",
+    check(SkinPreference::configPath() == homeRoot / "Library" / "Application Support" / "SMS-AnvilleSampler" / "defaults.ini",
           "macOS config uses Unicode HOME Application Support and ignores XDG");
 #else
-    check(SkinPreference::configPath() == xdgRoot / "SMS-AnvilleSampler" / "selected-skin", "absolute Unicode XDG preferred");
+    check(SkinPreference::configPath() == xdgRoot / "SMS-AnvilleSampler" / "defaults.ini", "absolute Unicode XDG preferred");
 #endif
     Environment::set("XDG_CONFIG_HOME", "relative");
 #if defined(_WIN32)
     check(SkinPreference::configPath() == native, "relative XDG cannot alter Windows native config");
 #elif defined(__APPLE__)
-    check(SkinPreference::configPath() == homeRoot / "Library" / "Application Support" / "SMS-AnvilleSampler" / "selected-skin",
+    check(SkinPreference::configPath() == homeRoot / "Library" / "Application Support" / "SMS-AnvilleSampler" / "defaults.ini",
           "relative XDG cannot alter macOS config");
 #else
-    check(SkinPreference::configPath() == homeRoot / ".config" / "SMS-AnvilleSampler" / "selected-skin", "relative XDG falls back Unicode HOME");
+    check(SkinPreference::configPath() == homeRoot / ".config" / "SMS-AnvilleSampler" / "defaults.ini", "relative XDG falls back Unicode HOME");
 #endif
     Environment::unset("XDG_CONFIG_HOME"); Environment::unset("HOME");
 #ifdef _WIN32

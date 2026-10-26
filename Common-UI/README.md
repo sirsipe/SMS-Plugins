@@ -16,10 +16,12 @@ Consumers link `sms_common_ui` to inherit shared include paths and the compiled
   Decimal metrics use classic-locale streams, supporting Xcode 15 libc++ without
   floating-point `from_chars`, while keeping the host locale unchanged.
 - `SkinCatalog.hpp`: named collection discovery, forced-folder precedence, and
-  atomic per-user preferences; IDs stay separate from translated display text.
+  per-user skin choice through shared `DefaultsFile` atomic merging; IDs stay
+  separate from translated display text.
 - `SkinFileIO.hpp`: image-read limits and a compatibility adapter to the shared
-  [filesystem helpers](../Common-Src/IO/FileIO.hpp), used by skins and startup
-  preferences. Platform paths are documented in the
+  [filesystem helpers](../Common-Src/IO/FileIO.hpp). Skin/startup preferences use
+  [DefaultsFile](../Common-Src/IO/DefaultsFile.hpp), linked through `sms_file_io`.
+  Platform paths are documented in the
   [skin guide](../SMS-AnvilleSampler/Docs/SKINS.md).
 - `DPF/Theme.hpp`: semantic colors, fixed pad tint identities, drawing metrics,
   hover opacity, and per-editor drawing scopes with thread-local restoration.

@@ -48,9 +48,10 @@ leaves playback and recorded PCM unchanged. Both range from −24 to +12 dB and
 default to 0 dB. Monitor Off/On/Auto still controls whether input is audible.
 The surrounding stereo LEDs show raw input and the final combined output.
 
-Drag the fader cap or click its slot; wheel to adjust. Double/middle-click a
-fader to reset to 0 dB. Double-click its value below the meter for exact entry;
-Enter commits and Escape cancels. Levels are host parameters saved with projects.
+Drag the fader cap or click its slot; wheel to adjust. Double-click the fader
+or its value for exact entry; middle-click resets to 0 dB within the selected
+range. See [numeric entry and keyboard navigation](../README.md#general-controls).
+Levels are host parameters saved with projects.
 
 **Lowpass** removes treble as you raise it from 0% to 100%. **Highpass** removes
 bass. At 0%, each filter is off. Both add resonance as you turn them farther
@@ -63,5 +64,11 @@ filtering and tune. You can enable it for one pad or for every pad using the
 global switch. Monitoring the input remains clean. The pad effects are saved
 with each pad; global effects are host parameters saved with the project.
 
-Drag or wheel Lowpass and Highpass. Double-click their values to type a
+Drag or wheel Lowpass and Highpass. Double-click the knob or value to type a
 percentage, or middle-click to reset. Click Dirty to toggle it.
+
+Global Pan, Tune, Lowpass, Highpass, and OUT also have per-control modes and
+custom ranges. The [knob settings manual](../README.md#knob-settings) explains
+Normal, Quantized, Zero Snap, remapping, range restoration, and session/default
+storage. These settings reinterpret global host values; IN and pad controls
+are unaffected.

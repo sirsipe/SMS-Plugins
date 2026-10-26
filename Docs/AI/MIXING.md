@@ -24,6 +24,37 @@ active. The flag follows mixer state, clipboard, transfers, and editor snapshots
 Global effect
 parameters are appended after the released host parameter IDs.
 
+Global OUT, Pan, Tune, Lowpass, and Highpass each have private durable settings
+(`global_output_settings`, `global_pan_settings`, `global_tune_settings`,
+`global_lowpass_settings`, `global_highpass_settings`), encoded by the KC1
+codec in `GlobalValueMode.hpp` (`KC1;mode;min;max`, modes 0/1/2). They are not
+host automation parameters. Range RESET restores only that control's native
+limits, preserving its mode; CLEAR PADS preserves all global settings/values.
+No host parameter IDs are added; existing IDs through Global Reverse remain
+fixed. IN and pad controls are unaffected. The [knob settings manual](../../SMS-AnvilleSampler/README.md#knob-settings)
+owns user-facing behavior; [startup preferences](LAYOUT-PREFERENCE.md) owns
+shared defaults and host precedence.
+
+The custom range remaps the complete original host/MIDI range into its selected
+audible range. Raw host values are unchanged by settings edits; displayed and
+audible values use the mapped range. Quantized mode uses the existing Ctrl+wheel
+steps listed in the knob settings manual. Zero Snap holds a region
+around zero at zero and continuously rescales either side to preserve endpoints.
+Each side's width is 5% of the selected span, capped at half its distance from
+zero to keep asymmetric endpoints reachable. `rawGlobalValue` inverts the
+mapping for mouse/text/wheel edits. Quantized steps and Ctrl+wheel use the
+zero-anchored grid, restricted to in-range points; narrow ranges without a
+grid point cannot use Quantized. Text/wheel round trips tolerate float ULPs
+without moving the grid. Excluding zero via range editing selects Normal if
+Zero Snap was active. Strict KC1 decoding rejects invalid ranges/modes.
+All five settings are published as one coherent snapshot and consumed at audio
+block boundaries through `RealtimeLatestMailbox`; the audio callback does not
+lock, allocate, or perform I/O. The UI decodes matching private state and
+interprets raw parameters with the same helper; changes never rewrite raw
+host values. `GlobalControlMenu` owns placement, confirmation and original
+limits; `MixerValueNavigation` owns numeric focus order and keypad Enter
+variants forwarded by pinned DGL/Pugl.
+
 Monitor Gain (`monitor_gain_db`) is appended after Any Playback Active; all
 existing parameter IDs and symbols stay fixed. It and Global Volume
 (`output_gain`) default to 0 dB and range from -24 to +12 dB. The adapter converts

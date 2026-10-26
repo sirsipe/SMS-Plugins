@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Skin.hpp"
+#include "IO/DefaultsFile.hpp"
 
 #include <algorithm>
 #include <cstdlib>
@@ -107,35 +108,20 @@ private:
 /** Per-user choice, independent of host state. All operations are UI-thread only. */
 class SkinPreference {
 public:
-    static constexpr std::size_t maxPreferenceBytes = 1024;
     [[nodiscard]] static std::filesystem::path configPath() noexcept
     {
-        try {
-            const auto root = skinFileIO::userConfigDirectory();
-            return root.empty() ? std::filesystem::path{}
-                                : root / "SMS-AnvilleSampler" / "selected-skin";
-        } catch (...) { return {}; }
+        return sms::io::DefaultsFile::configPath("SMS-AnvilleSampler");
     }
     [[nodiscard]] static std::string read(const std::filesystem::path& path) noexcept
     {
         try {
-            if (path.empty()) return {};
-            const auto bytes = skinFileIO::readBytes(path, maxPreferenceBytes);
-            const std::string contents(bytes.begin(), bytes.end());
-            constexpr std::string_view header = "SMS-SKIN-PREFERENCE 1\n";
-            if (contents.compare(0, header.size(), header) != 0 ||
-                contents.size() <= header.size() || contents.back() != '\n') return {};
-            const auto id = std::string_view(contents).substr(header.size(), contents.size() - header.size() - 1);
-            return SkinCatalog::safeId(id) ? std::string(id) : std::string{};
+            auto id = sms::io::DefaultsFile::get(path, "skin");
+            return SkinCatalog::safeId(id) ? std::move(id) : std::string{};
         } catch (...) { return {}; }
     }
     [[nodiscard]] static bool write(const std::filesystem::path& path, std::string_view id) noexcept
     {
-        try {
-            if (path.empty() || path.filename().empty() || !SkinCatalog::safeId(id)) return false;
-            return skinFileIO::writeAtomically(path,
-                std::string("SMS-SKIN-PREFERENCE 1\n") + std::string(id) + "\n");
-        } catch (...) { return false; }
+        return SkinCatalog::safeId(id) && sms::io::DefaultsFile::set(path, "skin", id);
     }
 };
 

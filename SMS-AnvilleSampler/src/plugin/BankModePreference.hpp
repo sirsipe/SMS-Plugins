@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Configuration.hpp"
-#include "IO/FileIO.hpp"
+#include "IO/DefaultsFile.hpp"
 
 namespace midichopper::plugin {
 
@@ -12,18 +12,13 @@ public:
 
     [[nodiscard]] static std::filesystem::path configPath() noexcept
     {
-        try {
-            const auto root = sms::io::userConfigDirectory();
-            return root.empty() ? std::filesystem::path{}
-                                : root / "SMS-AnvilleSampler" / "selected-bank-mode";
-        } catch (...) { return {}; }
+        return sms::io::DefaultsFile::configPath("SMS-AnvilleSampler");
     }
 
     [[nodiscard]] static int read(const std::filesystem::path& path) noexcept
     {
         try {
-            const auto bytes = sms::io::readBytes(path, 64);
-            const std::string contents(bytes.begin(), bytes.end());
+            const auto contents = sms::io::DefaultsFile::get(path, "bank_mode");
             if (contents == encoded(0)) return 0;
             if (contents == encoded(1)) return 1;
         } catch (...) {}
@@ -33,15 +28,14 @@ public:
     [[nodiscard]] static bool write(const std::filesystem::path& path, const int mode) noexcept
     {
         if (mode != 0 && mode != 1) return false;
-        return sms::io::writeAtomically(path, encoded(mode));
+        return sms::io::DefaultsFile::set(path, "bank_mode", encoded(mode));
     }
 
 private:
     // Stable names keep the preference independent of translated menu labels.
     [[nodiscard]] static constexpr std::string_view encoded(const int mode) noexcept
     {
-        return mode == 0 ? "SMS-BANK-MODE-PREFERENCE 1\nselected\n"
-                         : "SMS-BANK-MODE-PREFERENCE 1\nall\n";
+        return mode == 0 ? "selected" : "all";
     }
 };
 
