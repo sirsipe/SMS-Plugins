@@ -10,15 +10,16 @@ Read [AGENTS.md](../../AGENTS.md), then the relevant row.
 | Tests, LV2 discovery, host/UI checks | [Testing](TESTING.md) | [Tests](../../SMS-AnvilleSampler/tests/) |
 | Screenshots | [Images](DOC-IMAGES.md) | [Captures](../../SMS-AnvilleSampler/Docs/) |
 | Engine, state, UI | [Anville Sampler architecture](../../SMS-AnvilleSampler/Docs/ARCHITECTURE.md) | [Plugin source](../../SMS-AnvilleSampler/src/) |
-| Startup defaults and persistence | [Preferences](LAYOUT-PREFERENCE.md) | Startup and host precedence |
-| Filter and Dirty implementation | [Mixing contract](MIXING.md) | [DSP](../../Common-Src/DSP/ColorEffects.hpp) |
+| Startup preferences | [Preferences](LAYOUT-PREFERENCE.md) | Startup and host precedence |
+| Effects | [Mixing contract](MIXING.md) | [DSP](../../Common-Src/DSP/ColorEffects.hpp) |
 | Shared DSP, codecs, geometry | [Common-Src map](../../Common-Src/README.md) | [Common-Src](../../Common-Src/) |
-| Shared DPF UI, pads, waveform | [Common-UI map](../../Common-UI/README.md) | [Common-UI](../../Common-UI/) |
-| Feature scope and direction | [Vision](../../SMS-AnvilleSampler/Docs/VISION.md) | Intended scope |
+| Shared UI | [Common-UI map](../../Common-UI/README.md) | [Common-UI](../../Common-UI/) |
+| Product direction | [Vision](../../SMS-AnvilleSampler/Docs/VISION.md) | Intended scope |
 | Pad context menu and actions | [Context-menu design](PAD-CONTEXT-MENU.md) | Action contract |
 | Cut Point Editor design and tests | [Cut Point Editor](CHOP-EDITOR.md) | Three-pad cuts, raw preview, state and limitations |
 | Pad storage and transfer concurrency | [Storage handoff](PAD-STORAGE.md) | [Engine](../../SMS-AnvilleSampler/src/core/SamplerEngine.hpp) |
 | Pad WAV import/export | [WAV I/O design](PAD-WAV-IO.md) | Formats, real-time boundary, dialogs, support notes |
+| MIDI control | [Host integration](MIDI-CONTROL.md) | Automation, metadata |
 | VST3 state and outputs | [DPF VST3 constraints](DPF-VST3-CONSTRAINTS.md) | UI synchronization and fixed/dynamic bus boundaries |
 | Skins and artwork | [Skin guide](../../SMS-AnvilleSampler/Docs/SKINS.md), [Authoring](SKINS.md) | [Catalog](../../Common-UI/SkinCatalog.hpp), [Theme adapter](../../Common-UI/DPF/SkinTheme.hpp) |
 | User-visible behavior | [Plugin guide](../../SMS-AnvilleSampler/README.md) | Verify against affected source/tests |

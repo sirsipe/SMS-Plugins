@@ -48,7 +48,7 @@ Tested in **REAPER**, **Ardour**, **Carla**.
    the current slice and continue at the next pad.
 
 4. **FINALIZE** or releasing **ARM** keeps the open slice. **UNDO** discards the
-   open/last slice; **CLEAR** clears banks after confirmation.
+   open/last slice; **CLEAR PADS** clears banks after confirmation.
 
 5. Right-click a pad to edit, split, or adjust neighbouring cuts.
 
@@ -125,6 +125,27 @@ save with the DAW session as private plugin state without extra automation
 parameters. Explicit choices also become startup defaults for new instances;
 CLEAR PADS preserves them. Host controls still expose their original ranges,
 while the plugin shows the interpreted values.
+
+### MIDI control and automation
+
+Use the DAW's MIDI Learn to bind controllers to global controls and record
+parameter automation. Plugin MIDI Learn was tried in REAPER, Ardour, and Carla,
+but did not provide a satisfactory automation workflow. It remains an unfinished
+experiment on `feature/midi-learn`; main uses the DAW's learning facilities.
+
+In **REAPER**, move the plugin knob with the mouse, then choose **Param → Learn**
+and move the controller. This targets the last touched control without searching
+the full parameter list. In **Ardour**, learn through its generic plugin editor
+or the parameter's automation-lane control. Enable the appropriate automation
+write/touch mode to record movements.
+
+Ardour's Generic MIDI pickup can stall TUNE because of rounding. Enabling
+**Motorised** in the Generic MIDI protocol settings bypasses pickup; controls
+can then jump to the controller's position.
+
+The pinned DPF wrapper does not honor the hidden-parameter hint in VST3/CLAP,
+so internal controls may appear in host lists. Its 2,080 MIDI proxy parameters
+are separate and already flagged hidden. [Technical findings](../Docs/AI/MIDI-CONTROL.md).
 
 ### Sample Editor view
 
