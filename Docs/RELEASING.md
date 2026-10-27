@@ -88,6 +88,8 @@ files, skins, and templates for each enabled format. Keep them when repackaging.
 
 [Notice generation](../scripts/package_licenses.py) reads the pinned upstream
 copyright and permission notices, including the embedded font's separate terms.
+Extraction accepts LF and CRLF checkouts and preserves upstream text; packaging
+tests cover both styles.
 Review its inventory whenever dependencies or bundled assets change. The host
 exception permits independent proprietary hosts to load the plugin through
 standard VST3/LV2/CLAP interfaces; it does not waive copyleft or network-source

@@ -58,9 +58,9 @@ drivers are managed by the host; the plugin requires no ASIO component itself.
 - LV2 can be disabled for VST3/CLAP-only builds; AU has no project option.
 - CMake installs enabled LV2, VST3, and CLAP outputs with their license notices.
   AU still needs installation and packaging support.
-- Native MSVC VST3/CTest and Linux/Windows/macOS skin CI pass. MSVC DGL
-  consumers must inherit Khronos includes through `dgl-system-libs-definitions`.
-  Native DAW/macOS full-plugin validation remains pending.
+- MSVC DGL consumers must inherit Khronos includes through
+  `dgl-system-libs-definitions`. Rerun native Windows CI after build-script
+  changes; native DAW/macOS full-plugin validation remains pending.
 - There is no Windows/macOS DAW validation, universal-macOS check, signing, or
   notarization workflow.
 

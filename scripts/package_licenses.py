@@ -30,6 +30,14 @@ def leading_comments(path):
     return "".join(lines)
 
 
+def attribution_block(text, start):
+    # Match either checkout's blank lines without rewriting the notice itself.
+    end = re.search(r"\r?\n\r?\n", text[start:])
+    if end is None:
+        raise ValueError("Attribution block has no terminating blank line")
+    return text[start:start + end.start()]
+
+
 def third_party_notices(root):
     sections = []
 
@@ -49,7 +57,7 @@ def third_party_notices(root):
                 add(path.relative_to(root).as_posix(), block)
     string = read(dpf / "distrho/extra/String.hpp")
     start = string.index("    // base64 stuff, based on")
-    add("String.hpp embedded base64 attribution", string[start:string.index("\n\n", start)])
+    add("String.hpp embedded base64 attribution", attribution_block(string, start))
     for directory in ("distrho/src/travesty", "distrho/src/lv2"):
         for path in sorted((dpf / directory).glob("*.h")):
             add(path.relative_to(root).as_posix(), first_block(path))
@@ -70,13 +78,15 @@ def third_party_notices(root):
         add(path.relative_to(root).as_posix(), leading_comments(path))
     fontstash = read(dpf / "dgl/src/nanovg/fontstash.h")
     utf8_start = fontstash.index("// Copyright (c) 2008-2010 Bjoern Hoehrmann")
-    utf8_end = fontstash.index("\n\n", utf8_start)
-    add("fontstash.h embedded UTF-8 decoder attribution", fontstash[utf8_start:utf8_end])
+    add("fontstash.h embedded UTF-8 decoder attribution", attribution_block(fontstash, utf8_start))
     add("UTF-8 decoder MIT permission; https://bjoern.hoehrmann.de/utf-8/decoder/dfa/#license",
         read(root / "licenses/UTF8-decoder.txt"))
 
     image = read(dpf / "dgl/src/nanovg/stb_image.h")
-    start = image.index("\nLICENSE\n")
+    marker = re.search(r"\r?\nLICENSE\r?\n", image)
+    if marker is None:
+        raise ValueError("stb_image.h license marker is missing")
+    start = marker.start()
     add("stb_image.h local public-domain dedication and fallback license",
         image[start:image.index("*/", start) + 2])
     truetype = read(dpf / "dgl/src/nanovg/stb_truetype.h")

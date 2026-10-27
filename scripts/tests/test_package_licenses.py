@@ -18,6 +18,26 @@ SPEC.loader.exec_module(PACKAGER)
 
 
 class LicensePackagingTests(unittest.TestCase):
+    def copy_notice_inputs(self, root):
+        dpf = root / "third_party/DPF"
+        dpf.mkdir(parents=True)
+        for relative in ("licenses", "third_party/DPF/distrho/src/lv2",
+                         "third_party/DPF/distrho/src/travesty",
+                         "third_party/DPF/dgl/src/pugl-upstream/src",
+                         "third_party/DPF/dgl/src/pugl-upstream/include",
+                         "third_party/DPF/dgl/src/nanovg"):
+            shutil.copytree(ROOT / relative, root / relative)
+        for relative in ("LICENSE", "LICENSING.md", "dgl/src/pugl-upstream/COPYING",
+                         "distrho/extra/sofd/libsofd.h",
+                         "distrho/extra/ScopedPointer.hpp", "distrho/extra/LeakDetector.hpp",
+                         "distrho/extra/Base64.hpp", "distrho/extra/String.hpp",
+                         "dgl/src/resources/LICENSE-DejaVuSans.ttf.txt"):
+            destination = dpf / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(ROOT / "third_party/DPF" / relative, destination)
+        for name in ("LICENSE", "HOST-LINKING-EXCEPTION.txt"):
+            shutil.copyfile(ROOT / name, root / name)
+
     def test_real_repository_cli_output(self):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory)
@@ -65,25 +85,31 @@ class LicensePackagingTests(unittest.TestCase):
             self.assertIn("third_party/DPF " + "b" * 40, source)
             self.assertIn("SOURCE-MANIFEST.json", source)
 
+    def test_checkout_line_endings_do_not_change_notice_contents(self):
+        expected = PACKAGER.third_party_notices(ROOT).replace("\r\n", "\n").encode("utf-8")
+        for newline in (b"\n", b"\r\n"):
+            with self.subTest(newline=newline), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                self.copy_notice_inputs(root)
+                # Reproduce Git checkouts using either native line-ending style.
+                for path in root.rglob("*"):
+                    if path.is_file():
+                        path.write_bytes(path.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", newline))
+                output = root / "output"
+                subprocess.run([sys.executable, str(ROOT / "scripts/package_licenses.py"),
+                                "--root", str(root), "--output-directory", str(output)], check=True)
+                notices = (output / "THIRD-PARTY-NOTICES.txt").read_bytes()
+                self.assertEqual(notices.replace(b"\r\n", b"\n"), expected)
+                # Input notices remain verbatim, even in the CRLF checkout.
+                self.assertIn((root / "third_party/DPF/LICENSE").read_bytes(), notices)
+                self.assertIn((root / "licenses/UTF8-decoder.txt").read_bytes(), notices)
+                self.assertEqual((output / "LICENSE").read_bytes(), (root / "LICENSE").read_bytes())
+
     def test_optional_khronos_notices_after_preprocessor_lines(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
+            self.copy_notice_inputs(root)
             dpf = root / "third_party/DPF"
-            dpf.mkdir(parents=True)
-            for relative in ("licenses", "third_party/DPF/distrho/src/lv2",
-                             "third_party/DPF/distrho/src/travesty",
-                             "third_party/DPF/dgl/src/pugl-upstream/src",
-                             "third_party/DPF/dgl/src/pugl-upstream/include",
-                             "third_party/DPF/dgl/src/nanovg"):
-                shutil.copytree(ROOT / relative, root / relative)
-            for relative in ("LICENSE", "LICENSING.md", "dgl/src/pugl-upstream/COPYING",
-                             "distrho/extra/sofd/libsofd.h",
-                             "distrho/extra/ScopedPointer.hpp", "distrho/extra/LeakDetector.hpp",
-                             "distrho/extra/Base64.hpp", "distrho/extra/String.hpp",
-                             "dgl/src/resources/LICENSE-DejaVuSans.ttf.txt"):
-                destination = dpf / relative
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(ROOT / "third_party/DPF" / relative, destination)
             # glext.h has an SPDX-only comment; khrplatform.h has full terms.
             headers = {
                 "GL/glext.h": ("#ifndef GL_EXTENSION\n/*\r\n"
