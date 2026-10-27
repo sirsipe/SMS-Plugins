@@ -5,6 +5,17 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      package-version:
+        type: string
+        default: ''
+      help-ref:
+        type: string
+        default: main
+      artifact-name:
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -17,6 +28,9 @@ jobs:
   build-and-test:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    env:
+      PACKAGE_VERSION: ${{ inputs.package-version }}
+      HELP_REF: ${{ inputs.help-ref || 'main' }}
 
     steps:
       - name: Check out repository and submodules
@@ -32,12 +46,14 @@ jobs:
             lv2-dev lilv-utils libgl1-mesa-dev libx11-dev libxext-dev \
             libxrandr-dev libxcursor-dev libxinerama-dev libdbus-1-dev
 
-      - name: Configure LV2 and VST3
+      - name: Configure VST3, LV2 and experimental CLAP
         run: |
           cmake -S SMS-AnvilleSampler -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_TESTING=ON \
-            -DANVILLESAMPLER_BUILD_VST3=ON
+            -DANVILLESAMPLER_BUILD_VST3=ON \
+            -DANVILLESAMPLER_BUILD_CLAP=ON \
+            -DANVILLESAMPLER_HELP_REF="$HELP_REF"
 
       - name: Build
         run: cmake --build build --parallel
@@ -50,30 +66,30 @@ jobs:
           test -f build/bin/SMS-AnvilleSampler.lv2/SMS-AnvilleSampler_dsp.so
           test -f build/bin/SMS-AnvilleSampler.lv2/SMS-AnvilleSampler_ui.so
           test -f build/bin/SMS-AnvilleSampler.vst3/Contents/x86_64-linux/SMS-AnvilleSampler.so
+          test -f build/bin/SMS-AnvilleSampler.clap
           LV2_PATH="$PWD/build/bin" \
             lv2info https://github.com/sirsipe/SMS-Plugins/SMS-AnvilleSampler \
             | grep -E '^[[:space:]]*Name:[[:space:]]+SMS-Anville Sampler$'
 
-      - name: Package manual build artifacts
-        if: github.event_name == 'workflow_dispatch'
+      - name: Package ZIPs and matching source
+        if: github.event_name == 'workflow_dispatch' || inputs.package-version != ''
         shell: bash
         run: |
           mkdir -p dist
-          archive_prefix="SMS-AnvilleSampler-${GITHUB_SHA::12}-linux-x86_64"
-          source_date_epoch="$(git show -s --format=%ct HEAD)"
-          tar --sort=name --mtime="@$source_date_epoch" --owner=0 --group=0 \
-            --numeric-owner -C build/bin -czf "dist/${archive_prefix}-lv2.tar.gz" \
-            SMS-AnvilleSampler.lv2
-          tar --sort=name --mtime="@$source_date_epoch" --owner=0 --group=0 \
-            --numeric-owner -C build/bin -czf "dist/${archive_prefix}-vst3.tar.gz" \
-            SMS-AnvilleSampler.vst3
-          (cd dist && sha256sum ./*.tar.gz > SHA256SUMS.txt)
+          package_version="${PACKAGE_VERSION:-${GITHUB_SHA::12}}"
+          export SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)"
+          python3 scripts/package_plugins.py --build-dir build --output-directory dist \
+            --platform Linux --version "$package_version"
+          python3 scripts/package_source.py \
+            --output "dist/SMS-AnvilleSampler-${package_version}-Linux-x64-source.tar.gz" \
+            --prefix SMS-Plugins
+          python3 scripts/package_plugins.py --output-directory dist --checksums-only
 
       - name: Upload manual build artifacts
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' || inputs.package-version != ''
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: SMS-AnvilleSampler-${{ github.sha }}-linux-x86_64
+          name: ${{ inputs.artifact-name || format('SMS-AnvilleSampler-{0}-linux-x86_64', github.sha) }}
           path: dist/
           if-no-files-found: error
           retention-days: 14

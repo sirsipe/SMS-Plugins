@@ -2,11 +2,12 @@
 
 > [!WARNING]
 > 
-> **STILL IN ALPHA - PLEASE WAIT FOR v1.0.0 BEFORE USING**
+> **BETA - PLEASE WAIT FOR v1.0.0 BEFORE USING**
 
 _Stereo chopping sampler._ [Downloads](https://github.com/sirsipe/SMS-Plugins/releases).
  - Linux VST3 (preferred)
  - Linux LV2
+ - Linux CLAP (experimental)
  - Windows VST3 (experimental)
 
 
@@ -34,7 +35,23 @@ Tested in **REAPER**, **Ardour**, **Carla**.
 - 2x4/3x4/4x4 pads; four MIDI banks; pad colors.
 - VST3 presets transfer samples/settings between Ardour and REAPER; Carla lacks support.
 
-> v1.0.0+ is incompatible with alpha sessions (v0.0.1–v0.9.9). Alpha releases were removed from GitHub to avoid confusion.
+> Pre-1.0 sessions have no compatibility guarantee. See the [release policy](../Docs/RELEASING.md#public-version-compatibility).
+
+## Install a release
+
+Download your format's ZIP from [Releases](https://github.com/sirsipe/SMS-Plugins/releases).
+Extract it and copy the **whole folder**, including skins and licenses:
+
+| Format | Folder to copy | Destination |
+| --- | --- | --- |
+| Linux VST3 | `SMS-AnvilleSampler.vst3` | `~/.vst3/` |
+| Linux LV2 | `SMS-AnvilleSampler.lv2` | `~/.lv2/` |
+| Linux experimental CLAP | `SMS-AnvilleSampler` | `~/.clap/` |
+| Windows experimental VST3 | `SMS-AnvilleSampler.vst3` | `C:\Program Files\Common Files\VST3\` |
+
+Create missing destination folders. Restart your DAW or rescan plugins.
+Linux x64 builds use Ubuntu 24.04; other distributions remain unverified.
+Windows builds are unsigned; native DAW validation remains pending.
 
 ## Basic Usage
 
@@ -240,7 +257,7 @@ length slice per note-on.
 
 [Contributing](../CONTRIBUTING.md).
 
-License: [MIT](LICENSE).
+[Licensing and third-party notices](../README.md#license).
 
 Product direction: [Vision](Docs/VISION.md).
 

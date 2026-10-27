@@ -2,6 +2,7 @@
 **/build-*/
 **/bin/
 **/.cache/
+**/__pycache__/
 **/compile_commands.json
 *.swp
 *~

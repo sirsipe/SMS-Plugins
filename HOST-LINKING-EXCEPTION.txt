@@ -1,0 +1,26 @@
+SMS-Plugins DAW host-linking exception
+
+Additional permission under GNU AGPL version 3 section 7
+
+The copyright holders of SMS-Plugins grant you additional permission to link
+or combine SMS-Anville Sampler, including modified versions, with independent
+audio host programs that communicate with the plugin solely through the
+standard VST3, LV2, or CLAP plugin interfaces, and to convey the resulting
+combination under terms of your choice for those independent host programs.
+
+An independent host program is a program that is not derived from or based
+on SMS-Plugins code. You must comply with the GNU AGPL version 3 for the
+covered plugin code, including its Corresponding Source requirements.
+
+This permission does not authorize relicensing SMS-Plugins code or
+incorporating that code into a proprietary host. It does not waive section
+13 of the GNU AGPL version 3 for covered software that supports remote
+network interaction. Ports and modifications of SMS-Plugins code remain
+subject to the GNU AGPL version 3.
+
+If you modify the covered code, you may extend this exception to your
+version, but you are not obligated to do so. You may remove this additional
+permission as permitted by section 7 of the GNU AGPL version 3.
+
+Third-party components retain their own licenses. This additional permission
+applies only to rights that the SMS-Plugins copyright holders may grant.

@@ -6,78 +6,97 @@ on:
       - SMS-AnvilleSampler-v*
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  build-test-release:
+  verify-version:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
 
     steps:
-      - name: Check out repository and submodules
+      - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          submodules: recursive
 
       - name: Verify tag matches project version
         id: version
         shell: bash
         run: |
-          tag_version="${GITHUB_REF_NAME#SMS-AnvilleSampler-v}"
-          project_version="$(sed -nE \
-            's/^project\(SMSAnvilleSampler VERSION ([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' \
-            SMS-AnvilleSampler/CMakeLists.txt)"
-          if [[ -z "$project_version" || "$tag_version" != "$project_version" ]]; then
-            echo "Tag version '$tag_version' does not match CMake version '$project_version'." >&2
-            exit 1
-          fi
+          tag_version="$(python3 scripts/release_version.py --tag "$GITHUB_REF_NAME")"
           echo "version=$tag_version" >> "$GITHUB_OUTPUT"
 
-      - name: Install build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends \
-            build-essential cmake ninja-build pkg-config git python3 \
-            lv2-dev lilv-utils libgl1-mesa-dev libx11-dev libxext-dev \
-            libxrandr-dev libxcursor-dev libxinerama-dev libdbus-1-dev
+  build-linux:
+    needs: verify-version
+    uses: ./.github/workflows/ubuntu-ci.yml
+    with:
+      package-version: v${{ needs.verify-version.outputs.version }}
+      help-ref: ${{ github.ref_name }}
+      artifact-name: release-linux
 
-      - name: Configure LV2 and VST3
-        run: |
-          cmake -S SMS-AnvilleSampler -B build -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DBUILD_TESTING=ON \
-            -DANVILLESAMPLER_BUILD_VST3=ON \
-            -DANVILLESAMPLER_HELP_REF="$GITHUB_REF_NAME"
+  build-windows:
+    needs: verify-version
+    uses: ./.github/workflows/windows-ci.yml
+    with:
+      package-version: v${{ needs.verify-version.outputs.version }}
+      help-ref: ${{ github.ref_name }}
+      artifact-name: release-windows
 
-      - name: Build and test
-        run: |
-          cmake --build build --parallel
-          ctest --test-dir build --output-on-failure
-          LV2_PATH="$PWD/build/bin" \
-            lv2info https://github.com/sirsipe/SMS-Plugins/SMS-AnvilleSampler \
-            | grep -E '^[[:space:]]*Name:[[:space:]]+SMS-Anville Sampler$'
+  publish:
+    needs: [verify-version, build-linux, build-windows]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    env:
+      RELEASE_VERSION: v${{ needs.verify-version.outputs.version }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Package release archives
-        shell: bash
+      - name: Download tested platform packages
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: dist
+
+      - name: Verify release assets and combine checksums
         run: |
-          mkdir -p dist
-          archive_prefix="SMS-AnvilleSampler-v${{ steps.version.outputs.version }}-linux-x86_64"
-          source_date_epoch="$(git show -s --format=%ct HEAD)"
-          tar --sort=name --mtime="@$source_date_epoch" --owner=0 --group=0 \
-            --numeric-owner -C build/bin -czf "dist/${archive_prefix}-lv2.tar.gz" \
-            SMS-AnvilleSampler.lv2
-          tar --sort=name --mtime="@$source_date_epoch" --owner=0 --group=0 \
-            --numeric-owner -C build/bin -czf "dist/${archive_prefix}-vst3.tar.gz" \
-            SMS-AnvilleSampler.vst3
-          (cd dist && sha256sum ./*.tar.gz > SHA256SUMS.txt)
+          for suffix in Linux-x64-vst3.zip Linux-x64-lv2.zip Linux-x64-experimental-clap.zip Windows-x64-experimental-vst3.zip Linux-x64-source.tar.gz Windows-x64-source.tar.gz; do
+            test -s "dist/SMS-AnvilleSampler-${RELEASE_VERSION}-${suffix}"
+          done
+          python3 scripts/package_plugins.py --output-directory dist --checksums-only
 
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          cat > release-notes.txt <<'EOF'
+          Download the ZIP for your platform and format. Linux VST3 is preferred;
+          Linux CLAP and Windows VST3 are experimental.
+
+          Extract and copy the whole plugin folder, including skins and licenses:
+          - Linux VST3: `~/.vst3/`
+          - Linux LV2: `~/.lv2/`
+          - Linux CLAP: `~/.clap/` (copy the whole `SMS-AnvilleSampler` folder)
+          - Windows VST3: `C:\Program Files\Common Files\VST3\`
+
+          Restart your DAW or rescan plugins.
+
+          Corresponding source, including the pinned DPF and Pugl dependencies,
+          is available in the matching platform's `*-source.tar.gz` asset below.
+          The Windows source also includes its additional OpenGL headers. Build instructions
+          are included in `SMS-AnvilleSampler/README.md` inside that archive.
+          Keep this source asset available alongside the binary downloads.
+          EOF
+          release_flags=(--latest)
+          if [[ "$RELEASE_VERSION" == *-* ]]; then
+            release_flags=(--prerelease --latest=false)
+          fi
           gh release create "$GITHUB_REF_NAME" dist/* \
             --verify-tag \
             --generate-notes \
-            --latest \
-            --title "SMS-Anville Sampler v${{ steps.version.outputs.version }}"
+            --notes-file release-notes.txt \
+            "${release_flags[@]}" \
+            --title "SMS-Anville Sampler $RELEASE_VERSION"

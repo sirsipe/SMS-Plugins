@@ -207,7 +207,8 @@ protected:
     {
         return "https://github.com/sirsipe/SMS-Plugins/tree/main/SMS-AnvilleSampler";
     }
-    const char* getLicense() const override { return "MIT"; }
+    // Additional permission is shipped in HOST-LINKING-EXCEPTION.txt.
+    const char* getLicense() const override { return "AGPL-3.0-only"; }
     uint32_t getVersion() const override
     {
         return d_version(ANVILLESAMPLER_VERSION_MAJOR,

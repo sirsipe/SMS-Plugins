@@ -2,7 +2,7 @@
 
 > [!WARNING]
 > 
-> **STILL IN ALPHA - PLEASE WAIT FOR v1.0.0 BEFORE USING**
+> **BETA - PLEASE WAIT FOR v1.0.0 BEFORE USING**
 
 _Professionally developed, **Linux-native** audio plugins._
 
@@ -12,7 +12,7 @@ Windows and macOS versions, if provided, are experimental.
 
 ### [SMS-Anville Sampler](SMS-AnvilleSampler/README.md) — live stereo chopping sampler
 Available as
-- **Linux VST3** (preferred) and LV2
+- Linux: **VST3** (preferred), LV2, experimental CLAP
 - Windows VST3 (experimental)
 
 [<img src="SMS-AnvilleSampler/Docs/main-view.png" width="672" alt="Default Main View">](SMS-AnvilleSampler/Docs/main-view.png)
@@ -75,14 +75,15 @@ Available as
 > **I do NOT take pull requests**.
 >
 
-Requirements: Ubuntu Linux and a ChatGPT plan with Codex access, such as Plus.
+Requirements: Ubuntu Linux and a ChatGPT plan with Codex access.
 
 1. Install [Visual Studio Code](https://code.visualstudio.com/) and its
    [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers).
 
 2. Install Docker and add your user to its group:
 
-   ⚠️ Security note: Adding your user to the docker group grants root-equivalent privileges through the Docker daemon. This is a common development setup, but you should understand its security implications. Docker's rootless mode is an alternative, although compatibility with this development environment has not been verified.
+   ⚠️ Docker group membership grants root-equivalent privileges through the daemon.
+   Rootless Docker is an alternative; compatibility with this environment is unverified.
 
    ```bash
    sudo apt update
@@ -92,7 +93,7 @@ Requirements: Ubuntu Linux and a ChatGPT plan with Codex access, such as Plus.
    sudo reboot
    ```
 
-   **Reboot before opening VS Code.** Logging out may leave VS Code background processes without Docker permission.
+   **Reboot before opening VS Code:** background processes can retain old Docker permissions.
 
 3. Clone and open the repository:
 
@@ -101,24 +102,48 @@ Requirements: Ubuntu Linux and a ChatGPT plan with Codex access, such as Plus.
    code SMS-Plugins
    ```
 
-4. In VS Code, run **Dev Containers: Reopen in Container**. The first image
-   build downloads the complete audio, GUI, and AI toolchain and can take
-   several minutes. Later starts are much faster.
+4. Run **Dev Containers: Reopen in Container** in VS Code. The first build
+   downloads the audio, GUI, and AI toolchain; allow several minutes. Later starts are faster.
 
-5. Open the Codex panel on the right and sign in. Select **Full access** for the
-   isolated container and choose a model available to your account. Start with
-   the default reasoning effort; increase it when a task needs deeper analysis.
+5. Open the Codex panel and sign in. Select **Full access** and an available model.
+   Start with default reasoning effort; increase it for deeper analysis.
 
 6. Try this prompt:
 
    > Hello! Make the ARM button of SMS-Anville Sampler red, test it, and show me a
    > picture of how it looks.
 
-7. (*Optional*) - To satisfy your curiosity, follow the agent's virtual screen at
+7. (*Optional*) View the agent's desktop at
    [http://localhost:6080/vnc.html](http://localhost:6080/vnc.html).
 
-Inside the container, an AI agent can build and install the plugin, run its tests, launch Carla, operate the real plugin UI, and capture window-only screenshots.
-The development container provides an additional layer of isolation for Full access. The agent can modify the project checkout and access the network, but the container is configured without access to the host's home directory, graphical session, audio devices, Docker socket, private keys, or unrelated repositories.
+Agents can build/install plugins, run tests, launch Carla, operate the plugin UI,
+and capture window-only screenshots. Full access permits checkout changes and
+network access. The container excludes the host's home directory, graphical
+session, audio devices, Docker socket, private keys, and unrelated repositories.
 **Container isolation reduces risks but doesn't eliminate them.**
 
 See [Contributing](CONTRIBUTING.md) for manual development and validation.
+
+
+## License
+
+Copyright (c) 2026 SudoMetalStudio.
+
+Project code: [AGPL-3.0-only](LICENSE).
+Additional permission: [DAW host-linking exception](HOST-LINKING-EXCEPTION.txt).
+Third-party licenses remain unchanged, but listed for convenience.
+
+Bundled dependencies:
+
+| Component | License |
+| --- | --- |
+| DPF/DGL | [ISC](third_party/DPF/LICENSE) |
+| travesty (VST3) | [ISC](third_party/DPF/distrho/src/travesty/base.h) |
+| LV2 headers | [ISC](third_party/DPF/distrho/src/lv2/lv2.h) |
+| CLAP headers | [MIT](licenses/CLAP-MIT.txt) |
+| Pugl | [ISC](third_party/DPF/dgl/src/pugl-upstream/COPYING) |
+| NanoVG / Fontstash | [zlib](third_party/DPF/dgl/src/nanovg/LICENSE.txt) / [zlib](third_party/DPF/dgl/src/nanovg/fontstash.h) |
+| stb_image | [Public-domain; fallback permission](third_party/DPF/dgl/src/nanovg/stb_image.h) |
+| stb_truetype | [MIT or public-domain dedication](third_party/DPF/dgl/src/nanovg/stb_truetype.h) |
+| libSOFD (X11 file dialog) | [MIT](third_party/DPF/distrho/extra/sofd/libsofd.c) |
+| DejaVu Sans font | [Bitstream Vera / Arev terms; DejaVu changes public domain](third_party/DPF/dgl/src/resources/LICENSE-DejaVuSans.ttf.txt) |

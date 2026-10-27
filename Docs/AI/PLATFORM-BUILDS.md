@@ -1,9 +1,9 @@
 # Windows CI and deferred platform releases
 
-Audience: maintainers or agents resuming cross-platform work. This page records
-development build support, not native DAW validation. Releases remain Linux
-x86-64 LV2 and VST3; do not add other release artifacts until their native-host
-checks below pass.
+Build support and native-host validation for maintainers and agents.
+Releases include Linux x64 VST3/LV2,
+experimental Linux CLAP, and unsigned experimental Windows x64 VST3. macOS
+releases remain deferred pending the native-host checks below.
 
 ## Findings
 
@@ -56,8 +56,8 @@ drivers are managed by the host; the plugin requires no ASIO component itself.
   from its targets. This avoids generator-expression feature detection and
   CHOC/Windows loader conflicts without changing the pinned submodule.
 - LV2 can be disabled for VST3/CLAP-only builds; AU has no project option.
-- The CMake install rule installs only LV2. Windows VST3, macOS VST3, and AU
-  need bundle-aware installation and packaging.
+- CMake installs enabled LV2, VST3, and CLAP outputs with their license notices.
+  AU still needs installation and packaging support.
 - Native MSVC VST3/CTest and Linux/Windows/macOS skin CI pass. MSVC DGL
   consumers must inherit Khronos includes through `dgl-system-libs-definitions`.
   Native DAW/macOS full-plugin validation remains pending.
@@ -78,8 +78,9 @@ external VST3 SDK, Linux package, private dependency or secret to install.
 The workflow builds VST3 only, runs all CTest tests, verifies bundle binary,
 all bundled skin and template paths, and checks LV2 was not produced. The static
 MSVC runtime avoids a separate Visual C++ redistributable for these artifacts.
-Push/PR runs retain no bundles; manual runs upload a ZIP and SHA-256 checksum
-for 14 days. See [testing branch builds](../RELEASING.md).
+Push/PR runs retain no bundles; manual runs upload a ZIP, source and checksums
+for 14 days. The release workflow reuses this job for experimental Windows
+assets. See [release packaging](../RELEASING.md).
 
 With the same prerequisites, the native Windows x64 commands are:
 
@@ -125,8 +126,8 @@ minimum macOS version from actual host coverage; do not guess it from the SDK.
   and watch project size/save latency.
 - Run a VST3 validator. For AU, run `auval -v aumf AnSm SMSM` and test the
   fixed-size editor in Logic.
-- Verify both slices of a universal macOS bundle, then establish appropriate
-  Windows signing and Apple code-signing/notarization before distribution.
+- Verify both slices of a universal macOS bundle and establish Apple
+  code-signing/notarization before distribution. Windows signing remains deferred.
 - Add remaining macOS CI, signing, installation documentation and platform
-  release publishing only after native-host checks pass. Windows CI artifacts
-  remain unsigned development builds.
+  release publishing only after native-host checks pass. Windows artifacts
+  remain unsigned and experimental until native-host validation passes.

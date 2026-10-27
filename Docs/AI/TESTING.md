@@ -1,6 +1,6 @@
 # Testing reference
 
-[Build and skin tests](DEVELOPMENT.md).
+[Build/skin tests](DEVELOPMENT.md); [packaging tests](../RELEASING.md#licenses-and-corresponding-source).
 
 ## Checks
 
@@ -128,4 +128,4 @@ Inspect screenshots; exclude private data/unrelated windows.
 
 VST3: `carla-single native vst3 "$PWD/build/bin/SMS-AnvilleSampler.vst3"`. Import a WAV, check Sample Editor pads and waveform/settings, exercise Split Sample or Adjust Cut Points, then save/reload after deleting the WAV. Compare audio/editor values.
 
-Report host/rate/buffer/results/skips. CI: CTest/`lv2info`.
+Report host/rate/buffer/results/skips.

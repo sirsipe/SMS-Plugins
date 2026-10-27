@@ -15,16 +15,17 @@ To match Ubuntu CI:
 ```bash
 cmake -S SMS-AnvilleSampler -B build -G Ninja \
   -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
-  -DANVILLESAMPLER_BUILD_VST3=ON
+  -DANVILLESAMPLER_BUILD_VST3=ON -DANVILLESAMPLER_BUILD_CLAP=ON
 cmake --build build --parallel 2
 ctest --test-dir build --output-on-failure
 ```
 
 Outputs: `build/bin/SMS-AnvilleSampler.lv2` and, when enabled,
 `build/bin/SMS-AnvilleSampler.vst3`. `ANVILLESAMPLER_BUILD_CLAP=ON` adds CLAP;
-CLAP is not currently covered by CI. VST3/CLAP default OFF;
+Ubuntu CI builds CLAP as experimental. VST3/CLAP default OFF;
 `ANVILLESAMPLER_BUILD_LV2` defaults ON and can be disabled for VST3-only builds.
 At least one format must be enabled.
+Legal notices and source archives: [release packaging](../RELEASING.md#licenses-and-corresponding-source).
 Python 3 runs DPF's resource converter to embed `res/anville.png` in each UI binary.
 Each build copies the maintained Finnish Dream, Looks like Wu, and White Cadillac
 Vinyl skins into LV2/VST3 `skins/` and CLAP sibling
@@ -38,10 +39,9 @@ installed bundles.
 Use a fresh ignored `build-*` directory if an existing CMake cache uses a
 different source path or generator. Avoid repeatedly rebuilding unchanged code.
 
-Windows and macOS formats are deferred and are not supported release targets.
-Windows CI prerequisites, native build commands, remaining gaps and validation live in
-[Platform builds](PLATFORM-BUILDS.md); do not present its unverified commands as
-current release instructions.
+Windows VST3 releases are experimental; macOS releases remain deferred.
+Prerequisites, native build commands, remaining gaps and validation live in
+[Platform builds](PLATFORM-BUILDS.md).
 
 ## Native skin filesystem tests
 

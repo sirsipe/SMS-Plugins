@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(SMSAnvilleSampler VERSION 0.0.14 LANGUAGES C CXX)
+project(SMSAnvilleSampler VERSION 0.1.0 LANGUAGES C CXX)
+set(ANVILLESAMPLER_PRERELEASE "beta.1")
+set(ANVILLESAMPLER_RELEASE_VERSION "${PROJECT_VERSION}")
+if(NOT ANVILLESAMPLER_PRERELEASE STREQUAL "")
+  string(APPEND ANVILLESAMPLER_RELEASE_VERSION "-${ANVILLESAMPLER_PRERELEASE}")
+endif()
 
 include(CTest)
 include(GNUInstallDirs)
@@ -24,12 +29,10 @@ if(NOT ANVILLESAMPLER_BUILD_LV2 AND NOT ANVILLESAMPLER_BUILD_VST3 AND
 endif()
 set(ANVILLESAMPLER_HELP_REF "main" CACHE STRING
   "Git ref used for Online Help (main for development builds, release tag for releases)")
-if(NOT ANVILLESAMPLER_HELP_REF MATCHES "^(main|SMS-AnvilleSampler-v[0-9]+\\.[0-9]+\\.[0-9]+)$")
-  message(FATAL_ERROR "ANVILLESAMPLER_HELP_REF must be main or an SMS-AnvilleSampler-vX.Y.Z tag")
-endif()
 if(NOT ANVILLESAMPLER_HELP_REF STREQUAL "main" AND
-   NOT ANVILLESAMPLER_HELP_REF STREQUAL "SMS-AnvilleSampler-v${PROJECT_VERSION}")
-  message(FATAL_ERROR "ANVILLESAMPLER_HELP_REF must match the CMake project version")
+   NOT ANVILLESAMPLER_HELP_REF STREQUAL "SMS-AnvilleSampler-v${ANVILLESAMPLER_RELEASE_VERSION}")
+  message(FATAL_ERROR
+    "ANVILLESAMPLER_HELP_REF must be main or SMS-AnvilleSampler-v${ANVILLESAMPLER_RELEASE_VERSION}")
 endif()
 
 set(SMS_DPF_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/DPF")
@@ -187,7 +190,7 @@ foreach(anvillesampler_target IN LISTS anvillesampler_targets)
     ANVILLESAMPLER_VERSION_MINOR=${PROJECT_VERSION_MINOR}
     ANVILLESAMPLER_VERSION_PATCH=${PROJECT_VERSION_PATCH})
   target_compile_definitions(${anvillesampler_target}-ui PRIVATE
-    ANVILLESAMPLER_VERSION_STRING="${PROJECT_VERSION}"
+    ANVILLESAMPLER_VERSION_STRING="${ANVILLESAMPLER_RELEASE_VERSION}"
     ANVILLESAMPLER_HELP_REF="${ANVILLESAMPLER_HELP_REF}")
 endforeach()
 
@@ -238,7 +241,48 @@ if(ANVILLESAMPLER_BUILD_CLAP)
   add_dependencies(SMS-AnvilleSampler-clap anvillesampler_skins)
 endif()
 
+# Refresh complete legal notices alongside every enabled plugin format.
+set(anvillesampler_legal_source "${PROJECT_BINARY_DIR}/generated/licenses")
+add_custom_target(anvillesampler_licenses ALL
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/package_licenses.py"
+    --output-directory "${anvillesampler_legal_source}"
+  VERBATIM)
+set(anvillesampler_legal_paths)
+if(ANVILLESAMPLER_BUILD_LV2)
+  list(APPEND anvillesampler_legal_paths "${PROJECT_BINARY_DIR}/bin/SMS-AnvilleSampler.lv2/licenses")
+  add_dependencies(SMS-AnvilleSampler-lv2 anvillesampler_licenses)
+endif()
+if(ANVILLESAMPLER_BUILD_VST3)
+  list(APPEND anvillesampler_legal_paths "${PROJECT_BINARY_DIR}/bin/SMS-AnvilleSampler.vst3/licenses")
+  add_dependencies(SMS-AnvilleSampler-VST3-vst3 anvillesampler_licenses)
+endif()
+if(ANVILLESAMPLER_BUILD_CLAP)
+  if(APPLE)
+    list(APPEND anvillesampler_legal_paths "${PROJECT_BINARY_DIR}/bin/SMS-AnvilleSampler.clap/licenses")
+  else()
+    list(APPEND anvillesampler_legal_paths "${PROJECT_BINARY_DIR}/bin/SMS-AnvilleSampler.licenses")
+  endif()
+  add_dependencies(SMS-AnvilleSampler-clap anvillesampler_licenses)
+endif()
+foreach(legal_path IN LISTS anvillesampler_legal_paths)
+  add_custom_command(TARGET anvillesampler_licenses POST_BUILD
+    COMMAND "${CMAKE_COMMAND}" -E copy_directory "${anvillesampler_legal_source}" "${legal_path}"
+    VERBATIM)
+endforeach()
+
 if(BUILD_TESTING)
+  add_test(NAME packaged-licenses
+    COMMAND "${CMAKE_COMMAND}" "-DLEGAL_SOURCE=${anvillesampler_legal_source}"
+      "-DLEGAL_PATHS=${anvillesampler_legal_paths}"
+      -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/check_packaged_licenses.cmake")
+  add_test(NAME package-licenses
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/tests/test_package_licenses.py")
+  add_test(NAME source-archive
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/tests/test_package_source.py")
+  add_test(NAME plugin-zips
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/tests/test_package_plugins.py")
+  add_test(NAME release-version
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/tests/test_release_version.py")
   add_executable(anvillesampler_defaults_file_tests tests/defaults_file_tests.cpp)
   target_link_libraries(anvillesampler_defaults_file_tests PRIVATE sms_file_io Threads::Threads)
   add_test(NAME defaults-file COMMAND anvillesampler_defaults_file_tests)
@@ -375,4 +419,22 @@ if(ANVILLESAMPLER_BUILD_LV2)
   install(
     DIRECTORY "${PROJECT_BINARY_DIR}/bin/SMS-AnvilleSampler.lv2"
     DESTINATION "${CMAKE_INSTALL_LIBDIR}/lv2")
+endif()
+if(ANVILLESAMPLER_BUILD_VST3)
+  install(DIRECTORY "${PROJECT_BINARY_DIR}/bin/SMS-AnvilleSampler.vst3"
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/vst3")
+endif()
+if(ANVILLESAMPLER_BUILD_CLAP)
+  if(APPLE)
+    install(DIRECTORY "${PROJECT_BINARY_DIR}/bin/SMS-AnvilleSampler.clap"
+      DESTINATION "${CMAKE_INSTALL_LIBDIR}/clap")
+  else()
+    install(FILES "$<TARGET_FILE:SMS-AnvilleSampler-clap>"
+      DESTINATION "${CMAKE_INSTALL_LIBDIR}/clap")
+    install(DIRECTORY "${PROJECT_BINARY_DIR}/bin/SMS-AnvilleSampler.licenses"
+      DESTINATION "${CMAKE_INSTALL_LIBDIR}/clap")
+  endif()
+  install(DIRECTORY "${PROJECT_BINARY_DIR}/bin/SMS-AnvilleSampler.skins"
+    "${PROJECT_BINARY_DIR}/bin/SMS-AnvilleSampler.skin-template"
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/clap")
 endif()

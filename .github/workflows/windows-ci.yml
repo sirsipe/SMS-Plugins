@@ -5,6 +5,17 @@ on:
     branches: [main, win-vst3]
   pull_request:
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      package-version:
+        type: string
+        default: ''
+      help-ref:
+        type: string
+        default: main
+      artifact-name:
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -17,6 +28,9 @@ jobs:
   build-and-test:
     runs-on: windows-2022
     timeout-minutes: 25
+    env:
+      PACKAGE_VERSION: ${{ inputs.package-version }}
+      HELP_REF: ${{ inputs.help-ref || 'main' }}
     defaults:
       run:
         shell: pwsh
@@ -71,6 +85,7 @@ jobs:
           cmake -S SMS-AnvilleSampler -B build-win -G 'Visual Studio 17 2022' -A x64 `
             -DANVILLESAMPLER_BUILD_LV2=OFF -DANVILLESAMPLER_BUILD_VST3=ON `
             -DBUILD_TESTING=ON -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded `
+            "-DANVILLESAMPLER_HELP_REF=$env:HELP_REF" `
             "-DPython3_EXECUTABLE=$((Get-Command python).Source)"
           if ($LASTEXITCODE -ne 0) { throw 'CMake configuration failed' }
 
@@ -84,6 +99,8 @@ jobs:
         run: |
           $required = @(
             'Contents/x86_64-win/SMS-AnvilleSampler.vst3',
+            'licenses/LICENSE', 'licenses/HOST-LINKING-EXCEPTION.txt',
+            'licenses/THIRD-PARTY-NOTICES.txt', 'licenses/SOURCE.txt',
             'skins/Finnish Dream/skin.ini', 'skins/Finnish Dream/backgroundw.png',
             'skins/Looks like Wu/skin.ini', 'skins/Looks like Wu/wustyle3.png',
             'skins/White Cadillac Vinyl/skin.ini', 'skins/White Cadillac Vinyl/vinyl.png',
@@ -96,21 +113,27 @@ jobs:
           if (Test-Path 'build-win/bin/SMS-AnvilleSampler.vst3/skin') { throw 'Unexpected forced skin' }
           if (Test-Path 'build-win/bin/SMS-AnvilleSampler.lv2') { throw 'Unexpected LV2 output' }
 
-      - name: Package manual build artifact
-        if: github.event_name == 'workflow_dispatch'
+      - name: Package experimental VST3 ZIP and matching source
+        if: github.event_name == 'workflow_dispatch' || inputs.package-version != ''
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
-          $prefix = "SMS-AnvilleSampler-$($env:GITHUB_SHA.Substring(0,12))-windows-x86_64"
-          $archive = Join-Path dist "$prefix-vst3.zip"
-          Compress-Archive -LiteralPath build-win/bin/SMS-AnvilleSampler.vst3 -DestinationPath $archive
-          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant()
-          "$hash  $prefix-vst3.zip" | Set-Content -Encoding ascii dist/SHA256SUMS.txt
+          $version = $env:PACKAGE_VERSION
+          if (-not $version) { $version = $env:GITHUB_SHA.Substring(0,12) }
+          $env:SOURCE_DATE_EPOCH = git show -s --format=%ct HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot determine source timestamp' }
+          python scripts/package_plugins.py --build-dir build-win --output-directory dist `
+            --platform Windows --version $version
+          if ($LASTEXITCODE -ne 0) { throw 'Plugin packaging failed' }
+          python scripts/package_source.py --output "dist/SMS-AnvilleSampler-$version-Windows-x64-source.tar.gz" --prefix SMS-Plugins
+          if ($LASTEXITCODE -ne 0) { throw 'Source packaging failed' }
+          python scripts/package_plugins.py --output-directory dist --checksums-only
+          if ($LASTEXITCODE -ne 0) { throw 'Checksum generation failed' }
 
       - name: Upload manual build artifact
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' || inputs.package-version != ''
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: SMS-AnvilleSampler-${{ github.sha }}-windows-x86_64
+          name: ${{ inputs.artifact-name || format('SMS-AnvilleSampler-{0}-windows-x86_64', github.sha) }}
           path: dist/
           if-no-files-found: error
           retention-days: 14
