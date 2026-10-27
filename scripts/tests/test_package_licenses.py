@@ -38,6 +38,21 @@ class LicensePackagingTests(unittest.TestCase):
         for name in ("LICENSE", "HOST-LINKING-EXCEPTION.txt"):
             shutil.copyfile(ROOT / name, root / name)
 
+    def write_khronos_headers(self, root):
+        # glext.h has an SPDX-only comment; khrplatform.h has full terms.
+        headers = {
+            "GL/glext.h": ("#ifndef GL_EXTENSION\n/*\r\n"
+                           "Copyright 2013-2026 The Khronos Group Inc.\r\n"
+                           "SPDX-License-Identifier: MIT\r\n*/\r\n"),
+            "KHR/khrplatform.h": ("#ifndef KHR_PLATFORM\n/*\n"
+                                  "Copyright (c) 2008-2018 The Khronos Group Inc.\n"
+                                  "Permission is hereby granted to use the Materials.\n*/\n")}
+        for relative, content in headers.items():
+            path = root / "third_party/DPF/khronos" / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(content.encode())
+        return headers
+
     def test_real_repository_cli_output(self):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory)
@@ -86,42 +101,36 @@ class LicensePackagingTests(unittest.TestCase):
             self.assertIn("SOURCE-MANIFEST.json", source)
 
     def test_checkout_line_endings_do_not_change_notice_contents(self):
-        expected = PACKAGER.third_party_notices(ROOT).replace("\r\n", "\n").encode("utf-8")
-        for newline in (b"\n", b"\r\n"):
-            with self.subTest(newline=newline), tempfile.TemporaryDirectory() as directory:
-                root = Path(directory)
-                self.copy_notice_inputs(root)
-                # Reproduce Git checkouts using either native line-ending style.
-                for path in root.rglob("*"):
-                    if path.is_file():
-                        path.write_bytes(path.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", newline))
-                output = root / "output"
-                subprocess.run([sys.executable, str(ROOT / "scripts/package_licenses.py"),
-                                "--root", str(root), "--output-directory", str(output)], check=True)
-                notices = (output / "THIRD-PARTY-NOTICES.txt").read_bytes()
-                self.assertEqual(notices.replace(b"\r\n", b"\n"), expected)
-                # Input notices remain verbatim, even in the CRLF checkout.
-                self.assertIn((root / "third_party/DPF/LICENSE").read_bytes(), notices)
-                self.assertIn((root / "licenses/UTF8-decoder.txt").read_bytes(), notices)
-                self.assertEqual((output / "LICENSE").read_bytes(), (root / "LICENSE").read_bytes())
+        for khronos in (False, True):
+            for newline in (b"\n", b"\r\n"):
+                with self.subTest(khronos=khronos, newline=newline), tempfile.TemporaryDirectory() as directory:
+                    root = Path(directory)
+                    self.copy_notice_inputs(root)
+                    if khronos:
+                        self.write_khronos_headers(root)
+                    # Compare the same dependency inventory before/after conversion,
+                    # independent of optional downloads in the runner's checkout.
+                    expected = PACKAGER.third_party_notices(root).replace("\r\n", "\n").encode("utf-8")
+                    for path in root.rglob("*"):
+                        if path.is_file():
+                            path.write_bytes(path.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", newline))
+                    output = root / "output"
+                    subprocess.run([sys.executable, str(ROOT / "scripts/package_licenses.py"),
+                                    "--root", str(root), "--output-directory", str(output)], check=True)
+                    notices = (output / "THIRD-PARTY-NOTICES.txt").read_bytes()
+                    self.assertEqual(notices.replace(b"\r\n", b"\n"), expected)
+                    self.assertEqual(b"=== third_party/DPF/khronos/GL/glext.h ===" in notices, khronos)
+                    self.assertEqual(b"=== third_party/DPF/khronos/KHR/khrplatform.h ===" in notices, khronos)
+                    # Input notices remain verbatim, even in the CRLF checkout.
+                    self.assertIn((root / "third_party/DPF/LICENSE").read_bytes(), notices)
+                    self.assertIn((root / "licenses/UTF8-decoder.txt").read_bytes(), notices)
+                    self.assertEqual((output / "LICENSE").read_bytes(), (root / "LICENSE").read_bytes())
 
     def test_optional_khronos_notices_after_preprocessor_lines(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             self.copy_notice_inputs(root)
-            dpf = root / "third_party/DPF"
-            # glext.h has an SPDX-only comment; khrplatform.h has full terms.
-            headers = {
-                "GL/glext.h": ("#ifndef GL_EXTENSION\n/*\r\n"
-                               "Copyright 2013-2026 The Khronos Group Inc.\r\n"
-                               "SPDX-License-Identifier: MIT\r\n*/\r\n"),
-                "KHR/khrplatform.h": ("#ifndef KHR_PLATFORM\n/*\n"
-                                      "Copyright (c) 2008-2018 The Khronos Group Inc.\n"
-                                      "Permission is hereby granted to use the Materials.\n*/\n")}
-            for relative, content in headers.items():
-                path = dpf / "khronos" / relative
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_bytes(content.encode())
+            headers = self.write_khronos_headers(root)
             notices = PACKAGER.third_party_notices(root)
             for content in headers.values():
                 self.assertIn(content[content.index("/*"):content.index("*/") + 2], notices)
