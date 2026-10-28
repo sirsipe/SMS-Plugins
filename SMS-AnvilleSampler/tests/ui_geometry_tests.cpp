@@ -824,30 +824,30 @@ void interactionTargets()
               interaction::InteractiveType::chopExit) &&
           !interaction::interactiveTargetAt(
               {layout::chopExit.x + 1.0f, layout::chopExit.y + 1.0f}, context).valid() &&
-          !interaction::interactiveTargetAt(center(layout::chopApply), context).valid() &&
+          !interaction::interactiveTargetAt(center(layout::chopAction), context).valid() &&
           !interaction::interactiveTargetAt(center(layout::chopPrevious), context).valid() &&
           !interaction::interactiveTargetAt(center(layout::chopNext), context).valid(),
-          "cut editor exposes Exit while disabled Apply and navigation are inert");
+          "cut editor exposes Exit while disabled edit action and navigation are inert");
     check(layout::chopArrowTipX(layout::chopPrevious, false) <
               layout::chopArrowTailX(layout::chopPrevious, false) &&
           layout::chopArrowTipX(layout::chopNext, true) >
               layout::chopArrowTailX(layout::chopNext, true),
           "cut editor arrow glyphs point toward their navigation direction");
-    context.chopApplyEnabled = true;
+    context.chopActionEnabled = true;
     context.chopPreviousEnabled = true;
     context.chopNextEnabled = true;
     check(interaction::isTarget(
-              interaction::interactiveTargetAt(center(layout::chopApply), context),
-              interaction::InteractiveType::chopApply) &&
+              interaction::interactiveTargetAt(center(layout::chopAction), context),
+              interaction::InteractiveType::chopAction) &&
           interaction::isTarget(
               interaction::interactiveTargetAt(center(layout::chopPrevious), context),
               interaction::InteractiveType::chopPrevious) &&
           interaction::isTarget(
               interaction::interactiveTargetAt(center(layout::chopNext), context),
               interaction::InteractiveType::chopNext),
-          "enabled Apply and previous/next buttons resolve independently");
+          "enabled edit action and previous/next buttons resolve independently");
     context.chopApplying = true;
-    context.chopApplyEnabled = false;
+    context.chopActionEnabled = false;
     context.chopPreviousEnabled = false;
     context.chopExitEnabled = false;
     context.chopNextEnabled = false;
@@ -1824,6 +1824,151 @@ void chopEditorWorkflow()
           "Exit releases exclusive MIDI and returns to the sample-selection workflow");
 }
 
+void chopEditorAutomaticSave()
+{
+    using namespace std::chrono_literals;
+    namespace plugin = midichopper::plugin;
+    const auto now = midichopper::ui::ChopEditorController::Clock::time_point{} + 1s;
+    // Exercise Exit, Prev and Next in a later bank, including 8/12/16-pad layouts.
+    for (const int visible : {8, 12, 16}) {
+        const int bankFirst = visible;
+        for (const int direction : {0, -1, 1}) {
+            for (const bool success : {true, false}) {
+                ChopHost host;
+                midichopper::ui::ChopEditorController editor(host);
+                const int target = bankFirst + 3;
+                editor.open(target, bankFirst, visible);
+                const auto load = [&] {
+                    editor.idle(now);
+                    plugin::ChopSnapshotReply reply;
+                    check(plugin::decodeChopSnapshotRequest(
+                              host.last("chop_snapshot_request"), reply.request),
+                          "automatic-save workflow requests a coherent baseline");
+                    for (std::size_t pad = 0; pad < reply.waveforms.size(); ++pad) {
+                        reply.waveforms[pad].pad = reply.request.firstPad + pad;
+                        reply.waveforms[pad].frames = 100U;
+                        reply.waveforms[pad].sampleRate = 1000.0;
+                        reply.generations[pad] = 10U + pad;
+                    }
+                    const auto encoded = plugin::encodeChopSnapshotReply(reply);
+                    check(editor.acceptState("chop_snapshot_data", encoded.c_str()) && editor.ready(),
+                          "automatic-save workflow accepts its baseline");
+                    return reply;
+                };
+                const auto baseline = load();
+                sms::ui::waveform::Viewport viewport;
+                viewport.reset(300U);
+                const auto edit = [&] {
+                    editor.beginBoundaryDrag(0, 0.0f);
+                    editor.dragBoundary(25.0f, 300.0f, viewport);
+                    editor.endBoundaryDrag();
+                    editor.beginBoundaryDrag(1, 0.0f);
+                    editor.dragBoundary(-10.0f, 300.0f, viewport);
+                    editor.endBoundaryDrag();
+                };
+                const auto leave = [&] {
+                    if (direction == 0)
+                        editor.exit();
+                    else
+                        editor.navigate(direction, bankFirst, visible);
+                };
+                edit();
+                editor.preview(1);
+                const auto messages = host.messages.size();
+                editor.cancelChanges();
+                plugin::ChopMidiPreviewRequest midi;
+                plugin::ChopPreviewRequest preview;
+                check(editor.ready() && !editor.dirty() && editor.offsets()[0] == 0 &&
+                      editor.offsets()[1] == 0 && editor.activeBoundary() == -1 &&
+                      host.selectedPad == target && host.viewportFrames == 300U &&
+                      plugin::decodeChopPreviewRequest(host.last("chop_preview_request"), preview) &&
+                      !preview.play && editor.previewPad() == -1 &&
+                      plugin::decodeChopMidiPreviewRequest(host.last("chop_midi_preview"), midi) &&
+                      midi.sourceEndFrames[0] == 100U && midi.sourceFrames[1] == 100U &&
+                      midi.sourceEndFrames[1] == 200U,
+                      "Cancel Changes restores both loaded cuts and raw preview without leaving");
+                for (std::size_t i = messages; i < host.messages.size(); ++i)
+                    check(host.messages[i].first != "chop_apply_request" &&
+                          host.messages[i].first != "chop_snapshot_request",
+                          "Cancel Changes neither rewrites audio nor reloads the baseline");
+                const auto cleanMessages = host.messages.size();
+                editor.cancelChanges();
+                check(host.messages.size() == cleanMessages,
+                      "Cancel Changes is inert when there are no edits");
+                edit();
+                leave();
+                plugin::ChopApplyRequest apply;
+                check(editor.applying() && editor.active() && host.selectedPad == target &&
+                      host.exits == 0 &&
+                      plugin::decodeChopApplyRequest(host.last("chop_apply_request"), apply) &&
+                      apply.sequence == baseline.request.sequence &&
+                      apply.firstPad == static_cast<unsigned>(target - 1) &&
+                      apply.boundaryOffsets[0] == 25 && apply.boundaryOffsets[1] == -10 &&
+                      apply.expectedGenerations[0] == 10U && apply.revisionChecked &&
+                      plugin::decodeChopMidiPreviewRequest(host.last("chop_midi_preview"), midi) &&
+                      midi.active && midi.previewPadCount == 0U,
+                      "Exit/Prev/Next save guarded cuts and wait with MIDI muted");
+                const auto applyingMessages = host.messages.size();
+                leave();
+                editor.exit();
+                editor.navigate(-1, bankFirst, visible);
+                editor.cancelChanges();
+                edit();
+                check(host.messages.size() == applyingMessages && editor.offsets()[0] == 25 &&
+                      editor.offsets()[1] == -10,
+                      "in-flight saves ignore repeated actions and further boundary edits");
+                auto status = plugin::encodeChopStatus(apply.sequence + 1U, true, {});
+                check(!editor.acceptState("chop_status", status.c_str()) && editor.applying(),
+                      "unmatched save results cannot execute a pending Exit or navigation");
+                status = plugin::encodeChopStatus(apply.sequence, success, "Samples changed");
+                check(editor.acceptState("chop_status", status.c_str()) && !editor.applying() &&
+                      !editor.acceptState("chop_status", status.c_str()),
+                      "only the matching save result completes a pending transition once");
+                if (success && direction == 0) {
+                    check(!editor.active() && host.exits == 1 &&
+                          plugin::decodeChopMidiPreviewRequest(host.last("chop_midi_preview"), midi) &&
+                          !midi.active,
+                          "successful Exit releases exclusive MIDI and closes the editor");
+                    continue;
+                }
+                check(editor.active() && !editor.ready() && !editor.dirty() && host.exits == 0 &&
+                      host.selectedPad == (success ? target + direction : target) &&
+                      host.viewportFrames == 0U &&
+                      plugin::decodeChopMidiPreviewRequest(host.last("chop_midi_preview"), midi) &&
+                      midi.active && midi.previewPadCount == 0U,
+                      "navigation loads its destination only on success; failure reloads the current pad");
+                if (!success)
+                    check(host.status == "Samples changed", "save failure displays the rejection reason");
+                const auto refreshed = load();
+                check(refreshed.request.sequence != baseline.request.sequence && !editor.dirty(),
+                      "navigation or rejection obtains a fresh baseline identity");
+                const auto beforeCleanLeave = host.messages.size();
+                leave();
+                check(!editor.applying() && (direction != 0 || !editor.active()),
+                      "leaving without edits completes immediately, including after a rejected save");
+                for (std::size_t i = beforeCleanLeave; i < host.messages.size(); ++i)
+                    check(host.messages[i].first != "chop_apply_request",
+                          "clean Exit/Prev/Next never rewrite audio");
+                check(host.exits == (direction == 0 ? 1 : 0),
+                      "a rejected save never leaves a delayed Exit behind");
+                if (success && direction == 1 && visible == 16) {
+                    (void)load();
+                    edit();
+                    editor.exit();
+                    check(plugin::decodeChopApplyRequest(host.last("chop_apply_request"), apply),
+                          "forced invalidation starts with a pending saved Exit");
+                    editor.cancel();
+                    editor.open(target, bankFirst, visible);
+                    status = plugin::encodeChopStatus(apply.sequence, true, {});
+                    check(!editor.acceptState("chop_status", status.c_str()) &&
+                          editor.active() && host.selectedPad == target && host.exits == 1,
+                          "forced cancellation prevents late completion from exiting a reopened editor");
+                }
+            }
+        }
+    }
+}
+
 void splitEditorWorkflow()
 {
     namespace plugin = midichopper::plugin;
@@ -1876,6 +2021,12 @@ void splitEditorWorkflow()
           apply.action == plugin::PadStructureAction::cancelSplit && apply.planId == 42U &&
           !editor.split() && host.selectedPad == 3,
           "split navigation cancels the owned plan before loading ordinary cuts");
+    editor.openSplit(plan);
+    editor.exit();
+    check(!editor.active() &&
+          plugin::decodePadStructureRequest(host.last("pad_structure_request"), apply) &&
+          apply.action == plugin::PadStructureAction::cancelSplit,
+          "Split Exit still cancels insertion without applying it");
     editor.openSplit(plan);
     const auto count = host.messages.size();
     check(editor.acceptSplitStatus("PS1;E;42;Sample changed", 0, 16) &&
@@ -2548,6 +2699,7 @@ int main()
     padPressTracking();
     editorSnapshotCollection();
     chopEditorWorkflow();
+    chopEditorAutomaticSave();
     splitEditorWorkflow();
     waveformVisibleSummary();
     sampleWaveformOrientation();

@@ -1151,12 +1151,14 @@ private:
         canvas_.textBox(994.0f, 382.0f, 222.0f,
             state_.chopSplitMode
                 ? "Apply inserts both halves and shifts pads atomically. Exit cancels the entire operation."
-                : "Apply saves cuts and stays here. A zero-length pad is cleared. Arrows discard unapplied cuts.",
+                : "Exit and arrows save cuts automatically. Cancel Changes restores the loaded cuts. Zero-length pads are cleared.",
             nullptr);
-        sms::ui::dpf::drawSegment(canvas_, uiLayout::chopApply,
-                                  state_.chopApplying ? "APPLYING..." : "APPLY",
+        sms::ui::dpf::drawSegment(canvas_, uiLayout::chopAction,
+                                  state_.chopApplying
+                                      ? (state_.chopSplitMode ? "APPLYING..." : "SAVING...")
+                                      : (state_.chopSplitMode ? "APPLY" : "CANCEL CHANGES"),
                                   false, colors.selection,
-                                  hovered(InteractiveType::chopApply),
+                                  hovered(InteractiveType::chopAction),
                                   state_.chopReady && state_.chopDirty && !state_.chopApplying);
         drawChopArrow(uiLayout::chopPrevious, false,
             hovered(InteractiveType::chopPrevious),
@@ -1406,7 +1408,7 @@ private:
             status = state_.chopSplitMode
                 ? "Adjust the split, preview both halves, then Apply or Exit"
                 : (state_.chopDirty
-                    ? "Cut points changed — Apply rewrites the three raw pad samples"
+                    ? "Cut points changed — Exit or arrows save; Cancel Changes restores cuts"
                     : "Drag a cut line, then click a pad button to preview its raw slice");
         } else if (state_.editorMode) {
             std::snprintf(liveStatus, sizeof(liveStatus),
@@ -1444,7 +1446,7 @@ private:
         if (state_.chopEditorMode)
             std::snprintf(details, sizeof(details), sms::ui::dpf::themeFormat("%s   %s"),
                           state_.chopSplitMode ? sms::ui::dpf::themeText("UNAPPLIED SPLIT") :
-                              (state_.chopDirty ? sms::ui::dpf::themeText("UNAPPLIED CUTS") : sms::ui::dpf::themeText("CUTS UNCHANGED")),
+                              (state_.chopDirty ? sms::ui::dpf::themeText("UNSAVED CUTS") : sms::ui::dpf::themeText("CUTS UNCHANGED")),
                           state_.chopApplying ? sms::ui::dpf::themeText("WORKING") :
                               (state_.chopSplitMode ? sms::ui::dpf::themeText("SPLIT PREVIEW") : sms::ui::dpf::themeText("THREE-PAD PREVIEW")));
         else if (state_.editorMode)

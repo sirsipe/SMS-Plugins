@@ -28,18 +28,23 @@ notes. While this view is open, other notes are silent and do not switch banks.
 MIDI preview is one-shot, follows every pending cut adjustment, and moves the
 waveform playhead just like clicking a pad button.
 
-**Apply** rewrites the three samples and stays open, disabled until another
-change. Start/End markers inside a sample stay on the same source audio as cuts
-move. A marker already at an edge follows that edge when the sample grows.
+**Exit**, Escape, and the previous/next arrows automatically save pending cuts
+before leaving or loading the neighboring eligible bank pad. With no edits,
+they act immediately. While saving, the controls are disabled and preview MIDI
+is muted. **Cancel Changes** becomes available when cuts differ from the loaded
+positions; it restores both cuts and their preview ranges while keeping the
+editor open. To leave without saving, cancel changes first.
+
+Saving rewrites the three samples. Start/End markers inside a sample stay on the
+same source audio as cuts move. A marker already at an edge follows that edge
+when the sample grows.
 If a cut passes a marker, only that marker resets to its new edge. A Start
 exactly at the new end or End exactly at the new start also resets so the region
 can play. This works with Reverse too. Changed non-empty pads reset ADSR and
 preserve mixer settings.
-If those pads changed after loading the editor, Apply is rejected and reloads
-the current samples; adjust the cuts again.
-
-Arrows load the previous or next eligible bank pad and discard pending cuts.
-The round **Exit** button also discards them and leaves the view.
+If those pads changed after loading the editor, saving is rejected. The editor
+stays on the current pad, reports the failure, and reloads its samples; adjust
+the cuts again.
 
 ## Split a sample and insert a pad
 

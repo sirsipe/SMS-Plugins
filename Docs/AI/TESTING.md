@@ -102,7 +102,7 @@ Checks:
 - Waveforms: in Sample Editor, Adjust Cut Points, and Split Sample, continuously
   drag zoom/scroll and Ctrl/Shift-wheel. Check visible, correctly positioned peaks,
   coarse fallback/refinement, deep zoom, edges, zoom-out, pad switching, and
-  Apply refresh without stale peaks.
+  cut-save/split-Apply refresh without stale peaks.
 - Pad clipboard: copy edited audio; alter/clear its source, then paste to
   empty/occupied targets. Verify copy-time PCM/settings and empty-clipboard disable.
 - State: save populated pads/settings, close, reload, and compare playback. Check DAW restoration.

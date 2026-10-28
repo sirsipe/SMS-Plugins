@@ -115,7 +115,7 @@ inline constexpr sms::ui::Rect openEditor = closeEditor;
 inline constexpr sms::ui::Rect chopWaveform{74.0f, 170.0f, 862.0f, 228.0f};
 inline constexpr sms::ui::Rect chopZoom{46.0f, 170.0f, 16.0f, 228.0f};
 inline constexpr sms::ui::Rect chopScroll{74.0f, 412.0f, 862.0f, 12.0f};
-inline constexpr sms::ui::Rect chopApply{994.0f, 480.0f, 222.0f, 38.0f};
+inline constexpr sms::ui::Rect chopAction{994.0f, 480.0f, 222.0f, 38.0f};
 inline constexpr sms::ui::Rect chopPrevious{994.0f, 542.0f, 64.0f, 52.0f};
 inline constexpr sms::ui::Rect chopExit{1074.0f, 534.0f, 64.0f, 64.0f};
 inline constexpr sms::ui::Rect chopNext{1152.0f, 542.0f, 64.0f, 52.0f};

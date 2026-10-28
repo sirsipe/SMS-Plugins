@@ -25,7 +25,7 @@ Read [AGENTS.md](../../AGENTS.md), then the relevant row.
 | User-visible behavior | [Plugin guide](../../SMS-AnvilleSampler/README.md) | Verify against affected source/tests |
 | User mixing controls | [Mixing guide](../../SMS-AnvilleSampler/Docs/MIXING.md) | Pad and global effects |
 | User WAV workflow | [WAV file guide](../../SMS-AnvilleSampler/Docs/WAV-FILES.md) | Current formats and Linux requirements |
-| User cut-point workflow | [Adjust cut points](../../SMS-AnvilleSampler/Docs/CHOP-EDITOR.md) | Context action, raw preview, Apply/Exit behavior |
+| User cut-point workflow | [Adjust cut points](../../SMS-AnvilleSampler/Docs/CHOP-EDITOR.md) | Automatic saving, cancellation, split insertion |
 | Human overview/review | [README](../../README.md), [Architecture](../ARCHITECTURE.md) | Components and review |
 | Contributions, doc maintenance | [Contributing](../../CONTRIBUTING.md) | [Doc checker](../../scripts/check_docs.py) |
 | CI, release preparation | [Releasing](../RELEASING.md) | [Workflows](../../.github/workflows/) |

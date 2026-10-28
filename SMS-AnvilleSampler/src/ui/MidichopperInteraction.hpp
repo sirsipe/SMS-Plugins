@@ -48,7 +48,7 @@ enum class InteractiveType : int {
     openEditor,
     chopBoundary,
     chopPadPreview,
-    chopApply,
+    chopAction,
     chopPrevious,
     chopExit,
     chopNext,
@@ -463,7 +463,7 @@ struct InteractionContext {
     bool captureActive = false;
     bool chopReady = false;
     bool chopApplying = false;
-    bool chopApplyEnabled = false;
+    bool chopActionEnabled = false;
     bool chopPreviousEnabled = false;
     bool chopExitEnabled = true;
     bool chopNextEnabled = false;
@@ -571,8 +571,8 @@ interactiveTargetAt(const sms::ui::Point point, const InteractionContext& contex
 
     const sms::ui::BankedPadLayout pads(context.padLayout);
     if (context.chopEditorMode) {
-        if (context.chopApplyEnabled && uiLayout::chopApply.contains(point))
-            return target(InteractiveType::chopApply);
+        if (context.chopActionEnabled && uiLayout::chopAction.contains(point))
+            return target(InteractiveType::chopAction);
         if (context.chopPreviousEnabled && uiLayout::chopPrevious.contains(point))
             return target(InteractiveType::chopPrevious);
         if (context.chopExitEnabled && uiLayout::chopExitContains(point))

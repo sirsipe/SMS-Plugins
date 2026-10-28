@@ -69,6 +69,7 @@ public:
         fHost.selectChopPad(targetPad);
         resetBaseline();
         fApplying = false;
+        fAfterApply = {};
         fHost.setChopStatus("");
         muteMidi();
         fHost.repaintChopEditor();
@@ -93,6 +94,7 @@ public:
         fSession.offsets[0] = static_cast<std::int64_t>(plan.waveform.frames / 2U) -
                               static_cast<std::int64_t>(plan.waveform.frames);
         fApplying = false;
+        fAfterApply = {};
         fHost.setChopStatus("");
         updateMidi();
         fHost.repaintChopEditor();
@@ -103,9 +105,40 @@ public:
         if (fApplying || !canNavigate(direction, bankFirst, visibleCount))
             return;
         const int next = chop::navigationTarget(fTargetPad - bankFirst, direction, visibleCount);
+        if (!fSplit && dirty()) {
+            fAfterApply = {false, bankFirst + next, bankFirst, visibleCount};
+            apply();
+            return;
+        }
         if (fSplit)
             cancelPlan(fPlanId);
         open(bankFirst + next, bankFirst, visibleCount);
+    }
+
+    /** User-requested Exit (also Escape); forced invalidation uses cancel(). */
+    void exit()
+    {
+        if (!fActive || fApplying)
+            return;
+        if (!fSplit && dirty()) {
+            fAfterApply = {true};
+            apply();
+            return;
+        }
+        cancel();
+    }
+
+    void cancelChanges()
+    {
+        if (!fActive || fSplit || fApplying || !ready() || !dirty())
+            return;
+        stopPreview();
+        fSession.offsets.fill(0);
+        fActiveBoundary = -1;
+        fPreviewPosition = 0.0f;
+        updateMidi();
+        fHost.setChopStatus("");
+        fHost.repaintChopEditor();
     }
 
     void cancelPlan(const std::uint64_t planId)
@@ -130,6 +163,7 @@ public:
         fSession.cancel();
         fActiveBoundary = -1;
         fApplying = false;
+        fAfterApply = {};
         fHost.setChopStatus("");
         fHost.leaveChopEditor();
         fHost.repaintChopEditor();
@@ -169,6 +203,16 @@ public:
             plugin::ChopApplyStatus status;
             if (plugin::decodeChopApplyStatus(value, status) && fSession.acceptStatus(status)) {
                 fApplying = false;
+                const auto destination = fAfterApply;
+                fAfterApply = {};
+                if (status.success && destination.exit) {
+                    cancel();
+                    return true;
+                }
+                if (status.success && destination.targetPad >= 0) {
+                    open(destination.targetPad, destination.bankFirst, destination.visibleCount);
+                    return true;
+                }
                 stopPreview();
                 resetBaseline();
                 muteMidi();
@@ -267,6 +311,8 @@ public:
 
     void apply()
     {
+        if (!fActive || fApplying || !dirty())
+            return;
         if (!ready()) {
             fHost.setChopStatus("Non-empty samples must use one sample rate");
             fHost.repaintChopEditor();
@@ -339,6 +385,8 @@ private:
     }
     void editBoundary(const int boundary, const std::int64_t requested)
     {
+        if (!fActive || fApplying || !ready() || boundary < 0 || boundary >= (fSplit ? 1 : 2))
+            return;
         auto clamped = chop::clampBoundaryOffset(fSession.waveforms, fSession.offsets, boundary, requested);
         if (fSplit && boundary == 0 && fSession.waveforms[0].frames >= 2U) {
             const auto original = static_cast<std::int64_t>(fSession.waveforms[0].frames);
@@ -398,6 +446,13 @@ private:
     int fPreviewPad = -1;
     bool fApplying = false;
     float fPreviewPosition = 0.0f;
+    struct AfterApply {
+        bool exit = false;
+        int targetPad = -1;
+        int bankFirst = 0;
+        int visibleCount = 0;
+    };
+    AfterApply fAfterApply{};
 };
 
 } // namespace midichopper::ui

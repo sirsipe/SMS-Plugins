@@ -1326,9 +1326,11 @@ protected:
                     return true;
                 }
                 if (midichopper::ui::isTarget(
-                        clicked, midichopper::ui::InteractiveType::chopApply)) {
-                    if (fChopEditor.dirty() && !fChopEditor.applying())
+                        clicked, midichopper::ui::InteractiveType::chopAction)) {
+                    if (fChopEditor.split())
                         fChopEditor.apply();
+                    else
+                        fChopEditor.cancelChanges();
                     return true;
                 }
                 if (midichopper::ui::isTarget(
@@ -1338,8 +1340,7 @@ protected:
                 }
                 if (midichopper::ui::isTarget(
                         clicked, midichopper::ui::InteractiveType::chopExit)) {
-                    if (!fChopEditor.applying())
-                        fChopEditor.cancel();
+                    fChopEditor.exit();
                     return true;
                 }
                 if (midichopper::ui::isTarget(
@@ -2144,7 +2145,7 @@ protected:
             return true;
         }
         if (fChopEditor.active() && !fChopEditor.applying()) {
-            fChopEditor.cancel();
+            fChopEditor.exit();
             return true;
         }
         return false;
@@ -2479,7 +2480,7 @@ private:
         context.captureActive = fArm && fCurrentPad >= 0;
         context.chopReady = fChopEditor.ready();
         context.chopApplying = fChopEditor.applying();
-        context.chopApplyEnabled = fChopEditor.ready() && fChopEditor.dirty() && !fChopEditor.applying();
+        context.chopActionEnabled = fChopEditor.ready() && fChopEditor.dirty() && !fChopEditor.applying();
         context.chopPreviousEnabled =
             fChopEditor.canNavigate(-1, globalPad(0), visiblePadCount()) && !fChopEditor.applying();
         context.chopExitEnabled = !fChopEditor.applying();

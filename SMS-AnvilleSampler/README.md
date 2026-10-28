@@ -23,7 +23,7 @@ _Stereo chopping sampler._ [Downloads](https://github.com/sirsipe/SMS-Plugins/re
 | --- | --- | --- |
 | [<img src="Docs/main-view-finnish-dream.png" width="224" alt="Finnish Dream Main View">](Docs/main-view-finnish-dream.png) | [<img src="Docs/main-view-looks-like-wu.png" width="224" alt="Looks like Wu Main View">](Docs/main-view-looks-like-wu.png) | [<img src="Docs/main-view-white-cadillac-vinyl.png" width="224" alt="White Cadillac Vinyl Main View">](Docs/main-view-white-cadillac-vinyl.png) |
 
-Captures: v0.0.13.
+Captures: v0.0.13, except where noted.
 
 **VST3 preferred** for GUI/testing. LV2 is mostly AI-tested; Windows VST3 has minimal testing.
 
@@ -182,8 +182,12 @@ Start/End after release, restarting ADSR. Audition is independent of main playba
 
 ### Adjust Cut Points view
 
-Right-click a middle pad for **Adjust cut points**. See the
-[cut-point guide](Docs/CHOP-EDITOR.md).
+Right-click a middle pad for **Adjust cut points**. **Exit**, Escape, and the
+previous/next arrows save pending cuts automatically. **Cancel Changes** restores
+the loaded cuts without leaving; it is enabled only when cuts change.
+See the [cut-point guide](Docs/CHOP-EDITOR.md).
+
+Adjust Cut Points captures: v0.9.0-beta.1.
 
 [<img src="Docs/adjust-cut-points.png" width="672" alt="Default">](Docs/adjust-cut-points.png)
 
