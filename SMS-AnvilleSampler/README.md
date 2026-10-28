@@ -57,6 +57,8 @@ Windows builds are unsigned; native DAW validation remains pending.
 
 1. Insert on a REAPER instrument track with stereo audio/MIDI, or an Ardour
    MIDI track with stereo sidechain. Rescan if listed as FX.
+   For VST3 hosts with dedicated sidechain routing, enable the instrument's
+   sidechain input and send stereo audio to it.
 
 2. Press **ARM** (red circle) to arm; release for PLAY. Indicators are red
    ARMED and green PLAY by default; skins can recolor them. The first empty pad is selected; click another while idle.

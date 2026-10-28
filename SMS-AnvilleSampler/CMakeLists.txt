@@ -115,8 +115,9 @@ if(ANVILLESAMPLER_PLUGIN_FORMATS)
     FILES_UI ${ANVILLESAMPLER_UI_SOURCES})
 endif()
 
-# Only the VST3 variant needs same-process UI access. Keep LV2's separate UI
-# binary and its existing host feature requirements unchanged.
+# The VST3 variant needs same-process UI access and a sidechain input bus.
+# DPF compiles DSP sources separately from its format wrappers, so use a
+# target-wide format marker. Keep LV2's separate UI and input metadata unchanged.
 if(ANVILLESAMPLER_BUILD_VST3)
   dpf_add_plugin(SMS-AnvilleSampler-VST3
     TARGETS vst3
@@ -125,7 +126,7 @@ if(ANVILLESAMPLER_BUILD_VST3)
     FILES_DSP ${ANVILLESAMPLER_DSP_SOURCES}
     FILES_UI ${ANVILLESAMPLER_UI_SOURCES})
   target_compile_definitions(SMS-AnvilleSampler-VST3 INTERFACE
-    ANVILLESAMPLER_VST3_UI_BRIDGE=1)
+    ANVILLESAMPLER_VST3=1)
 
   dpf__determine_vst3_package_architecture(anvillesampler_vst3_arch)
   if(APPLE)
@@ -291,6 +292,16 @@ if(BUILD_TESTING)
   target_include_directories(anvillesampler_layout_preference_tests PRIVATE src/plugin src/core)
   target_link_libraries(anvillesampler_layout_preference_tests PRIVATE sms_common_ui)
   add_test(NAME layout-preference COMMAND anvillesampler_layout_preference_tests)
+
+  foreach(anvillesampler_target IN LISTS anvillesampler_targets)
+    add_executable(${anvillesampler_target}-audio-port-tests
+      tests/audio_port_tests.cpp
+      "${SMS_DPF_ROOT}/distrho/src/DistrhoPlugin.cpp")
+    target_link_libraries(${anvillesampler_target}-audio-port-tests PRIVATE
+      ${anvillesampler_target}-dsp ${CMAKE_DL_LIBS})
+    add_test(NAME audio-ports-${anvillesampler_target}
+      COMMAND ${anvillesampler_target}-audio-port-tests)
+  endforeach()
 
   # POSIX environment overrides isolate user configuration. Native Windows
   # Roaming AppData cannot be redirected safely for this adapter-level test.

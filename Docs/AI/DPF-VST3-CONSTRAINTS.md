@@ -1,4 +1,4 @@
-# DPF VST3 state and output constraints
+# DPF VST3 state and bus constraints
 
 Audience: agents changing VST3 communication or audio-port topology. This page
 records behavior of the pinned DPF revision and approved architectural
@@ -71,35 +71,38 @@ worker; LV2 uses its host worker. Both share engine snapshots and commits. Synch
 published pad snapshots without requiring another audio callback; see
 [Storage handoff](PAD-STORAGE.md).
 
+## Stereo sidechain input
+
+The VST3 target defines `ANVILLESAMPLER_VST3` for shared DSP sources as well as
+the wrapper. `initAudioPort()` marks both existing stereo inputs with
+`kAudioPortIsSidechain`; DPF exports one `kAux` input bus, inactive until the
+host enables it. Outputs remain main; LV2/CLAP metadata is unchanged.
+This supports Cubase's instrument-sidechain routing. Native Cubase verification
+remains pending: check routing, stereo capture, deactivation/reactivation and
+project restoration, plus existing REAPER/Ardour connections. [Port tests](TESTING.md)
+check the format-specific hints, grouping and symbols.
+
 ## Multi-output topology
 
-VST3 itself supports multiple audio buses, host bus activation, and notifying a
-host of a changed bus configuration or count through
-`restartComponent(kIoChanged)`. Plug-in-requested bus activation is an optional
-host interface. These mechanisms run outside audio processing and hosts may
-interrupt and rebuild their graphs.
+VST3 supports multiple audio buses, host activation, and bus-configuration/count
+notifications through `restartComponent(kIoChanged)`. Plug-in-requested activation
+is optional. These operations run outside processing; hosts may rebuild their graphs.
 
-The pinned DPF API is more restrictive. `DISTRHO_PLUGIN_NUM_OUTPUTS` fixes the
-channel count at compile time; `initAudioPort()` and port groups describe that
-fixed topology. Its VST3 wrapper maps fixed groups to buses and accepts host
-activation, but DPF exposes no plug-in API for creating buses at runtime,
-requesting activation, or issuing `kIoChanged`. DPF's
-[feature table](../../third_party/DPF/FEATURES.md) confirms VST3 audio-port
-groups; the pinned source initializes them from the compile-time port list.
+DPF fixes channel counts through `DISTRHO_PLUGIN_NUM_OUTPUTS`; `initAudioPort()`
+and groups describe this topology. Its VST3 wrapper maps groups to buses and
+accepts host activation, but exposes no plug-in API for runtime bus creation,
+activation requests, or `kIoChanged`. See its
+[feature table](../../third_party/DPF/FEATURES.md).
 
-LV2 ports are also fixed when the plug-in is discovered. This does not prevent
-individual outputs: both LV2 and current DPF VST3 can expose a predetermined
-set of stereo buses. Literal stereo output for all 64 pads would require 128
-pad channels, plus any main output, and needs host-limit, routing-UI, CPU,
-project-compatibility, and saved-connection testing before approval.
+LV2 ports are fixed at discovery too. Both formats can expose predetermined
+stereo buses. All 64 pads individually require 128 channels plus main outputs;
+test host limits, routing UI, CPU, project compatibility and saved connections
+before approval.
 
-Prefer a format-independent engine routing model with pads assigned to a fixed,
-product-defined number of stereo output buses. Choose that number from concrete
-workflows and host tests; do not assume 8, 16, or 64 yet. A separate multi-out
-plug-in variant may preserve the released stereo topology better than changing
-the existing identity. Truly dynamic VST3 buses require a scoped DPF extension
-and a cross-host acceptance matrix. Treat that work separately from repairing
-DSP-to-UI state transport even if both modify the VST3 wrapper.
+Prefer format-independent engine routing to a fixed bus count chosen from
+workflows and host tests. A separate multi-out variant may preserve released
+stereo topology. Dynamic VST3 buses require a scoped DPF extension and cross-host
+acceptance, separate from DSP-to-UI transport repairs.
 
 VST3 references: Steinberg's
 [component interface](https://steinbergmedia.github.io/vst3_doc/vstinterfaces/classSteinberg_1_1Vst_1_1IComponent.html),

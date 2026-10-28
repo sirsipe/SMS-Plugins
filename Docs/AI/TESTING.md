@@ -10,7 +10,7 @@ python3 scripts/check_docs.py
 git diff --check
 ```
 
-`ctest --test-dir build --output-on-failure -R NAME` filters tests:
+`ctest --test-dir build -R NAME` filters tests:
 
 | CTest name | Coverage |
 | --- | --- |
@@ -26,13 +26,14 @@ git diff --check
 | `ui-skin` | Manifest bounds/versions, scalar/UTF-8/printf fallback, Unicode paths, confined images, startup snapshots |
 | `ui-skin-catalog` | Discovery/forced precedence, missing choices, config folders, Unicode atomic preferences/concurrent writes |
 | `layout-*` | [Preferences, startup/host precedence, dummy metadata](LAYOUT-PREFERENCE.md) |
+| `audio-ports-*` | Stereo groups/symbols; VST3 sidechain |
 | `ui-skin-theme` | Placeholder completeness, RGBA/metric bounds, envelope RGBA/hover, opacity, logo decode/glow, nested/thread scopes |
 | `ui-bundled-skins` | Three bundled skins, Default, selectable/remembered choices, embedded logo, asset/color validity |
 | `ui-geometry` | Metadata/ports, identity/help URLs, pad mapping, editor snapshots, waveform/chop/viewport geometry, logo halo/pulse, hit testing, wheel editing, menu/range restore, numeric validation/Tab/keypad Enter, Space routing |
 | `ui-message-bus` | Bounded VST3 ordering, independent view cursors, wrap gap reporting, large replies |
 | `wav-codec` | WAV formats, chunk/truncation/header/nonfinite validation, file actions, offline render, real-time gate |
 
-Rebuild; run CTest. Long-audio:
+Long-audio:
 
 ```bash
 ./build/anvillesampler_transfer_tests "/path/to/long-sample.wav"

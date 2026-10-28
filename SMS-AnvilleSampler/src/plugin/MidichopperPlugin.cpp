@@ -219,6 +219,12 @@ protected:
     void initAudioPort(const bool input, const uint32_t index, AudioPort& port) override
     {
         port.groupId = kPortGroupStereo;
+#ifdef ANVILLESAMPLER_VST3
+        // Cubase routes audio into instruments through an auxiliary input bus.
+        // DPF maps this hint to VST3 kAux, retaining the stereo channel group.
+        if (input)
+            port.hints |= kAudioPortIsSidechain;
+#endif
         port.name = input ? (index == 0 ? "Input Left" : "Input Right")
                           : (index == 0 ? "Output Left" : "Output Right");
         port.symbol = input ? (index == 0 ? "in_l" : "in_r")
