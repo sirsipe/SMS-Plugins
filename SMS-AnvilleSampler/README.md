@@ -7,7 +7,6 @@
 _Stereo chopping sampler._ [Downloads](https://github.com/sirsipe/SMS-Plugins/releases).
  - Linux VST3 (preferred)
  - Linux LV2
- - Linux CLAP (experimental)
  - Windows VST3 (experimental)
 
 
@@ -46,7 +45,6 @@ Extract it and copy the **whole folder**, including skins and licenses:
 | --- | --- | --- |
 | Linux VST3 | `SMS-AnvilleSampler.vst3` | `~/.vst3/` |
 | Linux LV2 | `SMS-AnvilleSampler.lv2` | `~/.lv2/` |
-| Linux experimental CLAP | `SMS-AnvilleSampler` | `~/.clap/` |
 | Windows experimental VST3 | `SMS-AnvilleSampler.vst3` | `C:\Program Files\Common Files\VST3\` |
 
 Create missing destination folders. Restart your DAW or rescan plugins.

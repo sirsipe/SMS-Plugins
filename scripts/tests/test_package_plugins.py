@@ -46,7 +46,7 @@ class PluginPackagingTests(unittest.TestCase):
         for name in PACKAGER.LEGAL_FILES:
             self.file(path / (prefix + "licenses") / name, ("notice " + name).encode())
 
-    def fixture(self, platform="Linux", formats=("vst3", "lv2", "clap")):
+    def fixture(self, platform="Linux", formats=("vst3", "lv2")):
         for fmt in formats:
             bundle = self.bin / (PLUGIN + "." + fmt)
             if fmt == "clap":
@@ -80,28 +80,36 @@ class PluginPackagingTests(unittest.TestCase):
                 self.assertEqual(stat.S_IMODE(mode) & 0o111, source.stat().st_mode & 0o111)
                 self.assertEqual(zipped.getinfo(name).date_time, (1980, 1, 1, 0, 0, 0))
 
-    def test_linux_default_exact_trees_and_sidecars(self):
+    def test_linux_default_exact_trees(self):
         self.fixture()
         with mock.patch.dict(os.environ, {"SOURCE_DATE_EPOCH": str(PACKAGER.DEFAULT_EPOCH)}):
             archives = self.package()
         self.assertEqual([path.name for path in archives], [
             PLUGIN + "-v1.2.3-Linux-x64-vst3.zip",
-            PLUGIN + "-v1.2.3-Linux-x64-lv2.zip",
-            PLUGIN + "-v1.2.3-Linux-x64-experimental-clap.zip"])
-        for archive, fmt in zip(archives, ("vst3", "lv2", "clap")):
-            if fmt == "clap":
-                expected = {PLUGIN + "/" + path.relative_to(self.bin).as_posix(): path
-                            for path in self.bin.rglob("*")
-                            if path.is_file() and (path.relative_to(self.bin).parts[0] in
-                               {PLUGIN + "." + suffix for suffix in
-                                ("clap", "skins", "skin-template", "licenses")})}
-                archive_root = PLUGIN
-            else:
-                bundle = self.bin / (PLUGIN + "." + fmt)
-                expected = {path.relative_to(self.bin).as_posix(): path
-                            for path in bundle.rglob("*") if path.is_file()}
-                archive_root = bundle.name
-            self.assert_tree(archive, expected, archive_root)
+            PLUGIN + "-v1.2.3-Linux-x64-lv2.zip"])
+        for archive, fmt in zip(archives, ("vst3", "lv2")):
+            bundle = self.bin / (PLUGIN + "." + fmt)
+            expected = {path.relative_to(self.bin).as_posix(): path
+                        for path in bundle.rglob("*") if path.is_file()}
+            self.assert_tree(archive, expected, bundle.name)
+
+    def test_linux_ignores_local_clap_build_and_rejects_explicit_packaging(self):
+        self.fixture(formats=("vst3", "lv2", "clap"))
+        archives = self.package()
+        self.assertEqual({path.name for path in self.output.iterdir()}, {
+            PLUGIN + "-v1.2.3-Linux-x64-vst3.zip",
+            PLUGIN + "-v1.2.3-Linux-x64-lv2.zip"})
+        for archive in archives:
+            with zipfile.ZipFile(archive) as zipped:
+                self.assertFalse(any(".clap" in name for name in zipped.namelist()))
+        with self.assertRaises(PACKAGER.PackageError):
+            self.package(formats=["clap"])
+        result = subprocess.run([
+            sys.executable, str(SCRIPT), "--build-dir", str(self.build),
+            "--output-directory", str(self.output), "--platform", "Linux",
+            "--version", "v1.2.3", "--formats", "clap"], capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("invalid choice", result.stderr)
 
     def test_windows_cli_default_layout(self):
         self.fixture("Windows", ("vst3",))
@@ -118,7 +126,7 @@ class PluginPackagingTests(unittest.TestCase):
     def test_beta_version_is_preserved_in_all_asset_names(self):
         self.fixture()
         archives = self.package(version="v0.1.0-beta.1")
-        self.assertEqual(len(archives), 3)
+        self.assertEqual(len(archives), 2)
         self.assertTrue(all("-v0.1.0-beta.1-Linux-x64-" in path.name for path in archives))
         for archive in archives:
             with zipfile.ZipFile(archive) as zipped:
@@ -155,8 +163,7 @@ class PluginPackagingTests(unittest.TestCase):
         original = {path: path.read_bytes() for path in archives}
         missing = [self.bin / (PLUGIN + ".vst3") / "Contents/x86_64-linux" / (PLUGIN + ".so"),
                    self.bin / (PLUGIN + ".lv2") / "manifest.ttl",
-                   self.bin / (PLUGIN + ".clap"),
-                   self.bin / (PLUGIN + ".skin-template") / "skin.ini"]
+                   self.bin / (PLUGIN + ".vst3") / "skin-template" / "skin.ini"]
         missing += [self.bin / (PLUGIN + ".lv2") / "licenses" / name
                     for name in PACKAGER.LEGAL_FILES]
         for path in missing:
@@ -168,11 +175,13 @@ class PluginPackagingTests(unittest.TestCase):
                 self.file(path, contents)
                 self.assertEqual({archive: archive.read_bytes() for archive in archives}, original)
 
-    def test_missing_sidecar_directory_and_wrong_platform_binary(self):
+    def test_missing_companion_directory_and_wrong_platform_binary(self):
         self.fixture()
-        shutil.rmtree(self.bin / (PLUGIN + ".skins"))
+        skins = self.bin / (PLUGIN + ".vst3") / "skins"
+        shutil.rmtree(skins)
         with self.assertRaises(PACKAGER.PackageError):
-            self.package(formats=["clap"])
+            self.package()
+        self.companions(self.bin / (PLUGIN + ".vst3"))
         with self.assertRaises(PACKAGER.PackageError):
             self.package("Windows")
         self.assertFalse(self.output.exists())

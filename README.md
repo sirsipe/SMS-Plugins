@@ -12,7 +12,7 @@ Windows and macOS versions, if provided, are experimental.
 
 ### [SMS-Anville Sampler](SMS-AnvilleSampler/README.md) — live stereo chopping sampler
 Available as
-- Linux: **VST3** (preferred), LV2, experimental CLAP
+- Linux: **VST3** (preferred), LV2
 - Windows VST3 (experimental)
 
 [<img src="SMS-AnvilleSampler/Docs/main-view.png" width="672" alt="Default Main View">](SMS-AnvilleSampler/Docs/main-view.png)

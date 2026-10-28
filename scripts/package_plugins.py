@@ -34,13 +34,13 @@ def require_directory(path):
         raise PackageError("Missing or unsafe required directory: {}".format(path))
 
 
-def check_companions(root, prefix=""):
-    skins = root / (prefix + "skins")
+def check_companions(root):
+    skins = root / "skins"
     require_directory(skins)
     if not any(skins.iterdir()):
         raise PackageError("Empty skins directory: {}".format(skins))
-    require_file(root / (prefix + "skin-template") / "skin.ini")
-    legal = root / (prefix + "licenses")
+    require_file(root / "skin-template" / "skin.ini")
+    legal = root / "licenses"
     require_directory(legal)
     for name in LEGAL_FILES:
         require_file(legal / name)
@@ -88,7 +88,7 @@ def package_plugins(build_dir, output_directory, platform, version, formats=None
         raise PackageError("Version must be vX.Y.Z[-prerelease] or a lowercase 12-character Git commit")
     if platform not in ("Linux", "Windows"):
         raise PackageError("Unsupported platform: {}".format(platform))
-    allowed = ("vst3", "lv2", "clap") if platform == "Linux" else ("vst3",)
+    allowed = ("vst3", "lv2") if platform == "Linux" else ("vst3",)
     formats = list(allowed if formats is None else formats)
     if not formats or len(set(formats)) != len(formats) or any(fmt not in allowed for fmt in formats):
         raise PackageError("Unsupported or duplicate formats for {}: {}".format(platform, formats))
@@ -100,28 +100,19 @@ def package_plugins(build_dir, output_directory, platform, version, formats=None
     require_directory(binaries)
     packages = []
     for fmt in formats:
-        if fmt == "clap":
-            require_file(binaries / (PLUGIN + ".clap"))
-            check_companions(binaries, PLUGIN + ".")
-            # CLAP's sidecars share one parent after extraction.
-            entries = [(PLUGIN + "/", binaries, stat.S_IFDIR | 0o755)]
-            for suffix in ("clap", "skins", "skin-template", "licenses"):
-                name = PLUGIN + "." + suffix
-                entries.extend(collect_tree(binaries / name, PLUGIN + "/" + name))
+        bundle = binaries / (PLUGIN + "." + fmt)
+        require_directory(bundle)
+        check_companions(bundle)
+        if fmt == "vst3":
+            architecture, extension = (("x86_64-linux", ".so") if platform == "Linux"
+                                       else ("x86_64-win", ".vst3"))
+            require_file(bundle / "Contents" / architecture / (PLUGIN + extension))
         else:
-            bundle = binaries / (PLUGIN + "." + fmt)
-            require_directory(bundle)
-            check_companions(bundle)
-            if fmt == "vst3":
-                architecture, extension = (("x86_64-linux", ".so") if platform == "Linux"
-                                           else ("x86_64-win", ".vst3"))
-                require_file(bundle / "Contents" / architecture / (PLUGIN + extension))
-            else:
-                for name in ("manifest.ttl", PLUGIN + "_dsp.ttl", PLUGIN + "_ui.ttl",
-                             PLUGIN + "_dsp.so", PLUGIN + "_ui.so"):
-                    require_file(bundle / name)
-            entries = collect_tree(bundle, bundle.name)
-        qualifier = "experimental-" if fmt == "clap" or platform == "Windows" else ""
+            for name in ("manifest.ttl", PLUGIN + "_dsp.ttl", PLUGIN + "_ui.ttl",
+                         PLUGIN + "_dsp.so", PLUGIN + "_ui.so"):
+                require_file(bundle / name)
+        entries = collect_tree(bundle, bundle.name)
+        qualifier = "experimental-" if platform == "Windows" else ""
         filename = "{}-{}-{}-x64-{}{}.zip".format(PLUGIN, version, platform, qualifier, fmt)
         packages.append((filename, sorted(entries)))
 
@@ -182,7 +173,7 @@ def main():
     parser.add_argument("--output-directory", type=Path, required=True)
     parser.add_argument("--platform", choices=("Linux", "Windows"))
     parser.add_argument("--version")
-    parser.add_argument("--formats", nargs="+", choices=("vst3", "lv2", "clap"))
+    parser.add_argument("--formats", nargs="+", choices=("vst3", "lv2"))
     parser.add_argument("--source-date-epoch", type=int,
                         help="UTC timestamp; defaults to SOURCE_DATE_EPOCH or 1980-01-01")
     parser.add_argument("--checksums-only", action="store_true")

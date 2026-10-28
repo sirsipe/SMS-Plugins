@@ -63,7 +63,7 @@ jobs:
 
       - name: Verify release assets and combine checksums
         run: |
-          for suffix in Linux-x64-vst3.zip Linux-x64-lv2.zip Linux-x64-experimental-clap.zip Windows-x64-experimental-vst3.zip Linux-x64-source.tar.gz Windows-x64-source.tar.gz; do
+          for suffix in Linux-x64-vst3.zip Linux-x64-lv2.zip Windows-x64-experimental-vst3.zip Linux-x64-source.tar.gz Windows-x64-source.tar.gz; do
             test -s "dist/SMS-AnvilleSampler-${RELEASE_VERSION}-${suffix}"
           done
           python3 scripts/package_plugins.py --output-directory dist --checksums-only
@@ -74,12 +74,11 @@ jobs:
         run: |
           cat > release-notes.txt <<'EOF'
           Download the ZIP for your platform and format. Linux VST3 is preferred;
-          Linux CLAP and Windows VST3 are experimental.
+          Windows VST3 is experimental.
 
           Extract and copy the whole plugin folder, including skins and licenses:
           - Linux VST3: `~/.vst3/`
           - Linux LV2: `~/.lv2/`
-          - Linux CLAP: `~/.clap/` (copy the whole `SMS-AnvilleSampler` folder)
           - Windows VST3: `C:\Program Files\Common Files\VST3\`
 
           Restart your DAW or rescan plugins.

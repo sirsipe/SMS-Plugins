@@ -9,13 +9,18 @@ size limits. Push and pull-request builds do not retain artifacts. Manually
 dispatched Ubuntu and Windows CI builds retain test artifacts for 14 days. Workflow
 definitions live in [.github/workflows](../.github/workflows/).
 
+Releases include Linux x64 VST3/LV2 and experimental Windows x64 VST3.
+CI and packaging exclude CLAP following the sample editor failure in
+[issue #80](https://github.com/sirsipe/SMS-Plugins/issues/80).
+Opt-in local CLAP builds remain available for development.
+
 ## Testing a branch build
 
 Open the repository's **Actions** page, select **Ubuntu CI**, choose **Run
 workflow**, and select the branch to build. The workflow builds and tests the
 selected commit without creating a tag or release. When it succeeds, download
 the `SMS-AnvilleSampler-<commit>-linux-x86_64` artifact from the workflow run's
-summary page. It contains VST3, LV2 and experimental CLAP ZIPs, a matching
+summary page. It contains VST3 and LV2 ZIPs, a matching
 `*-source.tar.gz` archive, and `SHA256SUMS.txt`; it expires after 14 days.
 
 
@@ -54,7 +59,6 @@ CI for fresh builds and tests. Publishing waits for both jobs and produces:
 ```text
 SMS-AnvilleSampler-vX.Y.Z-Linux-x64-vst3.zip
 SMS-AnvilleSampler-vX.Y.Z-Linux-x64-lv2.zip
-SMS-AnvilleSampler-vX.Y.Z-Linux-x64-experimental-clap.zip
 SMS-AnvilleSampler-vX.Y.Z-Windows-x64-experimental-vst3.zip
 ```
 
@@ -62,15 +66,13 @@ Suffixes such as `-beta.1` are preserved in all names. Suffixed versions publish
 as GitHub prereleases without replacing Latest; stable versions become Latest.
 
 Each platform also supplies its matching `*-source.tar.gz`; one `SHA256SUMS.txt`
-covers all six archives. Windows source includes its additional Khronos headers.
+covers all five archives. Windows source includes its additional Khronos headers.
 Release builds embed the tag as Online Help's reference; ordinary builds use
 `main`. No manual upload is needed. Installation instructions are in the
 [plugin guide](../SMS-AnvilleSampler/README.md#install-a-release).
 
 [ZIP packaging](../scripts/package_plugins.py) puts exactly one folder at the
-archive root. VST3/LV2 preserve their complete bundles. Linux CLAP uses
-`SMS-AnvilleSampler/` around the binary, skins, template and license sidecars;
-copy that whole folder into the plugin search path. Local preview:
+archive root. VST3/LV2 preserve their complete bundles. Local preview:
 
 ```bash
 python3 scripts/package_plugins.py --build-dir build \
@@ -82,7 +84,7 @@ python3 scripts/package_plugins.py --build-dir build \
 Every build packages the root [license](../LICENSE), the
 [DAW host-linking exception](../HOST-LINKING-EXCEPTION.txt), full third-party
 notices, and source instructions. LV2 and VST3 keep them in `licenses/` inside
-the bundle. CLAP uses `SMS-AnvilleSampler.licenses` beside its binary, or
+the bundle. Opt-in local CLAP builds use `SMS-AnvilleSampler.licenses` beside the binary, or
 `licenses/` inside the macOS CLAP bundle. CMake installation preserves these
 files, skins, and templates for each enabled format. Keep them when repackaging.
 

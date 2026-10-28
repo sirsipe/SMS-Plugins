@@ -1,8 +1,8 @@
 # Windows CI and deferred platform releases
 
 Build support and native-host validation for maintainers and agents.
-Releases include Linux x64 VST3/LV2,
-experimental Linux CLAP, and unsigned experimental Windows x64 VST3. macOS
+Releases include Linux x64 VST3/LV2
+and unsigned experimental Windows x64 VST3. macOS
 releases remain deferred pending the native-host checks below.
 
 ## Findings

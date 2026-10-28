@@ -15,14 +15,15 @@ To match Ubuntu CI:
 ```bash
 cmake -S SMS-AnvilleSampler -B build -G Ninja \
   -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
-  -DANVILLESAMPLER_BUILD_VST3=ON -DANVILLESAMPLER_BUILD_CLAP=ON
+  -DANVILLESAMPLER_BUILD_VST3=ON -DANVILLESAMPLER_BUILD_CLAP=OFF
 cmake --build build --parallel 2
 ctest --test-dir build --output-on-failure
 ```
 
 Outputs: `build/bin/SMS-AnvilleSampler.lv2` and, when enabled,
-`build/bin/SMS-AnvilleSampler.vst3`. `ANVILLESAMPLER_BUILD_CLAP=ON` adds CLAP;
-Ubuntu CI builds CLAP as experimental. VST3/CLAP default OFF;
+`build/bin/SMS-AnvilleSampler.vst3`. `ANVILLESAMPLER_BUILD_CLAP=ON` adds a local
+development CLAP build; see [release format policy](../RELEASING.md).
+VST3/CLAP default OFF;
 `ANVILLESAMPLER_BUILD_LV2` defaults ON and can be disabled for VST3-only builds.
 At least one format must be enabled.
 Legal notices and source archives: [release packaging](../RELEASING.md#licenses-and-corresponding-source).

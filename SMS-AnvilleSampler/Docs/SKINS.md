@@ -47,8 +47,7 @@ become unreadable keeps the current skin and reports an error.
 Bundle roots contain `Contents`.
 LV2 uses the same `skin`/`skins` directories inside `SMS-AnvilleSampler.lv2`.
 For single-file CLAP, use sibling `SMS-AnvilleSampler.skin` for an override or
-`SMS-AnvilleSampler.skins` for a collection. CLAP host integration remains
-untested.
+`SMS-AnvilleSampler.skins` for a collection. CLAP: [local builds only](../../Docs/RELEASING.md).
 
 Copy `skin-template` as `skin` or `skins/<id>`. The
 [placeholder/skin.ini](../skins/placeholder/skin.ini) catalogs colors, metrics,

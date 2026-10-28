@@ -29,11 +29,10 @@ installed plugin's existing skins:
 | --- | --- |
 | Linux VST3 | `~/.vst3/SMS-AnvilleSampler.vst3/skins/` |
 | Linux LV2 | `~/.lv2/SMS-AnvilleSampler.lv2/skins/` |
-| Linux CLAP (experimental) | `~/.clap/SMS-AnvilleSampler.skins/` |
 | Windows VST3 (experimental) | `C:\Program Files\Common Files\VST3\SMS-AnvilleSampler.vst3\skins\` |
 
-Use your actual installation location if it differs. For single-file CLAP,
-`SMS-AnvilleSampler.skins` is a sibling of `SMS-AnvilleSampler.clap`.
+Use your actual installation location if it differs. For local single-file
+CLAP builds, `SMS-AnvilleSampler.skins` is a sibling of `SMS-AnvilleSampler.clap`.
 
 For example, Linux VST3 should contain:
 
