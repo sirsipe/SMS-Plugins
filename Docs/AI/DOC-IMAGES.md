@@ -50,6 +50,15 @@ named skin previews at one-third its display width.
 The Skins section uses three equally sized, separate Main View images. Every
 image links to its original PNG; do not bake layouts, labels or scaling into assets.
 
+The [additional-skins gallery](../../SMS-AnvilleSampler/additional-skins/README.md)
+uses separate initial-state captures: empty pads, the default 4×4 layout, and
+unchanged factory controls. Capture every available additional skin at 1344 × 756
+and store the PNGs directly in `SMS-AnvilleSampler/additional-skins/`, named
+after their skin folders (for example, `RedBlackSMSTag.png`), outside the
+downloadable skin folders. Each preview links to its full-resolution image
+and has a Download Directory link prefilled with that skin folder's GitHub URL.
+Keep the manual download section last.
+
 Check every image/link target, including HTML `src` attributes, and inspect the
 README layout. Update the capture-version caption. Run
 `python3 scripts/check_docs.py` and `git diff --check`; the checker validates
