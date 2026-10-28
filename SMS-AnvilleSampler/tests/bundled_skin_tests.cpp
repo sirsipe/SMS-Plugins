@@ -89,5 +89,15 @@ int main(int argc, char** argv)
 {
     check(argc >= 3, "source skins and at least one packaged collection supplied");
     for (int i = 2; i < argc; ++i) packagedCollection(argv[1], argv[i]);
+    const auto additional = fs::path(argv[1]).parent_path() / "additional-skins";
+    for (const auto id : {"RedBlackSMSTag", "XtremeSMSMetall"}) {
+        const auto directory = additional / id;
+        const auto skin = sms::ui::Skin::load(directory);
+        check(!skin.name.empty(), "additional skins have selectable names");
+        packagedSkin(directory, directory, skin);
+        for (int color = 1; color <= 6; ++color)
+            check(skin.colors.contains("pad" + std::to_string(color)),
+                  "additional skins define all six palette colors");
+    }
     std::cout << "Packaged skin collection checks passed\n";
 }

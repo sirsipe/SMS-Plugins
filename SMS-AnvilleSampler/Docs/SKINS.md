@@ -2,7 +2,7 @@
 
 ## Ask an LLM to create a skin
 
-Supply this guide, the [AI authoring reference](../../Docs/AI/SKINS.md), and
+Supply this guide, [authoring reference](../../Docs/AI/SKINS.md), and
 [placeholder/skin.ini](../skins/placeholder/skin.ini). Specify style, name, language
 and folder. Keep personal skins under ignored `build/skins/` or outside the checkout.
 
@@ -38,7 +38,9 @@ SMS-AnvilleSampler.vst3/skins/<id>/skin.ini
 
 With named skins available, **hamburger → Skin** lists **Default** first, then
 alphabetized literal names. Selection is marked; wheel scrolling keeps Default
-at the top. Discovery scans immediate subfolders. Invalid names, manifests, and
+at the top. **`<Get More>`** stays below a separator while choices scroll, opening
+[additional skins and installation](../additional-skins/README.md) in your browser.
+Discovery scans immediate subfolders. Invalid names, manifests, and
 paths escaping the collection are skipped. Selecting a skin that has since
 become unreadable keeps the current skin and reports an error.
 
@@ -121,15 +123,15 @@ parameter names, or saved-state keys. The six pad palette colors
 use `pad1` through `pad6`; these retain the saved slot indices in their original
 order. Their menu names can be replaced in `[strings]`.
 
-The ADSR curve and all points use `activityPlayback`, including on hover.
+The ADSR curve/points use `activityPlayback`, including hover.
 
-Use PNG or JPEG artwork, up to 64 MiB per encoded file, with Unicode paths supported. The
+Use PNG/JPEG artwork, up to 64 MiB per encoded file, including Unicode paths. The
 background stretches across the 1344 × 756 logical chassis, behind the panels,
 controls, and screws. It does not replace individual control artwork. The logo
 stretches into the 170 × 78 header rectangle: 48% opacity without a glow,
 fully opaque over an enabled halo.
-Transparent pixels reveal the built-in rendering. Assets load once on the
-first draw with a ready graphics context.
+Transparent pixels reveal built-in rendering. Assets load on the first draw
+with a ready graphics context.
 
 Under `[metrics]`, `backgroundAlpha` fades artwork over the chassis;
 `padAlpha` fades pad fills, tints, shadows and grain. `padPanelAlpha` fades

@@ -68,6 +68,7 @@ enum class InteractiveType : int {
     menuBankModes,
     menuSkins,
     skinItem,
+    skinGetMore,
     padDirection,
     globalDirection,
     padGlobalMixer,
@@ -528,6 +529,8 @@ interactiveTargetAt(const sms::ui::Point point, const InteractionContext& contex
             const int row = context.skinMenu.hit(point);
             if (row >= 0 && row < context.skinMenuItemCount)
                 return target(InteractiveType::skinItem, row);
+            if (row == context.skinMenuItemCount + 1)
+                return target(InteractiveType::skinGetMore);
             // The submenu's padding must also block controls beneath it.
             if (context.skinMenu.bounds().contains(point))
                 return sms::ui::kNoInteractiveTarget;

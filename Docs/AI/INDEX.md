@@ -21,7 +21,7 @@ Read [AGENTS.md](../../AGENTS.md), then the relevant row.
 | Pad WAV import/export | [WAV I/O design](PAD-WAV-IO.md) | Formats, real-time boundary, dialogs, support notes |
 | MIDI control | [Host integration](MIDI-CONTROL.md) | Automation, metadata |
 | VST3 state and buses | [DPF VST3 constraints](DPF-VST3-CONSTRAINTS.md) | UI synchronization, sidechain input, output topology |
-| Skins and artwork | [Skin guide](../../SMS-AnvilleSampler/Docs/SKINS.md), [Authoring](SKINS.md) | [Catalog](../../Common-UI/SkinCatalog.hpp), [Theme adapter](../../Common-UI/DPF/SkinTheme.hpp) |
+| Skins and artwork | [Skin guide](../../SMS-AnvilleSampler/Docs/SKINS.md), [Authoring](SKINS.md), [Additional skins](../../SMS-AnvilleSampler/additional-skins/README.md) | [Catalog](../../Common-UI/SkinCatalog.hpp), [Theme adapter](../../Common-UI/DPF/SkinTheme.hpp) |
 | User-visible behavior | [Plugin guide](../../SMS-AnvilleSampler/README.md) | Verify against affected source/tests |
 | User mixing controls | [Mixing guide](../../SMS-AnvilleSampler/Docs/MIXING.md) | Pad and global effects |
 | User WAV workflow | [WAV file guide](../../SMS-AnvilleSampler/Docs/WAV-FILES.md) | Current formats and Linux requirements |

@@ -719,14 +719,18 @@ private:
                 hovered(InteractiveType::menuMidiBankMode) ? state_.hoveredTarget.index : -1);
         } else if (state_.menuSubmenu == uiLayout::MenuSubmenu::skin) {
             sms::ui::dpf::drawContextMenu(canvas_, state_.skinMenu, state_.skinMenuItems,
-                hovered(InteractiveType::skinItem) ? state_.hoveredTarget.index : -1);
+                hovered(InteractiveType::skinGetMore)
+                    ? uiLayout::skinMenuVisibleCount(state_.skinMenuTotal) + 1
+                    : (hovered(InteractiveType::skinItem) ? state_.hoveredTarget.index : -1));
             const int maximum = uiLayout::skinMenuMaxOffset(state_.skinMenuTotal);
             if (maximum > 0) {
                 const auto bounds = state_.skinMenu.bounds();
                 const float top = state_.skinMenu.item(1).y;
-                const float height = bounds.y + bounds.height - 6.0f - top;
+                const int choices = uiLayout::skinMenuVisibleCount(state_.skinMenuTotal);
+                const auto last = state_.skinMenu.item(choices - 1);
+                const float height = last.y + last.height - top;
                 const float thumb = std::max(10.0f, height *
-                    static_cast<float>(state_.skinMenuItems.size() - 1U) /
+                    static_cast<float>(choices - 1) /
                     static_cast<float>(state_.skinMenuTotal - 1));
                 canvas_.beginPath();
                 canvas_.roundedRect(bounds.x + bounds.width - 5.0f, top, 2.0f, height, 1.0f);

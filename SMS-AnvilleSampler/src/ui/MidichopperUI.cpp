@@ -970,7 +970,7 @@ protected:
                 sms::ui::ContextMenuItemKind::action,
                 selectedColor == static_cast<int>(index + 1U),
                 static_cast<int>(index)};
-        std::array<sms::ui::ContextMenuItemView, 18> skinMenuItems{};
+        std::array<sms::ui::ContextMenuItemView, uiLayout::skinMenuMaximumChoices + 2> skinMenuItems{};
         const int skinRows = uiLayout::skinMenuVisibleCount(static_cast<int>(fSkinCatalog.entries.size()));
         for (int row = 0; row < skinRows; ++row) {
             const auto index = static_cast<std::size_t>(uiLayout::skinMenuEntry(row, fSkinMenuOffset));
@@ -979,6 +979,9 @@ protected:
                 sms::ui::ContextMenuItemKind::action, index == fSelectedSkin,
                 -1, false, index == 0U};
         }
+        skinMenuItems[static_cast<std::size_t>(skinRows)] = {
+            "", false, false, sms::ui::ContextMenuItemKind::separator};
+        skinMenuItems[static_cast<std::size_t>(skinRows + 1)] = {"<Get More>"};
         const auto editorSettings = displayEditorSettings();
         const midichopper::ui::ViewState view{
             fArm, fRecordMode, fFixedLength, fPlaybackMode, fMonitor,
@@ -1017,7 +1020,7 @@ protected:
                 std::chrono::duration<double>(std::chrono::steady_clock::now() - fLogoGlowEpoch).count()),
             fSkinCatalog.selectable(), fMenuOpen ? fMenuSubmenu : uiLayout::MenuSubmenu::none, fSkinMenu,
             std::span<const sms::ui::ContextMenuItemView>{skinMenuItems.data(),
-                static_cast<std::size_t>(skinRows)}, fSkinMenuOffset,
+                static_cast<std::size_t>(skinRows + 2)}, fSkinMenuOffset,
             static_cast<int>(fSkinCatalog.entries.size()),
             fGlobalControlMenu, fGlobalValueSettings,
         };
@@ -1273,6 +1276,13 @@ protected:
                     return true;
                 }
                 fMenuSubmenu = uiLayout::MenuSubmenu::none;
+                if (midichopper::ui::isTarget(clicked, midichopper::ui::InteractiveType::skinGetMore)) {
+                    fMenuOpen = false;
+                    if (!openBrowser(midichopper::ui::kMoreSkinsUrl.data()))
+                        setLocalStatus("Could not open the browser");
+                    requestRepaint();
+                    return true;
+                }
                 if (midichopper::ui::isTarget(
                         clicked, midichopper::ui::InteractiveType::menuLayout)) {
                     fMenuOpen = false;

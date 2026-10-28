@@ -3,6 +3,8 @@
 #include "UI/Geometry.hpp"
 #include "ContextMenu.hpp"
 
+#include <array>
+
 namespace midichopper::ui::layout {
 
 inline constexpr unsigned int canvasWidth = 1344U;
@@ -70,10 +72,12 @@ inline constexpr sms::ui::Rect skinMenuButton{1060.0f, 152.0f, 168.0f, 28.0f};
             2, contentBounds, 240.0f};
 }
 
-// Pin Default at row zero; scroll the remaining choices inside the canvas.
+// Pin Default at row zero and the download link below the scrolling choices.
+inline constexpr int skinMenuMaximumChoices = 18;
+
 [[nodiscard]] constexpr int skinMenuVisibleCount(const int total) noexcept
 {
-    return std::clamp(total, 0, 18);
+    return std::clamp(total, 0, skinMenuMaximumChoices);
 }
 
 [[nodiscard]] constexpr int skinMenuMaxOffset(const int total) noexcept
@@ -88,8 +92,12 @@ inline constexpr sms::ui::Rect skinMenuButton{1060.0f, 152.0f, 168.0f, 28.0f};
 
 [[nodiscard]] inline sms::ui::ContextMenuGeometry skinMenuGeometry(const int total) noexcept
 {
+    const int choices = skinMenuVisibleCount(total);
+    std::array<sms::ui::ContextMenuItemKind, skinMenuMaximumChoices + 2> kinds{};
+    kinds[static_cast<std::size_t>(choices)] = sms::ui::ContextMenuItemKind::separator;
     return {{menuPanel.x - 240.0f + 2.0f, skinMenuButton.y - 5.0f},
-            skinMenuVisibleCount(total), contentBounds, 240.0f};
+            std::span<const sms::ui::ContextMenuItemKind>{kinds.data(),
+                static_cast<std::size_t>(choices + 2)}, contentBounds, 240.0f};
 }
 
 inline constexpr sms::ui::Rect footer{24.0f, 706.0f, 1216.0f, 32.0f};

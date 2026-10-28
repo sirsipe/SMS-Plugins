@@ -7,6 +7,8 @@ namespace midichopper::ui {
 
 inline constexpr std::string_view kIssueUrl =
     "https://github.com/sirsipe/SMS-Plugins/issues";
+inline constexpr std::string_view kMoreSkinsUrl =
+    "https://github.com/sirsipe/SMS-Plugins/blob/main/SMS-AnvilleSampler/additional-skins/README.md";
 
 [[nodiscard]] inline std::string onlineHelpUrl(const std::string_view ref)
 {

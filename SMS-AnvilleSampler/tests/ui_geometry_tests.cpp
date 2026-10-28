@@ -196,8 +196,10 @@ void hamburgerMenuGeometry()
           midichopper::ui::onlineHelpUrl("SMS-AnvilleSampler-v1.2.3") ==
               "https://github.com/sirsipe/SMS-Plugins/tree/SMS-AnvilleSampler-v1.2.3/SMS-AnvilleSampler" &&
           midichopper::ui::kIssueUrl ==
-              "https://github.com/sirsipe/SMS-Plugins/issues",
-          "hamburger links target the project README and issue tracker");
+              "https://github.com/sirsipe/SMS-Plugins/issues" &&
+          midichopper::ui::kMoreSkinsUrl ==
+              "https://github.com/sirsipe/SMS-Plugins/blob/main/SMS-AnvilleSampler/additional-skins/README.md",
+          "hamburger links target help, issues and the latest additional-skins README");
 }
 
 void contextMenuGeometry()
@@ -296,7 +298,7 @@ void skinMenuGeometryAndTargets()
           layout::skinMenuVisibleCount(0) == 0 &&
           layout::skinMenuMaxOffset(0) == 0,
           "empty skin choices have no visible rows or scrolling");
-    for (const int total : {2, 18, 19, 129}) {
+    for (const int total : {1, 2, 18, 19, 129}) {
         const int visible = layout::skinMenuVisibleCount(total);
         const int maxOffset = layout::skinMenuMaxOffset(total);
         const auto menu = layout::skinMenuGeometry(total);
@@ -316,6 +318,22 @@ void skinMenuGeometryAndTargets()
         }
         check(layout::skinMenuEntry(visible - 1, maxOffset) == total - 1,
               "maximum skin scroll offset reaches the final catalog choice");
+        const auto separator = menu.item(visible);
+        const auto getMore = menu.item(visible + 1);
+        check(inside(menu.bounds(), separator) && inside(menu.bounds(), getMore) &&
+              menu.hit(center(separator)) == -1 && menu.hit(center(getMore)) == visible + 1 &&
+              separator.y >= menu.item(visible - 1).y + menu.item(visible - 1).height &&
+              getMore.y >= separator.y + separator.height,
+              "separator and download link fit below all visible skin choices");
+        interaction::InteractionContext context;
+        context.menuOpen = true;
+        context.menuSubmenu = layout::MenuSubmenu::skin;
+        context.skinMenu = menu;
+        context.skinMenuItemCount = visible;
+        check(interaction::isTarget(interaction::interactiveTargetAt(center(getMore), context),
+                  InteractiveType::skinGetMore) &&
+              !interaction::interactiveTargetAt(center(separator), context).valid(),
+              "download link has a distinct action and the separator blocks underlying controls");
     }
 
     for (int view = 0; view < 4; ++view) {
@@ -345,6 +363,10 @@ void skinMenuGeometryAndTargets()
                       InteractiveType::skinItem, row),
                   "skin submenu rows take priority over all underlying views");
         }
+        check(interaction::isTarget(interaction::interactiveTargetAt(
+                  center(context.skinMenu.item(context.skinMenuItemCount + 1)), context),
+                  InteractiveType::skinGetMore),
+              "download action takes priority over all underlying views");
         check(interaction::isTarget(interaction::interactiveTargetAt(
                   center(layout::menuButton), context), InteractiveType::menuButton),
               "hamburger remains available to close the full skin menu");

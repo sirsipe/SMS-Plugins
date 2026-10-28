@@ -28,27 +28,21 @@ git diff --check
 | `layout-*` | [Preferences, startup/host precedence, dummy metadata](LAYOUT-PREFERENCE.md) |
 | `audio-ports-*` | Stereo groups/symbols; VST3 sidechain |
 | `ui-skin-theme` | Placeholder completeness, RGBA/metric bounds, envelope RGBA/hover, opacity, logo decode/glow, nested/thread scopes |
-| `ui-bundled-skins` | Three bundled skins, Default, selectable/remembered choices, embedded logo, asset/color validity |
+| `ui-bundled-skins` | Default/bundled choices and persistence, embedded logo, bundled/additional assets/colors |
 | `ui-geometry` | Metadata/ports, identity/help URLs, pad mapping, editor snapshots, waveform/chop/viewport geometry, logo halo/pulse, hit testing, wheel editing, menu/range restore, numeric validation/Tab/keypad Enter, Space routing |
 | `ui-message-bus` | Bounded VST3 ordering, independent view cursors, wrap gap reporting, large replies |
 | `wav-codec` | WAV formats, chunk/truncation/header/nonfinite validation, file actions, offline render, real-time gate |
 
-Long-audio:
-
-```bash
-./build/anvillesampler_transfer_tests "/path/to/long-sample.wav"
-```
+Long-audio: `./build/anvillesampler_transfer_tests "/path/to/long-sample.wav"`.
 
 ## LV2 bundle discovery
 
-`lilv-utils`:
+`lilv-utils`; discovery does not validate audio:
 
 ```bash
 LV2_PATH="$PWD/build/bin" \
   lv2info https://github.com/sirsipe/SMS-Plugins/SMS-AnvilleSampler
 ```
-
-Discovery does not validate audio.
 
 ## LV2 host integration
 
@@ -84,10 +78,11 @@ Checks:
   check replacement, Stop/Space and Exit. Bypass Global Mixer with effects
   active; verify immediate direction/cursor changes, independent local effects,
   OUT, reenable, persistence and copy/paste.
-- Skins: verify Default and all three bundled skins in LV2/VST3; check artwork,
-  halo/pulse, opacity, resizing and remembered choices across formats. Forced
-  `skin` hides selection. Check custom logos, disabled halos, scrolling, deleted
-  skins and config-write failure.
+- Skins: check Default/three bundled skins in LV2/VST3: artwork, halo/pulse,
+  opacity, resizing, cross-format persistence, custom logos, disabled halos,
+  scrolling, deleted skins and config-write failure. Forced `skin` hides selection.
+  Verify SKIN's separator/pinned `<Get More>` with long collections; it opens the
+  additional-skins README without changing appearance/preferences.
 - UI/editor: check drawing, pad selection, region/mixer/ADSR drag,
   wheel/reset, sound/playhead, and hover. Embedded VST3 numeric
   entry: double-click knob/fader or value; Enter/numpad Enter commit, Escape
@@ -123,10 +118,10 @@ Checks:
 [Dev Container](../../.devcontainer/devcontainer.json) supplies display `:1`, noVNC, dummy JACK, Mesa and UI tools. Run `desktop-health`; use `desktop-health --dialogs` after portal changes.
 Avoid concurrent mouse input.
 
-`bash .devcontainer/scripts/test-plugin.sh` builds VST3/LV2, runs CTest/`lv2info`, launches Carla LV2, clicks ARM, and captures to ignored `build/gui-test/`; `--keep-open` enables interaction. `screenshot-window WINDOW_ID OUTPUT.png` captures windows; resolve IDs after relaunch/resize.
+`bash .devcontainer/scripts/test-plugin.sh` builds VST3/LV2, runs CTest/`lv2info`, launches Carla LV2, clicks ARM, and captures to ignored `build/gui-test/`; `--keep-open` enables interaction. Capture with `screenshot-window WINDOW_ID OUTPUT.png`; resolve IDs after relaunch/resize.
 
 Inspect screenshots; exclude private data/unrelated windows.
 
-VST3: `carla-single native vst3 "$PWD/build/bin/SMS-AnvilleSampler.vst3"`. Import a WAV, check Sample Editor pads and waveform/settings, exercise Split Sample or Adjust Cut Points, then save/reload after deleting the WAV. Compare audio/editor values.
+VST3: `carla-single native vst3 "$PWD/build/bin/SMS-AnvilleSampler.vst3"`. Import WAV; check pads, waveform/settings, Split Sample or Adjust Cut Points. Save/reload after deleting the WAV; compare audio/editor values.
 
 Report host/rate/buffer/results/skips.
