@@ -1357,6 +1357,7 @@ bool SamplerEngine::rechopPads(const std::uint32_t firstPad, const std::uint32_t
     }
     moved[padCount] = edges[padCount];
     std::array<Storage*, kPadsPerBank> replacements{};
+    std::array<sms::dsp::SamplePlaybackSettings, kPadsPerBank> playback{};
     std::uint32_t required = 0;
     for (std::uint32_t i = 0; i < padCount; ++i) {
         if (moved[i + 1U] < moved[i] || moved[i + 1U] - moved[i] > max_frames_) return false;
@@ -1365,6 +1366,30 @@ bool SamplerEngine::rechopPads(const std::uint32_t firstPad, const std::uint32_t
         staged.frames = static_cast<std::uint32_t>(moved[i + 1U] - moved[i]);
         required += (staged.frames + kSampleBlockFrames - 1U) / kSampleBlockFrames;
         if (!staged.frames) continue;
+        const bool changed = moved[i] != edges[i] || moved[i + 1U] != edges[i + 1U];
+        if (!changed) {
+            playback[i] = snapshots[i].playback;
+        } else if (snapshots[i].metadata.frames) {
+            // Stored markers follow local playback direction. Rebase in raw
+            // source coordinates; global Reverse does not change stored markers.
+            const bool reverse = snapshots[i].mixer.reverse >= 0.5f;
+            const auto original = reverse ? sms::dsp::mirroredRegion(snapshots[i].playback)
+                                          : snapshots[i].playback;
+            const double oldFrames = snapshots[i].metadata.frames;
+            const double start = (static_cast<double>(edges[i]) + original.start * oldFrames -
+                                  static_cast<double>(moved[i])) / staged.frames;
+            const double end = (static_cast<double>(edges[i]) + original.end * oldFrames -
+                                static_cast<double>(moved[i])) / staged.frames;
+            // Edge markers follow the new edge. Interior markers keep their
+            // source positions while inside the new slice, otherwise reset only
+            // that marker. ADSR retains the changed-pad default/reset policy.
+            if (original.start != 0.0f && start >= 0.0 && start < 1.0)
+                playback[i].start = static_cast<float>(start);
+            if (original.end != 1.0f && end > 0.0 && end <= 1.0)
+                playback[i].end = static_cast<float>(end);
+            playback[i] = sms::dsp::sanitize(playback[i]);
+            if (reverse) playback[i] = sms::dsp::mirroredRegion(playback[i]);
+        }
         staged.stereo.resize(static_cast<std::size_t>(staged.frames) * 2U);
         double squares = 0;
         std::uint32_t sourcePad = 0;
@@ -1396,8 +1421,7 @@ bool SamplerEngine::rechopPads(const std::uint32_t firstPad, const std::uint32_t
         for (std::uint32_t i = 0; i < padCount; ++i) releasePadBlocks(firstPad + i);
         for (std::uint32_t i = 0; i < padCount; ++i) {
             publishStorage(firstPad + i, replacements[i], false);
-            const bool changed = (i > 0U && boundaryOffsets[i - 1U] != 0) || (i + 1U < padCount && boundaryOffsets[i] != 0);
-            setPadPlaybackSettingsDirect(firstPad + i, !replacements[i] || changed ? sms::dsp::SamplePlaybackSettings{} : snapshots[i].playback);
+            setPadPlaybackSettingsDirect(firstPad + i, playback[i]);
             if (replacements[i]) setPadMixerSettingsDirect(firstPad + i, snapshots[i].mixer);
         }
         for (std::uint32_t i = 0; i < padCount; ++i) PadMutation::finish(pads_[firstPad + i]);

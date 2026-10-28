@@ -378,8 +378,9 @@ void rechop_and_raw_preview() {
     close(movedLeft.stereo[10], 6.0f, "left pad receives the right pad prefix");
     close(movedRight.stereo[0], 7.0f, "right pad begins at the moved boundary");
     const auto reset = engine.padPlaybackSettings(0);
-    check(reset.start == 0.0f && reset.end == 1.0f && reset.attackSeconds == 0.0f,
-          "rechop resets pad cuts and ADSR");
+    close(reset.start, 0.5f, "rechop keeps reversed Start at its original source position");
+    close(reset.end, 5.0f / 6.0f, "rechop keeps reversed End at its original source position");
+    check(reset.attackSeconds == 0.0f, "rechop resets ADSR on changed pads");
     check(engine.padPlaybackSettings(2).start == shaped.start &&
           engine.padPlaybackSettings(2).attackSeconds == shaped.attackSeconds,
           "rechop preserves shaping on pads untouched by moved boundaries");
@@ -546,6 +547,126 @@ void rechop_and_raw_preview() {
     const std::array<std::int64_t, 2> outsideSource{{-7, 0}};
     check(!engine.rechopPads(0, 3, outsideSource),
           "rechop rejects a cut outside the source");
+}
+
+void rechop_preserves_source_markers()
+{
+    struct Case {
+        std::array<std::int64_t, 2> offsets;
+        std::array<float, 3> starts, ends; // positions in the concatenated raw source
+    };
+    const std::array cases{
+        Case{{0, 0}, {25, 125, 225}, {75, 175, 275}},
+        Case{{10, 0}, {25, 125, 225}, {75, 175, 275}},
+        Case{{-10, 0}, {25, 125, 225}, {75, 175, 275}},
+        Case{{0, 10}, {25, 125, 225}, {75, 175, 275}},
+        Case{{0, -10}, {25, 125, 225}, {75, 175, 275}},
+        Case{{30, 0}, {25, 130, 225}, {75, 175, 275}},
+        Case{{-30, 0}, {25, 125, 225}, {70, 175, 275}},
+        Case{{0, 30}, {25, 125, 230}, {75, 175, 275}},
+        Case{{0, -30}, {25, 125, 225}, {75, 170, 275}},
+        Case{{10, -10}, {25, 125, 225}, {75, 175, 275}},
+        Case{{30, -30}, {25, 130, 225}, {75, 170, 275}},
+        Case{{25, 0}, {25, 125, 225}, {75, 175, 275}},
+        Case{{-25, 0}, {25, 125, 225}, {75, 175, 275}},
+        Case{{75, 0}, {25, 175, 225}, {75, 200, 275}},
+        Case{{-75, 0}, {0, 125, 225}, {25, 175, 275}},
+        Case{{0, 75}, {25, 125, 275}, {75, 175, 300}},
+        Case{{0, -75}, {25, 100, 225}, {75, 125, 275}},
+    };
+    for (const bool reverse : {false, true}) {
+        for (const bool globalReverse : {false, true}) {
+            for (const unsigned edgeMarkers : {0U, 1U, 2U, 3U}) {
+                for (const auto& c : cases) {
+                    midichopper::SamplerEngine engine(1000.0, 1.0);
+                    auto settings = engine.settings();
+                    settings.reverse = globalReverse;
+                    engine.setSettings(settings);
+                    sms::dsp::SamplePlaybackSettings shaped{0.25f, 0.75f, 0.1f, 0.2f, 0.4f, 0.3f};
+                    if (edgeMarkers & 1U) shaped.start = 0.0f;
+                    if (edgeMarkers & 2U) shaped.end = 1.0f;
+                    if (reverse) shaped = sms::dsp::mirroredRegion(shaped);
+                    sms::dsp::SampleMixerSettings mix;
+                    mix.reverse = reverse ? 1.0f : 0.0f;
+                    mix.gainDecibels = -6.0f;
+                    std::vector<float> original;
+                    for (std::uint32_t pad = 0; pad < 3; ++pad) {
+                        midichopper::PadData data;
+                        data.sampleRate = 1000;
+                        data.frames = 100;
+                        for (std::uint32_t frame = 0; frame < 100; ++frame) {
+                            const float value = static_cast<float>(pad * 100 + frame);
+                            data.stereo.push_back(value);
+                            data.stereo.push_back(-value);
+                        }
+                        original.insert(original.end(), data.stereo.begin(), data.stereo.end());
+                        check(engine.importPad(pad, data), "seed source-marker regression");
+                        engine.setPadPlaybackSettings(pad, shaped);
+                        engine.setPadMixerSettings(pad, mix);
+                    }
+                    check(engine.rechopPads(0, 3, c.offsets), "apply source-marker cut move");
+                    const std::array<std::int64_t, 4> edges{0, 100 + c.offsets[0],
+                                                           200 + c.offsets[1], 300};
+                    std::vector<float> joined;
+                    for (std::uint32_t pad = 0; pad < 3; ++pad) {
+                        auto playback = engine.padPlaybackSettings(pad);
+                        const bool changed = (pad > 0 && c.offsets[pad - 1] != 0) ||
+                                             (pad < 2 && c.offsets[pad] != 0);
+                        check(playback.attackSeconds == (changed ? 0.0f : shaped.attackSeconds) &&
+                              playback.decaySeconds == (changed ? 0.0f : shaped.decaySeconds) &&
+                              playback.sustainLevel == (changed ? 1.0f : shaped.sustainLevel) &&
+                              playback.releaseSeconds == (changed ? 0.0f : shaped.releaseSeconds),
+                              "source-marker preservation keeps existing ADSR reset policy");
+                        if (reverse) playback = sms::dsp::mirroredRegion(playback);
+                        const float frames = static_cast<float>(edges[pad + 1] - edges[pad]);
+                        close(playback.start, (edgeMarkers & 1U) ? 0.0f :
+                              (c.starts[pad] - edges[pad]) / frames,
+                              "Start remains at its source position or resets independently");
+                        close(playback.end, (edgeMarkers & 2U) ? 1.0f :
+                              (c.ends[pad] - edges[pad]) / frames,
+                              "End remains at its source position or resets independently");
+                        const auto mixer = engine.padMixerSettings(pad);
+                        check(mixer.reverse == mix.reverse && mixer.gainDecibels == mix.gainDecibels,
+                              "source-marker preservation retains mixer settings");
+                        midichopper::PadData data;
+                        check(engine.exportPad(pad, data), "export source-marker cut result");
+                        joined.insert(joined.end(), data.stereo.begin(), data.stereo.end());
+                    }
+                    check(joined == original, "source-marker cut moves preserve exact stereo PCM");
+                }
+            }
+        }
+    }
+}
+
+void rechop_repeated_asymmetric_markers()
+{
+    for (const bool reverse : {false, true}) {
+        midichopper::SamplerEngine engine(1000.0, 1.0);
+        const sms::dsp::SamplePlaybackSettings original{0.13f, 0.61f};
+        const auto stored = reverse ? sms::dsp::mirroredRegion(original) : original;
+        for (std::uint32_t pad = 0; pad < 3; ++pad) {
+            midichopper::PadData data;
+            data.sampleRate = 1000;
+            data.frames = 100 + pad * 60;
+            data.stereo.resize(data.frames * 2U, 0.5f);
+            check(engine.importPad(pad, data), "seed unequal pads for repeated marker moves");
+            engine.setPadPlaybackSettings(pad, stored);
+            sms::dsp::SampleMixerSettings mixer;
+            mixer.reverse = reverse ? 1.0f : 0.0f;
+            engine.setPadMixerSettings(pad, mixer);
+        }
+        for (unsigned repeat = 0; repeat < 3; ++repeat) {
+            const std::array<std::int64_t, 2> outward{10, -10}, restore{-10, 10};
+            check(engine.rechopPads(0, 3, outward) && engine.rechopPads(0, 3, restore),
+                  "apply repeated moves against the latest pad baseline");
+            for (std::uint32_t pad = 0; pad < 3; ++pad) {
+                const auto result = engine.padPlaybackSettings(pad);
+                close(result.start, stored.start, "repeated cuts preserve asymmetric Start");
+                close(result.end, stored.end, "repeated cuts preserve asymmetric End");
+            }
+        }
+    }
 }
 
 void rechop_empty_neighbors()
@@ -3185,6 +3306,8 @@ int main() {
     visible_waveform_range();
     sequential_boundaries_and_preroll();
     rechop_and_raw_preview();
+    rechop_preserves_source_markers();
+    rechop_repeated_asymmetric_markers();
     rechop_empty_neighbors();
     long_sample_split_and_roll();
     pad_structure_edits();

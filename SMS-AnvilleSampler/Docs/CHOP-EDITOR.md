@@ -29,7 +29,12 @@ MIDI preview is one-shot, follows every pending cut adjustment, and moves the
 waveform playhead just like clicking a pad button.
 
 **Apply** rewrites the three samples and stays open, disabled until another
-change. Affected non-empty pads reset Start/End/ADSR and preserve Gain/Pan/Tune.
+change. Start/End markers inside a sample stay on the same source audio as cuts
+move. A marker already at an edge follows that edge when the sample grows.
+If a cut passes a marker, only that marker resets to its new edge. A Start
+exactly at the new end or End exactly at the new start also resets so the region
+can play. This works with Reverse too. Changed non-empty pads reset ADSR and
+preserve mixer settings.
 If those pads changed after loading the editor, Apply is rejected and reloads
 the current samples; adjust the cuts again.
 

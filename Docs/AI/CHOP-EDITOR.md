@@ -56,9 +56,14 @@ but the adapter rejects unguarded Apply requests. Durable state stays compatible
 The control worker retains a coherent source snapshot, validates bounds/rates,
 and stages the repartitioned PCM. The callback rechecks generations, Arm, and
 capacity before publishing the complete transaction. Any zero-length result
-clears its pad. Empty results reset settings. Non-empty pads touching a moved
-cut reset Start/End/ADSR but preserve mixer settings; untouched pads retain
-settings. Unrelated audio and monitoring continue. Ownership is specified in
+clears its pad. Empty results reset settings. On non-empty results, Start/End
+retain their raw source positions, rebased to the new length and local direction.
+Markers at source edges follow the new edges. A cut passing an interior marker
+resets only that marker to its corresponding edge; Start at the new end or End
+at the new start also resets to keep a playable region. Global Reverse does not
+change stored markers. Pads touching a moved cut still reset ADSR and preserve
+mixer settings; untouched pads retain settings. Unrelated audio and monitoring
+continue. Ownership is specified in
 [Storage handoff](PAD-STORAGE.md).
 
 `chop_status` matches the request sequence. Completion refreshes the baseline
@@ -83,29 +88,25 @@ Cancellation and failures do not mutate.
 
 ## Validation
 
-- `sampler-core`: cut moves preserve PCM order/frame totals, including empty
-  edge destinations and zero-length results. Raw preview crosses storage
-  boundaries, ignores outside notes, and stops at the proposed cut.
-- `sampler-transfer`: coherent baselines, stale generation rejection, retained
-  readers, and continuous unrelated monitoring/playback during edits.
-- `state-codec`: commands/replies round-trip; malformed versions, counts,
-  ranges, sequences, and generations fail; snapshot replies fit the UI bus.
-- `ui-geometry`: handles, viewport clamping, cached-detail/overview mapping, empty-edge geometry,
-  navigation, previews, coherent session readiness, retry, and stale replies.
-- Pad structure: single/multiple empty-gap collapse, nearest-empty split shifts,
-  mixed source rates, settings movement, midpoint and adjusted splits, stale
-  generation rejection, and 8/12/16-pad visible boundaries.
-- In an LV2 host, right-click a middle pad from the main or Sample Editor view.
-  Test empty/zeroed neighbors, drags, previews, arrows, Exit, and Apply.
-  Apply stays open and disables after refresh. Listen across both edited cuts and
-  confirm shaping resets only on non-empty pads touching a changed cut. Trigger
-  all three displayed pads from MIDI before and after moving both cuts; confirm
-  other notes are silent and do not change the active bank.
-- Right-click an occupied pad with a later empty slot and choose **Split
-  Sample...**. Preview both midpoint halves, adjust the split, cancel once, then
-  Apply. Confirm MIDI for the target and following pad previews the proposed
-  prefix/suffix while other notes remain silent. Confirm later pads shift once,
-  settings follow them, the ordinary editor opens, and hidden/next-bank slots stay intact.
+- `sampler-core`: exact PCM/frame totals, interior/edge/crossed markers under
+  local/global reverse, empty destinations/results, raw preview across storage,
+  outside-note suppression, and cut termination.
+- `sampler-transfer`: coherent baselines, stale generations, retained readers,
+  and unrelated monitoring/playback continuity.
+- `state-codec`: round-trips, malformed fields, and UI-bus reply capacity.
+- `ui-geometry`: handles, viewport/cache mapping, empty edges, navigation,
+  preview, readiness, retries, and stale replies.
+- Pad structure: gap collapse, nearest-empty split shifts, mixed rates, settings
+  movement, adjusted splits, stale generations, and 8/12/16-pad boundaries.
+- LV2: follow the [user workflow](../../SMS-AnvilleSampler/Docs/CHOP-EDITOR.md)
+  from both main and Sample Editor menus, including empty/zeroed neighbors,
+  navigation, cancellation, and Apply refresh. Listen across both cuts; interior
+  markers retain source positions, edge markers follow edges, crossed markers
+  reset independently, and changed pads reset ADSR. Verify displayed MIDI notes
+  before/after edits; other notes stay silent without switching banks.
+- Split: preview midpoint/adjusted halves by buttons and MIDI, cancel, then
+  Apply. Verify one shift, moved settings, ordinary editor opening, and intact
+  hidden/next-bank slots.
 
 ## Limitation
 

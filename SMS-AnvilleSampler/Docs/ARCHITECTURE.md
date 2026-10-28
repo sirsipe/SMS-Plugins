@@ -95,8 +95,9 @@ Durable restoration stages per-pad desired updates without waiting for
 processing; published reads include them, and the next block commits them.
 
 Cut/ADSR and mixer states are versioned. Import resets both; rechopping preserves
-mixers on non-empty results and clears empty-pad settings. The UI matches sequenced waveform/settings replies, rejecting stale replies
-and retrying failures. LV2 DPF state/VST3 direct access carries 128-bin summaries.
+mixers and rebases markers on non-empty results, resets changed-pad ADSR,
+and clears empty-pad settings. The UI matches waveform/settings replies, rejecting stale replies
+and retrying failures. LV2 state/VST3 direct access carries 128-bin summaries.
 Control-worker zoom detail is range/sequence checked; editors reproject cached
 extrema with whole-source fallback. Pad/editor changes reset caches.
 [Editor detail](../../Docs/AI/CHOP-EDITOR.md).

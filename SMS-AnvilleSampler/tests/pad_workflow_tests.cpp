@@ -398,8 +398,11 @@ void chopApplyRevisionAndReplies()
         &sms::audio::RealtimeCommandDispatcher::dispatchFromEngine);
     Observer observer;
     PadWorkflows workflows(engine, dispatcher, observer);
-    for (std::uint32_t pad = 0; pad < 3; ++pad)
+    const sms::dsp::SamplePlaybackSettings shaped{0.25f, 0.75f, 0.1f, 0.2f, 0.4f, 0.3f};
+    for (std::uint32_t pad = 0; pad < 3; ++pad) {
         check(engine.importPad(pad, sample()), "seed chop apply range");
+        engine.setPadPlaybackSettings(pad, shaped);
+    }
 
     std::array<sms::audio::WaveformSummary, 3> summaries{};
     std::array<std::uint64_t, 3> generations{};
@@ -428,9 +431,12 @@ void chopApplyRevisionAndReplies()
         PadData chopped;
         check(engine.exportPublishedPad(pad, chopped), "export chopped PCM");
         choppedJoined.insert(choppedJoined.end(), chopped.stereo.begin(), chopped.stereo.end());
-        checkSettingsReply(observer, engine, pad, engine.padPlaybackSettings(pad),
+        auto expected = shaped;
+        if (pad == 0) expected = {2.0f / 9.0f, 6.0f / 9.0f};
+        if (pad == 1) expected = {1.0f / 7.0f, 5.0f / 7.0f};
+        checkSettingsReply(observer, engine, pad, expected,
                            engine.padMixerSettings(pad),
-                           "successful chop publishes complete settings for every pad");
+                           "successful chop publishes rebased markers and settings for every pad");
     }
     check(choppedJoined == originalJoined,
           "successful chop preserves concatenated source PCM exactly");
