@@ -112,8 +112,7 @@ def package_plugins(build_dir, output_directory, platform, version, formats=None
                          PLUGIN + "_dsp.so", PLUGIN + "_ui.so"):
                 require_file(bundle / name)
         entries = collect_tree(bundle, bundle.name)
-        qualifier = "experimental-" if platform == "Windows" else ""
-        filename = "{}-{}-{}-x64-{}{}.zip".format(PLUGIN, version, platform, qualifier, fmt)
+        filename = "{}-{}-{}-x64-{}.zip".format(PLUGIN, version, platform, fmt)
         packages.append((filename, sorted(entries)))
 
     output_directory.mkdir(parents=True, exist_ok=True)

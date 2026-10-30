@@ -4,16 +4,14 @@
 > 
 > **BETA - PLEASE WAIT FOR v1.0.0 BEFORE USING**
 
-_Professionally developed, **Linux-native** audio plugins._
+_Professionally developed audio plugins for **Linux** (VST3/LV2) and **Windows** (VST3)._
 
-Windows and macOS versions, if provided, are experimental.
 
 ## Plugins
 
 ### [SMS-Anville Sampler](SMS-AnvilleSampler/README.md) — live stereo chopping sampler
-Available as
-- Linux: **VST3** (preferred), LV2
-- Windows VST3 (experimental)
+
+[Read More!](SMS-AnvilleSampler/README.md)
 
 [<img src="SMS-AnvilleSampler/Docs/main-view.png" width="672" alt="Default Main View">](SMS-AnvilleSampler/Docs/main-view.png)
 

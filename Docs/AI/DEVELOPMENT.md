@@ -40,7 +40,7 @@ installed bundles.
 Use a fresh ignored `build-*` directory if an existing CMake cache uses a
 different source path or generator. Avoid repeatedly rebuilding unchanged code.
 
-Windows VST3 releases are experimental; macOS releases remain deferred.
+Windows VST3 is supported; macOS releases remain deferred.
 Prerequisites, native build commands, remaining gaps and validation live in
 [Platform builds](PLATFORM-BUILDS.md).
 
@@ -63,8 +63,8 @@ also checks the shared `defaults-file` parser, bounded atomic merges and
 concurrent writers, plus [layout/bank-mode preferences](LAYOUT-PREFERENCE.md)
 serialization, failures and sibling-key preservation. Global knob startup/host
 state checks run in the full Unix adapter suites; see [testing](TESTING.md). Windows
-persistence requires Windows 10 version 1607 or newer. They do not validate a
-native DAW/editor or establish Windows/macOS plugin release support.
+persistence requires Windows 10 version 1607 or newer. These filesystem tests
+do not exercise a native DAW/editor; host checks remain separate.
 
 ## Docker development environment
 

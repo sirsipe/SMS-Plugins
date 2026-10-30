@@ -1,8 +1,8 @@
-# Windows CI and deferred platform releases
+# Windows builds and deferred macOS releases
 
 Build support and native-host validation for maintainers and agents.
 Releases include Linux x64 VST3/LV2
-and unsigned experimental Windows x64 VST3. macOS
+and supported, unsigned Windows x64 VST3. macOS
 releases remain deferred pending the native-host checks below.
 
 ## Findings
@@ -37,10 +37,9 @@ default 1344x756 editor and host behavior need explicit testing.
 ## Windows runtime requirements
 
 Target Windows 10 (1607+) or Windows 11, with a 64-bit VST3 host and graphics
-driver providing OpenGL 2.x compatibility. Native client/DAW validation remains
-pending. Windows 7 is not a supported target; skin preference replacement uses
-the Windows 10 rename path without a legacy fallback. This does not establish
-that the plugin cannot load on Windows 7.
+driver providing OpenGL 2.x compatibility.
+Windows 7 is unsupported; skin preference replacement requires Windows 10
+rename semantics.
 
 Keep the complete VST3 bundle. WebView2, Python, CMake and SDKs are not runtime
 dependencies. The configured MSVC CI build uses a static C++ runtime. Audio
@@ -59,11 +58,11 @@ drivers are managed by the host; the plugin requires no ASIO component itself.
   AU still needs installation and packaging support.
 - MSVC DGL consumers must inherit Khronos includes through
   `dgl-system-libs-definitions`. Rerun native Windows CI after build-script
-  changes; native DAW/macOS full-plugin validation remains pending.
-- There is no Windows/macOS DAW validation, universal-macOS check, signing, or
-  notarization workflow.
+  changes; macOS full-plugin validation remains pending.
+- CI does not automate DAW validation. There is no universal-macOS check,
+  signing, or notarization workflow.
 
-## Proposed enablement
+## Windows CI and local builds
 
 [Windows CI](../../.github/workflows/windows-ci.yml) runs on push to `main` or `win-vst3`, pull
 requests, or manual dispatch. It uses GitHub's
@@ -78,7 +77,7 @@ The workflow builds VST3 only, runs all CTest tests, verifies bundle binary,
 all bundled skin and template paths, and checks LV2 was not produced. The static
 MSVC runtime avoids a separate Visual C++ redistributable for these artifacts.
 Push/PR runs retain no bundles; manual runs upload a ZIP, source and checksums
-for 14 days. The release workflow reuses this job for experimental Windows
+for 14 days. The release workflow reuses this job for Windows
 assets. See [release packaging](../RELEASING.md).
 
 With the same prerequisites, the native Windows x64 commands are:
@@ -95,7 +94,9 @@ ctest --test-dir build-win -C Release --output-on-failure
 Expected output is `build-win/bin/SMS-AnvilleSampler.vst3`, including
 `Contents/x86_64-win/SMS-AnvilleSampler.vst3`.
 
-For macOS, first add `ANVILLESAMPLER_BUILD_AU` (default OFF, rejected unless
+## Deferred macOS builds
+
+First add `ANVILLESAMPLER_BUILD_AU` (default OFF, rejected unless
 `APPLE`) and install rules for enabled bundles, preserving Linux defaults.
 A prospective native universal macOS build is:
 
@@ -114,7 +115,10 @@ Expected outputs are `SMS-AnvilleSampler.vst3` and
 `SMS-AnvilleSampler.component` under `build-mac/bin`. Choose and document the
 minimum macOS version from actual host coverage; do not guess it from the SDK.
 
-## Acceptance before claiming support
+## Release regression checks and macOS acceptance
+
+Use these checks for Windows release regressions and before enabling macOS releases.
+Record tested host versions and outcomes in the release issue or PR.
 
 - Run CTest natively on every shipped architecture and validate bundle layout.
 - Exercise audio input, MIDI capture/playback, UI, parameter changes and
@@ -128,5 +132,4 @@ minimum macOS version from actual host coverage; do not guess it from the SDK.
 - Verify both slices of a universal macOS bundle and establish Apple
   code-signing/notarization before distribution. Windows signing remains deferred.
 - Add remaining macOS CI, signing, installation documentation and platform
-  release publishing only after native-host checks pass. Windows artifacts
-  remain unsigned and experimental until native-host validation passes.
+  release publishing only after native-host checks pass.

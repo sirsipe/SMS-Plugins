@@ -5,11 +5,10 @@ must never push branches/tags, publish releases, or trigger publishing workflows
 
 GitHub Actions builds and tests SMS-Anville Sampler on every push to `main` and on
 every pull request. A separate documentation job checks links, indexing, and
-size limits. Push and pull-request builds do not retain artifacts. Manually
-dispatched Ubuntu and Windows CI builds retain test artifacts for 14 days. Workflow
-definitions live in [.github/workflows](../.github/workflows/).
+size limits. Push and pull-request builds do not retain artifacts. Workflows
+live in [.github/workflows](../.github/workflows/).
 
-Releases include Linux x64 VST3/LV2 and experimental Windows x64 VST3.
+Releases include Linux x64 VST3/LV2 and Windows x64 VST3.
 CI and packaging exclude CLAP following the sample editor failure in
 [issue #80](https://github.com/sirsipe/SMS-Plugins/issues/80).
 Opt-in local CLAP builds remain available for development.
@@ -30,7 +29,7 @@ matching source archive, and `SHA256SUMS.txt`. Extract the whole
 `SMS-AnvilleSampler.vst3` folder, including `Contents`, `licenses`, `skins` and
 `skin-template`. Windows CI runs CTest and bundle checks;
 it does not establish native DAW compatibility. The release workflow reuses this
-job to publish experimental Windows assets after both platform builds pass.
+job to publish Windows assets after both platform builds pass.
 Prerequisites and configuration live in [platform builds](AI/PLATFORM-BUILDS.md).
 
 The manual control becomes available after the workflow containing it is on the
@@ -43,8 +42,8 @@ To publish a release:
    `SMS-AnvilleSampler/CMakeLists.txt` and commit them. Use an empty prerelease
    string for a stable release. Hosts receive the numeric version; the UI, tags
    and packages include the suffix, for example `0.1.0-beta.1`.
-2. Push the reviewed commit to `main`; wait for Ubuntu CI and Documentation
-   checks to pass on that commit.
+2. Push the reviewed commit to `main`; wait for Ubuntu CI, Windows CI and
+   Documentation checks to pass on that commit.
 3. From that commit, create and push the exact full version tag:
 
    ```bash
@@ -59,17 +58,18 @@ CI for fresh builds and tests. Publishing waits for both jobs and produces:
 ```text
 SMS-AnvilleSampler-vX.Y.Z-Linux-x64-vst3.zip
 SMS-AnvilleSampler-vX.Y.Z-Linux-x64-lv2.zip
-SMS-AnvilleSampler-vX.Y.Z-Windows-x64-experimental-vst3.zip
+SMS-AnvilleSampler-vX.Y.Z-Windows-x64-vst3.zip
 ```
 
 Suffixes such as `-beta.1` are preserved in all names. Suffixed versions publish
 as GitHub prereleases without replacing Latest; stable versions become Latest.
+Windows builds remain unsigned. Older releases retain their original asset names.
 
 Each platform also supplies its matching `*-source.tar.gz`; one `SHA256SUMS.txt`
 covers all five archives. Windows source includes its additional Khronos headers.
 Release builds embed the tag as Online Help's reference; ordinary builds use
 `main`. No manual upload is needed. Installation instructions are in the
-[plugin guide](../SMS-AnvilleSampler/README.md#install-a-release).
+[plugin guide](../SMS-AnvilleSampler/README.md#how-to-install).
 
 [ZIP packaging](../scripts/package_plugins.py) puts exactly one folder at the
 archive root. VST3/LV2 preserve their complete bundles. Local preview:

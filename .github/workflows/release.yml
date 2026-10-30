@@ -63,7 +63,7 @@ jobs:
 
       - name: Verify release assets and combine checksums
         run: |
-          for suffix in Linux-x64-vst3.zip Linux-x64-lv2.zip Windows-x64-experimental-vst3.zip Linux-x64-source.tar.gz Windows-x64-source.tar.gz; do
+          for suffix in Linux-x64-vst3.zip Linux-x64-lv2.zip Windows-x64-vst3.zip Linux-x64-source.tar.gz Windows-x64-source.tar.gz; do
             test -s "dist/SMS-AnvilleSampler-${RELEASE_VERSION}-${suffix}"
           done
           python3 scripts/package_plugins.py --output-directory dist --checksums-only
@@ -73,8 +73,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cat > release-notes.txt <<'EOF'
-          Download the ZIP for your platform and format. Linux VST3 is preferred;
-          Windows VST3 is experimental.
+          Download the ZIP for your platform and format. VST3 is preferred;
+          Linux LV2 is also available. Windows VST3 builds are unsigned.
 
           Extract and copy the whole plugin folder, including skins and licenses:
           - Linux VST3: `~/.vst3/`

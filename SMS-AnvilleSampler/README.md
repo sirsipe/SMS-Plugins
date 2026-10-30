@@ -1,17 +1,27 @@
 # SMS-Anville Sampler
 
 > [!WARNING]
-> 
+>
 > **BETA - PLEASE WAIT FOR v1.0.0 BEFORE USING**
 
-_Stereo chopping sampler._ [Downloads](https://github.com/sirsipe/SMS-Plugins/releases).
- - Linux VST3 (preferred)
- - Linux LV2
- - Windows VST3 (experimental)
+_Stereo chopping sampler that focuses on simplicity, usability, and professional-grade realtime engine._
+
+Available in [Releases](https://github.com/sirsipe/SMS-Plugins/releases):
+
+- Linux 64bit VST3
+- Linux 64bit LV2[^lv2]
+- Windows 64bit VST3
+
+[^lv2]: VST3 is recommended: it has gone through more testing and seems to have better performance in some hosts.
+
+Should work in any VST3 supporting DAW, but especially tested in:
+
+* Linux: **REAPER**, **Ardour**, **Carla**.
+* Windows: **Cubase**.
 
 
 
-> Thanks to **Manolo Anville** ([@ManoloAnville](https://github.com/ManoloAnville)).
+> Thanks to **Manolo Anville** ([@ManoloAnville](https://github.com/ManoloAnville)) for extensive collaboration!
 
 [<img src="Docs/main-view.png" width="672" alt="Default Main View">](Docs/main-view.png)
 
@@ -25,18 +35,9 @@ _Stereo chopping sampler._ [Downloads](https://github.com/sirsipe/SMS-Plugins/re
 
 Captures: v0.0.13, except where noted.
 
-**VST3 preferred** for GUI/testing. LV2 is mostly AI-tested; Windows VST3 has minimal testing.
 
-Tested in **REAPER**, **Ardour**, **Carla**.
 
-- MIDI capture/chop or sample loading; waveform editing and splitting.
-- Pad/global FX: per-pad Forward/Reverse, Gain, Pan, Dirty, Tune and filters; per-sample ADSR.
-- 2x4/3x4/4x4 pads; four MIDI banks; pad colors.
-- VST3 presets transfer samples/settings between Ardour and REAPER; Carla lacks support.
-
-> Pre-1.0 sessions have no compatibility guarantee. See the [release policy](../Docs/RELEASING.md#public-version-compatibility).
-
-## Install a release
+## How to Install
 
 Download your format's ZIP from [Releases](https://github.com/sirsipe/SMS-Plugins/releases).
 Extract it and copy the **whole folder**, including skins and licenses:
@@ -45,29 +46,51 @@ Extract it and copy the **whole folder**, including skins and licenses:
 | --- | --- | --- |
 | Linux VST3 | `SMS-AnvilleSampler.vst3` | `~/.vst3/` |
 | Linux LV2 | `SMS-AnvilleSampler.lv2` | `~/.lv2/` |
-| Windows experimental VST3 | `SMS-AnvilleSampler.vst3` | `C:\Program Files\Common Files\VST3\` |
+| Windows VST3 | `SMS-AnvilleSampler.vst3` | `C:\Program Files\Common Files\VST3\` |
 
 Create missing destination folders. Restart your DAW or rescan plugins.
 Linux x64 builds use Ubuntu 24.04; other distributions remain unverified.
-Windows builds are unsigned; native DAW validation remains pending.
+Windows builds are unsigned. See [Windows runtime requirements](../Docs/AI/PLATFORM-BUILDS.md#windows-runtime-requirements).
 
-## Basic Usage
+## General Walkthrough
 
-1. Insert on a REAPER instrument track with stereo audio/MIDI, or an Ardour
-   MIDI track with stereo sidechain. Rescan if listed as FX.
-   For VST3 hosts with dedicated sidechain routing, enable the instrument's
-   sidechain input and send stereo audio to it.
+Host-specific setup: [REAPER guide](Docs/REAPER.md).
 
-2. Press **ARM** (red circle) to arm; release for PLAY. Indicators are red
-   ARMED and green PLAY by default; skins can recolor them. The first empty pad is selected; click another while idle.
+1. **Connect MIDI and audio.** Load the sampler on an instrument/MIDI track,
+   route your controller to it, and enable track arming/monitoring as needed.
+   For capture, also route stereo audio to its input/sidechain.
 
-3. **Any MIDI note-on or Space press starts the first slice.** Later taps close
-   the current slice and continue at the next pad.
+2. **Match your controller.** Choose **☰ → Pad Layout**. **Bank Mode → SELECTED ·
+   SHARED** reuses the same notes for whichever bank you select; **ALL BANKS ·
+   UNIQUE** gives each bank its own range.
 
-4. **FINALIZE** or releasing **ARM** keeps the open slice. **UNDO** discards the
-   open/last slice; **CLEAR PADS** clears banks after confirmation.
+3. **Load or capture samples.** Right-click a pad for **Import WAV...** to load a
+   [compatible file](Docs/WAV-FILES.md). For live chopping, check the input meter,
+   enable **ARM**, and use Sequential capture. Click a pad to choose the starting
+   destination. Focus the plugin and press
+   **Space**, or send any MIDI note-on, to start recording. Each later press/note
+   closes a slice and starts the next. Choose **Finalize** or leave ARM to keep
+   the last slice. **Monitor Auto** lets you hear the input while armed.
 
-5. Right-click a pad to edit, split, or adjust neighbouring cuts.
+4. **Shape the pads.** Open **Sample Editor** for Start/End, ADSR and pad mixing.
+   Right-click for **Split Sample...** or **Adjust cut points**. See the
+   [cut-point guide](Docs/CHOP-EDITOR.md) and
+   [mixing guide](Docs/MIXING.md).
+
+5. **Perform and save.** Leave ARM to play pads with MIDI or clicks. Choose
+   **One Shot** or **Hold**, select banks, and adjust global effects.
+   Save your DAW project to retain samples and settings; host presets can also
+   store arrangements where supported.
+
+## MIDI control and automation
+
+Use your DAW's MIDI Learn to bind hardware controls to global parameters. To
+record movements, arm the parameter envelopes and select the host's automation
+writing mode; return to playback mode afterward. Per-pad mixer/FX controls are
+not exposed for host MIDI Learn or automation. Follow the
+[REAPER MIDI Learn and automation steps](Docs/REAPER.md#midi-learn) for an example.
+
+## Views and Menus
 
 ### ARM view
 
@@ -75,18 +98,11 @@ Windows builds are unsigned; native DAW validation remains pending.
 
 ### Menus
 
-![Context menu](Docs/context-menu.png)
+#### Hamburger [☰]
 
-Hamburger: **PAD LAYOUT**, **BANK MODE**, **SKIN**, **CLEAR PADS**, **LINKS**. Online Help opens this guide; Report Issue opens issues.
+**PAD LAYOUT**, **BANK MODE**, **SKIN**, **CLEAR PADS**, **LINKS**. Online Help opens this guide; Report Issue opens issues.
 
-Click **CLEAR PADS**, then **Confirm: CLEAR PADS** within two seconds to clear
-all banks' audio, pad edits, colors, and clipboard. Global control values,
-knob settings, layout, bank mode, skin, and editor audition mode remain.
-Dismissing the menu or choosing another item cancels confirmation. CLEAR PADS
-is unavailable during pad operations.
-
-**All Banks** (default) uses unique notes for gapless play; **Selected Bank** shares
-notes within the active bank. All Banks base note is limited to 64.
+![Hamburger menu](Docs/hamburger-menu.png)
 
 Layouts preserve samples. Explicit menu choices remember startup defaults in
 `SMS-AnvilleSampler/defaults.ini`, beside the
@@ -97,9 +113,22 @@ file. LV2 normally initializes layout/bank mode to 16 pads/All Banks. Missing
 or invalid choices use factory defaults. Old separate preference files are
 ignored; previous startup selections must be chosen again.
 
-![Hamburger menu](Docs/hamburger-menu.png)
+BANK MODE → **All Banks** (default) uses unique notes for gapless play; **Selected Bank** shares notes within the active bank. All Banks base note is limited to 64.
 
-### Knob settings
+
+Click **CLEAR PADS**, then **Confirm: CLEAR PADS** within two seconds to clear
+all banks' audio, pad edits, colors, and clipboard. Global control values,
+knob settings, layout, bank mode, skin, and editor audition mode remain.
+Dismissing the menu or choosing another item cancels confirmation. CLEAR PADS
+is unavailable during pad operations.
+
+
+#### Pad Context menu
+
+![Context menu](Docs/context-menu.png)
+
+
+#### Knob settings
 
 Right-click global **PAN**, **TUNE**, **LOWPASS**, **HIGHPASS**, or the **OUT**
 fader to open **Settings: <control>**. These settings belong to that control;
@@ -142,27 +171,6 @@ save with the DAW session as private plugin state without extra automation
 parameters. Explicit choices also become startup defaults for new instances;
 CLEAR PADS preserves them. Host controls still expose their original ranges,
 while the plugin shows the interpreted values.
-
-### MIDI control and automation
-
-Use the DAW's MIDI Learn to bind controllers to global controls and record
-parameter automation. Plugin MIDI Learn was tried in REAPER, Ardour, and Carla,
-but did not provide a satisfactory automation workflow. It remains an unfinished
-experiment on `feature/midi-learn`; main uses the DAW's learning facilities.
-
-In **REAPER**, move the plugin knob with the mouse, then choose **Param → Learn**
-and move the controller. This targets the last touched control without searching
-the full parameter list. In **Ardour**, learn through its generic plugin editor
-or the parameter's automation-lane control. Enable the appropriate automation
-write/touch mode to record movements.
-
-Ardour's Generic MIDI pickup can stall TUNE because of rounding. Enabling
-**Motorised** in the Generic MIDI protocol settings bypasses pickup; controls
-can then jump to the controller's position.
-
-The pinned DPF wrapper does not honor the hidden-parameter hint in VST3/CLAP,
-so internal controls may appear in host lists. Its 2,080 MIDI proxy parameters
-are separate and already flagged hidden. [Technical findings](../Docs/AI/MIDI-CONTROL.md).
 
 ### Sample Editor view
 
@@ -247,7 +255,8 @@ length slice per note-on.
 6 dB/octave filter slopes.
 
 - Pad actions: copy/paste/import/export/clear/split/collapse gaps.
-  Split/Collapse Gap stay within the active bank; copies can cross banks.
+  Split can shift pads across following banks; Collapse Gap stays within the
+  active bank. Copies can cross banks.
 
 - Right-click a pad for **Color**; tint persists when empty.
 

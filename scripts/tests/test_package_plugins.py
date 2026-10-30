@@ -113,15 +113,20 @@ class PluginPackagingTests(unittest.TestCase):
 
     def test_windows_cli_default_layout(self):
         self.fixture("Windows", ("vst3",))
-        subprocess.run([sys.executable, str(SCRIPT), "--build-dir", str(self.build),
-                        "--output-directory", str(self.output), "--platform", "Windows",
-                        "--version", "abcdef012345", "--source-date-epoch", str(PACKAGER.DEFAULT_EPOCH)],
-                       check=True)
-        archive = self.output / (PLUGIN + "-abcdef012345-Windows-x64-experimental-vst3.zip")
         bundle = self.bin / (PLUGIN + ".vst3")
         expected = {path.relative_to(self.bin).as_posix(): path
                     for path in bundle.rglob("*") if path.is_file()}
-        self.assert_tree(archive, expected, bundle.name)
+        for version in ("abcdef012345", "v1.2.3", "v0.9.1-beta.1"):
+            with self.subTest(version=version):
+                subprocess.run([sys.executable, str(SCRIPT), "--build-dir", str(self.build),
+                                "--output-directory", str(self.output), "--platform", "Windows",
+                                "--version", version,
+                                "--source-date-epoch", str(PACKAGER.DEFAULT_EPOCH)], check=True)
+                archive = self.output / (PLUGIN + "-" + version + "-Windows-x64-vst3.zip")
+                self.assert_tree(archive, expected, bundle.name)
+        self.assertEqual({path.name for path in self.output.iterdir()}, {
+            PLUGIN + "-" + version + "-Windows-x64-vst3.zip"
+            for version in ("abcdef012345", "v1.2.3", "v0.9.1-beta.1")})
 
     def test_beta_version_is_preserved_in_all_asset_names(self):
         self.fixture()

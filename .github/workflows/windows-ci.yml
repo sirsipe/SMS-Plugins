@@ -113,7 +113,7 @@ jobs:
           if (Test-Path 'build-win/bin/SMS-AnvilleSampler.vst3/skin') { throw 'Unexpected forced skin' }
           if (Test-Path 'build-win/bin/SMS-AnvilleSampler.lv2') { throw 'Unexpected LV2 output' }
 
-      - name: Package experimental VST3 ZIP and matching source
+      - name: Package VST3 ZIP and matching source
         if: github.event_name == 'workflow_dispatch' || inputs.package-version != ''
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null

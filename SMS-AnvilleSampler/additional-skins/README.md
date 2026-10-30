@@ -40,7 +40,7 @@ installed plugin's existing skins:
 | --- | --- |
 | Linux VST3 | `~/.vst3/SMS-AnvilleSampler.vst3/skins/` |
 | Linux LV2 | `~/.lv2/SMS-AnvilleSampler.lv2/skins/` |
-| Windows VST3 (experimental) | `C:\Program Files\Common Files\VST3\SMS-AnvilleSampler.vst3\skins\` |
+| Windows VST3 | `C:\Program Files\Common Files\VST3\SMS-AnvilleSampler.vst3\skins\` |
 
 Use your actual installation location if it differs.
 
