@@ -14,6 +14,9 @@ if(MSVC)
   target_compile_options(sms_common_ui INTERFACE /utf-8)
 endif()
 target_link_libraries(sms_common_ui INTERFACE sms_file_io)
+if(WIN32)
+  target_link_libraries(sms_common_ui INTERFACE shell32 ole32)
+endif()
 
 target_include_directories(sms_common_ui INTERFACE
   "${CMAKE_CURRENT_SOURCE_DIR}"

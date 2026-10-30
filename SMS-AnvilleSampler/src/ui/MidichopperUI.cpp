@@ -59,6 +59,7 @@
 #include "PadLayout.hpp"
 #include "LayoutPreference.hpp"
 #include "BankModePreference.hpp"
+#include "BrowserLauncher.hpp"
 #include "KnobPreference.hpp"
 #include "WaveformEditor.hpp"
 #include "WaveformViewport.hpp"
@@ -89,50 +90,18 @@
 #include <optional>
 #include <limits>
 
-#if defined(__linux__)
-# include <cerrno>
-# include <spawn.h>
-# include <sys/wait.h>
-extern char** environ;
-#endif
-
 START_NAMESPACE_DISTRHO
 
 namespace {
 
 using namespace midichopper::plugin;
+using sms::ui::openBrowser;
 namespace uiLayout = midichopper::ui::layout;
 using WaveformEditTarget = sms::ui::waveform::EditTarget;
 
 inline constexpr auto kClearConfirmationTimeout = std::chrono::seconds(2);
 inline constexpr auto kMeterFrameInterval = std::chrono::milliseconds(33);
 inline constexpr auto kEditorSnapshotRetryInterval = std::chrono::milliseconds(250);
-
-[[nodiscard]] bool openBrowser(const char* const url)
-{
-#if defined(__linux__)
-    // The shell only starts xdg-open in the background; wait for the short-lived
-    // shell so the host never inherits an unreaped child. The URL is passed as
-    // a positional argument and is never parsed as shell code.
-    char* const args[] = {
-        const_cast<char*>("sh"), const_cast<char*>("-c"),
-        const_cast<char*>("command -v xdg-open >/dev/null 2>&1 || exit 127; "
-                          "xdg-open \"$1\" >/dev/null 2>&1 &"),
-        const_cast<char*>("sh"), const_cast<char*>(url), nullptr};
-    pid_t child = 0;
-    if (posix_spawnp(&child, "sh", nullptr, nullptr, args, environ) != 0)
-        return false;
-    int status = 0;
-    while (waitpid(child, &status, 0) < 0) {
-        if (errno != EINTR)
-            return false;
-    }
-    return WIFEXITED(status) && WEXITSTATUS(status) == 0;
-#else
-    (void)url;
-    return false;
-#endif
-}
 
 [[nodiscard]] midichopper::ui::KnobAdjustment knobAdjustment(
     const uint modifiers) noexcept

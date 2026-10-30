@@ -11,6 +11,9 @@ Consumers link `sms_common_ui` to inherit shared include paths and the compiled
 `sms_file_io` platform library. Other shared UI components remain headers.
 
 - `DPF/NanoUI.hpp`: logical-canvas scaling and repaint lifecycle.
+- `BrowserLauncher.hpp`: UI-thread browser dispatch through Windows
+  `ShellExecuteW` (UTF-8 URLs) or Linux `xdg-open`; reports launch failures.
+  Other platforms currently return failure.
 - `Skin.hpp`: bounded versioned INI snapshots, UTF-8 text/checked-format lookup, and confined
   image paths; framework-neutral and used only outside audio processing.
   Decimal metrics use classic-locale streams, supporting Xcode 15 libc++ without

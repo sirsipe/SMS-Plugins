@@ -406,6 +406,11 @@ if(BUILD_TESTING)
   target_link_libraries(anvillesampler_ui_geometry_tests PRIVATE sms_common_ui)
   add_test(NAME ui-geometry COMMAND anvillesampler_ui_geometry_tests)
 
+  add_executable(anvillesampler_browser_launcher_tests tests/browser_launcher_tests.cpp)
+  target_include_directories(anvillesampler_browser_launcher_tests PRIVATE src/ui)
+  target_link_libraries(anvillesampler_browser_launcher_tests PRIVATE sms_common_ui)
+  add_test(NAME ui-browser-launcher COMMAND anvillesampler_browser_launcher_tests)
+
   add_executable(anvillesampler_ui_message_bus_tests tests/ui_message_bus_tests.cpp)
   target_include_directories(anvillesampler_ui_message_bus_tests PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/../Common-Src"

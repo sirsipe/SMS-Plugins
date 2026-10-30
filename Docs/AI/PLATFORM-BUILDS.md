@@ -13,16 +13,13 @@ Windows 10+, and macOS paths and preference persistence; Windows resolves the
 loaded module through the wide API because pinned DPF exposes ANSI filenames.
 The [focused skin CI](../../.github/workflows/skin-ci.yml) builds filesystem tests
 on all three platforms independently of DPF. This is not full plugin coverage.
-Online Help in
-[the UI](../../SMS-AnvilleSampler/src/ui/MidichopperUI.cpp) launches a browser
-only on Linux; other platforms return failure. DPF/DGL owns format and
+Online Help, Report Issue and the skin menu's `<Get More>` use the
+[shared browser launcher](../../Common-UI/BrowserLauncher.hpp): Windows opens
+UTF-8 URLs through `ShellExecuteW`; Linux uses `xdg-open`. Both report launch
+failure to the UI. macOS currently returns failure. DPF/DGL owns format and
 window-system integration. The pinned
-DPF CMake support generates Windows and macOS VST3 bundles and an Apple-only
-AUv2 `.component`. Its [feature table](../../third_party/DPF/FEATURES.md) reports
-MIDI input, parameter outputs, an embedded UI, and full internal state for VST3
-and AU. Therefore the existing per-pad sample state should be reusable, but
-large-state restoration must be tested in native hosts rather than inferred
-from codec tests.
+DPF CMake support generates Windows/macOS VST3 bundles and Apple-only
+AUv2 `.component` bundles. Large-state restoration requires native-host tests.
 
 The pinned VST3 wrapper has two relevant limits: its `updateStateValue()`
 callback is absent, and DPF audio-port topology is compile-time fixed even
@@ -51,7 +48,9 @@ drivers are managed by the host; the plugin requires no ASIO component itself.
 
 ## Current gaps
 
-- Online Help needs a native browser launcher for Windows/macOS.
+- Browser links still need a native launcher for macOS. Windows browser
+  dispatch has an isolated API test; verify all three links in a native Windows
+  VST3 host's default browser before claiming host validation.
 - The project removes unused DPF WebView definitions and Windows source files
   from its targets. This avoids generator-expression feature detection and
   CHOC/Windows loader conflicts without changing the pinned submodule.

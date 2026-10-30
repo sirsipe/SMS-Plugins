@@ -30,6 +30,7 @@ git diff --check
 | `ui-skin-theme` | Placeholder completeness, RGBA/metric bounds, envelope RGBA/hover, opacity, logo decode/glow, nested/thread scopes |
 | `ui-bundled-skins` | Default/bundled choices and persistence, embedded logo, bundled/additional assets/colors |
 | `ui-geometry` | Metadata/ports, identity/help URLs, pad mapping, editor snapshots, waveform/chop/viewport geometry, logo halo/pulse, hit testing, wheel editing, menu/range restore, numeric validation/Tab/keypad Enter, Space routing |
+| `ui-browser-launcher` | Windows dispatch/UTF-8/errors (fake API); Linux literal URLs/missing launchers |
 | `ui-message-bus` | Bounded VST3 ordering, independent view cursors, wrap gap reporting, large replies |
 | `wav-codec` | WAV formats, chunk/truncation/header/nonfinite validation, file actions, offline render, real-time gate |
 
@@ -115,7 +116,7 @@ Checks:
 
 ## UI tooling
 
-[Dev Container](../../.devcontainer/devcontainer.json) supplies display `:1`, noVNC, dummy JACK, Mesa and UI tools. Run `desktop-health`; use `desktop-health --dialogs` after portal changes.
+[Dev Container tools](DEVELOPMENT.md#docker-development-environment): run `desktop-health`, adding `--dialogs` after portal changes.
 Avoid concurrent mouse input.
 
 `bash .devcontainer/scripts/test-plugin.sh` builds VST3/LV2, runs CTest/`lv2info`, launches Carla LV2, clicks ARM, and captures to ignored `build/gui-test/`; `--keep-open` enables interaction. Capture with `screenshot-window WINDOW_ID OUTPUT.png`; resolve IDs after relaunch/resize.
