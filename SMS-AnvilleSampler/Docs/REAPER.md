@@ -25,16 +25,10 @@ from MIDI or click them in PLAY mode.
 
 ## Record and chop
 
-1. Add a second track for the audio source. Play an audio item on it, or select
-   your audio input, arm that track, and enable monitoring for live input.
-2. Open **View → Track Wiring**. Click the source track's **Master** connection
-   to disconnect its direct master output and avoid hearing it twice.
-3. Drag from the plus (+) between that track's Master and Fader to create a send
-   to the sampler track as new inputs.
-4. Expand the **SMS-Anville Sampler** node and connect the received left/right
-   channels to the plugin's left/right audio inputs.
-
-![REAPER sidechain routing from the audio source to the sampler](reaper-sidechain-wiring.png)
+1. Add a second track for the audio source. 
+2. Drag **ROUTE** from the new audio track to the MIDI track's **ROUTE**. 
+3. Right click the **ROUTE** from the new audio track and disable **Master Send**
+4. Play an audio item on the new track, or select your audio input, arm that track, and enable monitoring for live input.
 
 The sampler's input meter (1) should respond. **Monitor Auto** (3) passes the
 input to the output while **ARM** (2) is enabled; choose **Monitor On** to hear
