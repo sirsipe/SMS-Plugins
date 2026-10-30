@@ -18,6 +18,9 @@ struct ChopApplyRequest {
     std::uint64_t sequence = 0;
     std::array<std::uint64_t, kPadsPerBank> expectedGenerations{};
     bool revisionChecked = false;
+    // CH3 binds visible traversal to the layout/mapping displayed by the UI.
+    std::uint8_t padsPerBank = 0U;
+    MidiBankMode midiBankMode = kDefaultMidiBankMode;
 };
 
 struct ChopPreviewRequest {
@@ -51,9 +54,13 @@ template <class Integer>
 [[nodiscard]] inline std::string encodeChopApplyRequest(const ChopApplyRequest& request)
 {
     std::string encoded = request.revisionChecked
-        ? "CH2;" + std::to_string(request.sequence) + ";"
+        ? std::string(request.padsPerBank != 0U ? "CH3;" : "CH2;") +
+            std::to_string(request.sequence) + ";"
         : "CH1;";
     encoded += std::to_string(request.firstPad) + ";" + std::to_string(request.padCount);
+    if (request.revisionChecked && request.padsPerBank != 0U)
+        encoded += ";" + std::to_string(request.padsPerBank) + ";" +
+            std::to_string(static_cast<unsigned>(request.midiBankMode));
     if (request.revisionChecked) {
         for (std::uint32_t index = 0; index < request.padCount && index < kPadsPerBank; ++index)
             encoded += ";" + std::to_string(request.expectedGenerations[index]);
@@ -66,10 +73,11 @@ template <class Integer>
 [[nodiscard]] inline bool decodeChopApplyRequest(
     const std::string_view encoded, ChopApplyRequest& request) noexcept
 {
-    if (!encoded.starts_with("CH1;") && !encoded.starts_with("CH2;"))
+    if (!encoded.starts_with("CH1;") && !encoded.starts_with("CH2;") &&
+        !encoded.starts_with("CH3;"))
         return false;
     ChopApplyRequest decoded;
-    decoded.revisionChecked = encoded.starts_with("CH2;");
+    decoded.revisionChecked = !encoded.starts_with("CH1;");
     std::size_t cursor = 4U;
     auto nextToken = [&encoded, &cursor](std::string_view& token) noexcept {
         if (cursor > encoded.size())
@@ -89,6 +97,17 @@ template <class Integer>
         decoded.padCount < 2U || decoded.padCount > kPadsPerBank ||
         decoded.firstPad >= kPadCount || decoded.padCount > kPadCount - decoded.firstPad)
         return false;
+    if (encoded.starts_with("CH3;")) {
+        unsigned mode = 0U;
+        if (!nextToken(token) || !parseChopInteger(token, decoded.padsPerBank) ||
+            (decoded.padsPerBank != 8U && decoded.padsPerBank != 12U && decoded.padsPerBank != 16U) ||
+            !nextToken(token) || !parseChopInteger(token, mode) || mode >= kMidiBankModeCount)
+            return false;
+        decoded.midiBankMode = static_cast<MidiBankMode>(mode);
+        if (advanceVisiblePad(decoded.firstPad, decoded.padCount - 1U,
+                decoded.padsPerBank, decoded.midiBankMode) >= kPadCount)
+            return false;
+    }
     if (decoded.revisionChecked) {
         for (std::uint32_t index = 0; index < decoded.padCount; ++index) {
             if (!nextToken(token) || !parseChopInteger(token, decoded.expectedGenerations[index]))
@@ -197,7 +216,9 @@ struct ChopSnapshotReply {
         const auto waveform = encoded.substr(cursor, end == std::string_view::npos
             ? encoded.size() - cursor : end - cursor);
         if (!sms::audio::decodeWaveformSummary(waveform, decoded.waveforms[index]) ||
-            decoded.waveforms[index].pad != decoded.request.firstPad + index)
+            decoded.waveforms[index].pad >= kPadCount ||
+            (index == 0U ? decoded.waveforms[index].pad != decoded.request.firstPad
+                         : decoded.waveforms[index].pad <= decoded.waveforms[index - 1U].pad))
             return false;
         cursor = end == std::string_view::npos ? encoded.size() + 1U : end + 1U;
     }

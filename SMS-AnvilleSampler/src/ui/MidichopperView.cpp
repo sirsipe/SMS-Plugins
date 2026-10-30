@@ -1005,17 +1005,29 @@ private:
         canvas_.fontSize(9.0f);
         canvas_.textAlign(DGL_NAMESPACE::NanoVG::ALIGN_RIGHT |
                           DGL_NAMESPACE::NanoVG::ALIGN_TOP);
-        char neighbors[64];
+        const auto chopPad = [&](const int offset) {
+            return static_cast<int>(midichopper::advanceVisiblePad(
+                static_cast<std::uint32_t>(state_.chopFirstPad),
+                static_cast<std::uint32_t>(offset),
+                static_cast<std::uint8_t>(pads_.visiblePadCount()), midiBankMode()));
+        };
+        const auto bankLabel = [&](const int pad) {
+            return 'A' + static_cast<int>(midichopper::bankForPad(
+                static_cast<std::uint32_t>(pad),
+                static_cast<std::uint8_t>(pads_.visiblePadCount()), midiBankMode()));
+        };
+        char neighbors[96];
         if (state_.chopSplitMode) {
-            std::snprintf(neighbors, sizeof(neighbors), sms::ui::dpf::themeFormat("PADS %02d + %02d  /  DRAG SPLIT LINE"),
-                          localPadForGlobalPad(state_.chopFirstPad) + 1,
-                          localPadForGlobalPad(state_.chopFirstPad + 1) + 1);
+            std::snprintf(neighbors, sizeof(neighbors),
+                          "PADS %c%02d + %c%02d  /  DRAG SPLIT LINE",
+                          bankLabel(chopPad(0)), localPadForGlobalPad(chopPad(0)) + 1,
+                          bankLabel(chopPad(1)), localPadForGlobalPad(chopPad(1)) + 1);
         } else {
             std::snprintf(neighbors, sizeof(neighbors),
-                          sms::ui::dpf::themeFormat("PADS %02d + %02d + %02d  /  DRAG CUT LINES"),
-                          localPadForGlobalPad(state_.chopFirstPad) + 1,
-                          localPadForGlobalPad(state_.chopFirstPad + 1) + 1,
-                          localPadForGlobalPad(state_.chopFirstPad + 2) + 1);
+                          "PADS %c%02d + %c%02d + %c%02d  /  DRAG CUT LINES",
+                          bankLabel(chopPad(0)), localPadForGlobalPad(chopPad(0)) + 1,
+                          bankLabel(chopPad(1)), localPadForGlobalPad(chopPad(1)) + 1,
+                          bankLabel(chopPad(2)), localPadForGlobalPad(chopPad(2)) + 1);
         }
         text(936.0f, 122.0f, neighbors, nullptr);
 
@@ -1080,7 +1092,12 @@ private:
             ? static_cast<int>(std::floor(state_.chopPreviewPosition)) - 1 : -1;
         const float playFraction = state_.chopPreviewPosition > 0.0f
             ? state_.chopPreviewPosition - std::floor(state_.chopPreviewPosition) : 0.0f;
-        const int originalPad = encodedPlayPad - state_.chopFirstPad;
+        int originalPad = -1;
+        for (int index = 0; index < (state_.chopSplitMode ? 1 : 3); ++index) {
+            if (state_.chopWaveforms[static_cast<std::size_t>(index)].pad ==
+                static_cast<std::uint32_t>(encodedPlayPad))
+                originalPad = index;
+        }
         const double playSource = chop::sourceFrameForPlayhead(
             state_.chopWaveforms, originalPad, playFraction);
         const auto total = chop::totalFrames(state_.chopWaveforms);
@@ -1108,8 +1125,8 @@ private:
             const double seconds = state_.chopReady && rate > 0.0 ? frames / rate : 0.0;
             const bool previewEnabled = state_.chopReady && frames != 0U &&
                 !state_.chopApplying;
-            std::snprintf(label, sizeof(label), sms::ui::dpf::themeFormat("PAD %02d   %.2f s"),
-                          localPadForGlobalPad(state_.chopFirstPad + pad) + 1, seconds);
+            std::snprintf(label, sizeof(label), "PAD %c%02d   %.2f s",
+                          bankLabel(chopPad(pad)), localPadForGlobalPad(chopPad(pad)) + 1, seconds);
             sms::ui::dpf::drawSegment(canvas_, uiLayout::chopPadButton(pad), label,
                 state_.chopPreviewPad == pad,
                 pad == (state_.chopSplitMode ? 0 : 1)

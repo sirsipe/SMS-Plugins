@@ -69,10 +69,10 @@ Filter and Dirty follow [Mixing](../../Docs/AI/MIXING.md).
 Pad transfers commit retained immutable audio at block boundaries; unrelated
 audio continues and host reads never wait. [Storage handoff](../../Docs/AI/PAD-STORAGE.md).
 
-Collapse Gap moves descriptors/settings without copying PCM. Split and cut edits
-stage affected PCM and validate generations before atomic commit. Recording,
-resets, audio, and settings changes invalidate stale plans. Structure actions
-stay within the active visible bank/page.
+Collapse Gap moves descriptors/settings within the active bank/page without
+copying PCM. Split and cut edits stage PCM and validate generations before atomic
+cross-bank commit, skipping hidden slots. Recording, resets, audio,
+and settings changes invalidate stale plans.
 
 Four peak outputs; LEDs redraw at ≤30 FPS. Hard bypass cannot be metered.
 

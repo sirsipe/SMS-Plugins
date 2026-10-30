@@ -51,13 +51,15 @@ private:
         std::uint64_t id = 0U;
         std::uint32_t visibleFirst = 0U;
         std::uint32_t visibleCount = 0U;
+        MidiBankMode midiBankMode = kDefaultMidiBankMode;
         std::uint32_t firstPad = 0U;
         std::uint32_t emptyPad = 0U;
         std::uint32_t generationCount = 0U;
-        std::array<std::uint64_t, midichopper::kPadsPerBank> generations{};
+        std::array<std::uint64_t, midichopper::kPadCount> generations{};
     };
 
-    void publishPadSettings(std::uint32_t firstPad, std::uint32_t padCount);
+    void publishPadSettings(std::uint32_t firstPad, std::uint32_t padCount,
+                            std::uint8_t padsPerBank, MidiBankMode mode);
     void publishPadStructureError(std::uint64_t planId, const char* message);
     void publishFileStatus(const std::string& status)
     { observer_.publishUiState(kPadFileStatusKey, status.c_str()); }

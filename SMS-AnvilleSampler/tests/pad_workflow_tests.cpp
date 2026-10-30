@@ -474,6 +474,192 @@ void chopApplyRevisionAndReplies()
           sameSnapshots(beforeLegacyChop, snapshotRange<3>(engine, 0)),
           "legacy chop apply without coherent revisions is rejected");
 }
+
+void crossBankWorkflowReplies()
+{
+    for (const auto layout : kPadsPerBankByLayout) {
+        for (const auto mode : {MidiBankMode::SelectedBank, MidiBankMode::AllBanks}) {
+            SamplerEngine engine(48000, 0.01);
+            auto settings = engine.settings();
+            settings.padsPerBank = layout;
+            settings.midiBankMode = mode;
+            engine.setSettings(settings);
+            sms::audio::RealtimeCommandDispatcher dispatcher;
+            engine.setControlDispatcher(&dispatcher,
+                &sms::audio::RealtimeCommandDispatcher::dispatchFromEngine);
+            Observer observer;
+            PadWorkflows workflows(engine, dispatcher, observer);
+            const auto first = padForVisibleIndex(layout - 2U, layout, mode);
+            const auto second = advanceVisiblePad(first, 1U, layout, mode);
+            const auto third = advanceVisiblePad(first, 2U, layout, mode);
+            const auto empty = advanceVisiblePad(first, 3U, layout, mode);
+            for (std::uint32_t pad = 0; pad < kPadCount; ++pad) {
+                if (pad == first || pad == second || pad == third ||
+                    visiblePadIndex(pad, layout, mode) == kPadCount) {
+                    auto audio = sample();
+                    for (auto& value : audio.stereo) value *= 0.25f + pad * 0.01f;
+                    check(engine.importPad(pad, audio), "seed cross-bank workflow pads");
+                    auto playback = engine.padPlaybackSettings(pad);
+                    playback.attackSeconds = 0.05f + pad * 0.001f;
+                    engine.setPadPlaybackSettings(pad, playback);
+                    auto mixer = engine.padMixerSettings(pad);
+                    mixer.pan = -0.5f + pad * 0.01f;
+                    engine.setPadMixerSettings(pad, mixer);
+                }
+            }
+            const auto before = snapshotRange<kPadCount>(engine, 0);
+            const PadStructureRequest prepare{PadStructureAction::prepareSplit, 0, layout, first};
+            workflows.handlePadStructureRequest(encodePadStructureRequest(prepare));
+            SplitPlanReady plan;
+            check(decodeSplitPlanReady(observer.latest(kPadStructureStatusKey), plan) &&
+                  plan.targetPad == first && plan.emptyPad == empty,
+                  "split plan finds nearest empty visible pad across a bank boundary");
+            workflows.handlePadStructureRequest(encodePadStructureRequest(
+                {PadStructureAction::querySplit, 0, layout, first}));
+            check(observer.latest(kPadStructureStatusKey) ==
+                  "PS1;A;" + std::to_string(first) + ";1",
+                  "split availability sees empty pads in later banks");
+            observer.messages.clear();
+            workflows.handlePadStructureRequest(encodePadStructureRequest(
+                {PadStructureAction::applySplit, 0, 0, 0, plan.planId, 4}));
+            check(observer.latest(kPadStructureStatusKey) ==
+                  "PS1;O;" + std::to_string(plan.planId) + ";S",
+                  "availability query preserves pending cross-bank split plan");
+            const auto prefix = snapshotPad(engine, first);
+            const auto suffix = snapshotPad(engine, second);
+            auto joined = prefix.audio.stereo;
+            joined.insert(joined.end(), suffix.audio.stereo.begin(), suffix.audio.stereo.end());
+            check(prefix.audio.frames == 4 && suffix.audio.frames == 4 &&
+                  joined == before[first].audio.stereo,
+                  "cross-bank split preserves both source halves exactly");
+            checkSettingsReply(observer, engine, third, before[second].playback,
+                before[second].mixer, "split publishes settings for mapped destination in next bank");
+            checkSettingsReply(observer, engine, empty, before[third].playback,
+                before[third].mixer, "split publishes settings through its final mapped destination");
+            check(snapshotPad(engine, third).audio.stereo == before[second].audio.stereo &&
+                  snapshotPad(engine, empty).audio.stereo == before[third].audio.stereo,
+                  "cross-bank split shifts intervening visible audio in order");
+            for (std::uint32_t pad = 0; pad < kPadCount; ++pad) {
+                if (pad == first || pad == second || pad == third || pad == empty)
+                    continue;
+                check(sameSnapshot(before[pad], snapshotPad(engine, pad)),
+                      "split preserves every unaffected or hidden storage slot");
+                check(observer.latest(kPadEditStateKeys[pad].c_str()).empty() &&
+                      observer.latest(kPadMixerStateKeys[pad].c_str()).empty(),
+                      "split publishes settings only for mapped affected slots");
+            }
+
+            // Rechop crosses the same storage gap and must notify visible slots.
+            std::array<sms::audio::WaveformSummary, 3> summaries{};
+            std::array<std::uint64_t, 3> generations{};
+            check(engine.getChopSnapshot(second, 3, summaries, generations),
+                  "capture cross-bank chop revisions");
+            ChopApplyRequest chop;
+            chop.firstPad = second;
+            chop.padCount = 3;
+            chop.sequence = 31;
+            chop.revisionChecked = true;
+            chop.padsPerBank = layout;
+            chop.midiBankMode = mode;
+            chop.boundaryOffsets[0] = 1;
+            for (std::size_t i = 0; i < generations.size(); ++i)
+                chop.expectedGenerations[i] = generations[i];
+            const auto beforeChop = snapshotRange<kPadCount>(engine, 0);
+            auto changedMapping = settings;
+            changedMapping.midiBankMode = mode == MidiBankMode::SelectedBank
+                ? MidiBankMode::AllBanks : MidiBankMode::SelectedBank;
+            engine.setSettings(changedMapping);
+            workflows.handleChopApplyRequest(encodeChopApplyRequest(chop));
+            check(observer.latest(kChopStatusKey).starts_with("CH2;31;ERROR;") &&
+                  sameSnapshots(beforeChop, snapshotRange<kPadCount>(engine, 0)),
+                  "cut save rejects a mapping change after its baseline without touching pads");
+            engine.setSettings(settings);
+            observer.messages.clear();
+            workflows.handleChopApplyRequest(encodeChopApplyRequest(chop));
+            check(observer.latest(kChopStatusKey) == "CH2;31;OK",
+                  "cross-bank cut apply commits visible range");
+            for (const auto pad : {second, third, empty})
+                checkSettingsReply(observer, engine, pad, engine.padPlaybackSettings(pad),
+                    engine.padMixerSettings(pad), "chop publishes every mapped destination setting");
+            for (std::uint32_t pad = 0; pad < kPadCount; ++pad) {
+                if (visiblePadIndex(pad, layout, mode) == kPadCount) {
+                    check(sameSnapshot(before[pad], snapshotPad(engine, pad)) &&
+                          observer.latest(kPadEditStateKeys[pad].c_str()).empty() &&
+                          observer.latest(kPadMixerStateKeys[pad].c_str()).empty(),
+                          "cross-bank chop preserves hidden audio/settings and skips hidden notifications");
+                }
+            }
+
+            workflows.handlePadStructureRequest(encodePadStructureRequest(prepare));
+            check(decodeSplitPlanReady(observer.latest(kPadStructureStatusKey), plan),
+                  "prepare cross-bank split before mapping change");
+            settings.midiBankMode = mode == MidiBankMode::SelectedBank
+                ? MidiBankMode::AllBanks : MidiBankMode::SelectedBank;
+            engine.setSettings(settings);
+            const auto beforeChangedModeApply = snapshotRange<kPadCount>(engine, 0);
+            workflows.handlePadStructureRequest(encodePadStructureRequest(
+                {PadStructureAction::applySplit, 0, 0, 0, plan.planId, 2}));
+            check(observer.latest(kPadStructureStatusKey).starts_with("PS1;E;") &&
+                  sameSnapshots(beforeChangedModeApply, snapshotRange<kPadCount>(engine, 0)),
+                  "mode change invalidates split plan even with unchanged active page first/count");
+
+            settings.midiBankMode = mode;
+            engine.setSettings(settings);
+            workflows.handlePadStructureRequest(encodePadStructureRequest(prepare));
+            check(decodeSplitPlanReady(observer.latest(kPadStructureStatusKey), plan),
+                  "prepare split before layout change");
+            settings.padsPerBank = layout == 8 ? 12 : 8;
+            engine.setSettings(settings);
+            const auto beforeLayoutApply = snapshotRange<kPadCount>(engine, 0);
+            workflows.handlePadStructureRequest(encodePadStructureRequest(
+                {PadStructureAction::applySplit, 0, 0, 0, plan.planId, 2}));
+            check(observer.latest(kPadStructureStatusKey).starts_with("PS1;E;") &&
+                  sameSnapshots(beforeLayoutApply, snapshotRange<kPadCount>(engine, 0)),
+                  "layout change invalidates cross-bank split without changing storage");
+        }
+    }
+}
+
+void splitPlanCoversAllVisibleBanks()
+{
+    SamplerEngine engine(48000, 0.01);
+    sms::audio::RealtimeCommandDispatcher dispatcher;
+    engine.setControlDispatcher(&dispatcher,
+        &sms::audio::RealtimeCommandDispatcher::dispatchFromEngine);
+    Observer observer;
+    PadWorkflows workflows(engine, dispatcher, observer);
+    for (std::uint32_t pad = 0; pad < kPadCount - 1U; ++pad)
+        check(engine.importPad(pad, sample()), "seed full split shift range");
+    workflows.handlePadStructureRequest(encodePadStructureRequest(
+        {PadStructureAction::prepareSplit, 0, 16, 0}));
+    SplitPlanReady plan;
+    check(decodeSplitPlanReady(observer.latest(kPadStructureStatusKey), plan) &&
+          plan.emptyPad == kPadCount - 1U, "split plan captures all 64 visible generations");
+    auto mixer = engine.padMixerSettings(kPadCount - 2U);
+    mixer.pan = 0.5f;
+    engine.setPadMixerSettings(kPadCount - 2U, mixer);
+    const auto beforeStale = snapshotRange<kPadCount>(engine, 0);
+    workflows.handlePadStructureRequest(encodePadStructureRequest(
+        {PadStructureAction::applySplit, 0, 0, 0, plan.planId, 4}));
+    check(observer.latest(kPadStructureStatusKey).starts_with("PS1;E;") &&
+          sameSnapshots(beforeStale, snapshotRange<kPadCount>(engine, 0)),
+          "changed destination in final bank rejects whole split atomically");
+    workflows.handlePadStructureRequest(encodePadStructureRequest(
+        {PadStructureAction::prepareSplit, 0, 16, 0}));
+    check(decodeSplitPlanReady(observer.latest(kPadStructureStatusKey), plan),
+          "prepare full-range split after refreshing revisions");
+    workflows.handlePadStructureRequest(encodePadStructureRequest(
+        {PadStructureAction::applySplit, 0, 0, 0, plan.planId, 4}));
+    check(observer.latest(kPadStructureStatusKey) ==
+          "PS1;O;" + std::to_string(plan.planId) + ";S" &&
+          engine.padMetadata(kPadCount - 1U).occupied,
+          "split can shift visible pads through the final bank");
+    workflows.handlePadStructureRequest(encodePadStructureRequest(
+        {PadStructureAction::querySplit, 0, 16, 0}));
+    check(observer.latest(kPadStructureStatusKey) == "PS1;A;0;0",
+          "split availability is false when no later visible pad is empty");
+}
+
 }
 
 int main()
@@ -485,5 +671,7 @@ int main()
     splitPlanLifecycle();
     collapseGapPublishesMovedSettings();
     chopApplyRevisionAndReplies();
+    crossBankWorkflowReplies();
+    splitPlanCoversAllVisibleBanks();
     std::cout << "Pad workflow tests passed\n";
 }

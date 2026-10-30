@@ -1969,6 +1969,96 @@ void chopEditorAutomaticSave()
     }
 }
 
+void crossBankChopWorkflow()
+{
+    using namespace std::chrono_literals;
+    namespace plugin = midichopper::plugin;
+    using namespace midichopper;
+    const auto now = ui::ChopEditorController::Clock::time_point{} + 1s;
+    for (const std::uint8_t visible : {8U, 12U, 16U}) {
+        for (const auto mode : {MidiBankMode::SelectedBank, MidiBankMode::AllBanks}) {
+            const int stride = static_cast<int>(bankStride(visible, mode));
+            const auto padAt = [&](const int index) {
+                return static_cast<int>(padForVisibleIndex(index, visible, mode));
+            };
+            for (int bank = 0; bank < 3; ++bank) {
+                ChopHost host;
+                ui::ChopEditorController editor(host);
+                const int index = (bank + 1) * visible - 1;
+                const int target = padAt(index);
+                editor.open(target, bank * stride, visible, mode);
+                check(editor.active() && host.selectedPad == target &&
+                      editor.firstPad() == padAt(index - 1) &&
+                      editor.canNavigate(1, bank * stride, visible, mode),
+                      "last A/B/C pad opens cut editing and can navigate across banks");
+                editor.idle(now);
+                plugin::ChopSnapshotReply reply;
+                check(plugin::decodeChopSnapshotRequest(host.last("chop_snapshot_request"), reply.request),
+                      "cross-bank cut window requests one coherent baseline");
+                for (int slot = 0; slot < 3; ++slot) {
+                    reply.waveforms[slot].pad = padAt(index - 1 + slot);
+                    reply.waveforms[slot].frames = 100U;
+                    reply.waveforms[slot].sampleRate = 1000.0;
+                    reply.generations[slot] = 11U + slot;
+                }
+                const auto encoded = plugin::encodeChopSnapshotReply(reply);
+                check(editor.acceptState("chop_snapshot_data", encoded.c_str()) && editor.ready(),
+                      "cross-bank baseline accepts exact mapped neighbors including hidden-slot gaps");
+                editor.acceptPreviewPosition(static_cast<float>(padAt(index + 1) + 1) + 0.5f);
+                check(editor.previewPad() == 2,
+                      "cross-bank raw playhead identifies next-bank audio in proposed slice");
+                sms::ui::waveform::Viewport viewport;
+                viewport.reset(300U);
+                editor.beginBoundaryDrag(1, 0.0f);
+                editor.dragBoundary(20.0f, 300.0f, viewport);
+                editor.endBoundaryDrag();
+                editor.navigate(1, bank * stride, visible, mode);
+                plugin::ChopApplyRequest apply;
+                check(editor.applying() && host.selectedPad == target &&
+                      plugin::decodeChopApplyRequest(host.last("chop_apply_request"), apply) &&
+                      apply.boundaryOffsets[1] == 20 && apply.expectedGenerations[2] == 13U &&
+                      apply.padsPerBank == visible && apply.midiBankMode == mode,
+                      "cross-bank navigation waits for a guarded cut save");
+                const auto status = plugin::encodeChopStatus(apply.sequence, true);
+                check(editor.acceptState("chop_status", status.c_str()) &&
+                      host.selectedPad == padAt(index + 1) && editor.firstPad() == target &&
+                      !editor.ready() && !editor.dirty(),
+                      "successful save navigates to first pad of next bank with a fresh baseline");
+                editor.navigate(-1, (bank + 1) * stride, visible, mode);
+                check(host.selectedPad == target,
+                      "previous navigation crosses back to last pad of preceding bank");
+                editor.cancel();
+
+                plugin::SplitPlanReady plan;
+                plan.planId = 100U + bank;
+                plan.targetPad = target;
+                plan.emptyPad = padAt(index + 2);
+                plan.waveform = {static_cast<std::uint32_t>(target), 100U, 1000.0, {}, {}};
+                editor.openSplit(plan, visible, mode);
+                check(editor.active() && editor.split() && editor.ready() &&
+                      editor.waveforms()[1].pad == static_cast<std::uint32_t>(padAt(index + 1)),
+                      "last bank pad split places virtual suffix in next bank's first visible slot");
+                editor.apply();
+                const std::string splitStatus = "PS1;O;" + std::to_string(plan.planId) + ";S";
+                check(editor.acceptSplitStatus(splitStatus.c_str(), bank * stride, visible, mode) &&
+                      !editor.split() && editor.active() && host.selectedPad == padAt(index + 1) &&
+                      editor.firstPad() == target,
+                      "split completion opens a cross-bank window containing both new halves");
+            }
+            ChopHost host;
+            ui::ChopEditorController editor(host);
+            editor.open(0, 0, visible, mode);
+            check(!editor.active(), "first A pad still lacks a left cut neighbor");
+            const int last = padAt(4 * visible - 1);
+            editor.open(last, 3 * stride, visible, mode);
+            check(!editor.active(), "last D pad still lacks a right cut neighbor");
+            editor.open(padAt(4 * visible - 2), 3 * stride, visible, mode);
+            check(editor.active() && !editor.canNavigate(1, 3 * stride, visible, mode),
+                  "navigation stops before a window would leave bank D");
+        }
+    }
+}
+
 void splitEditorWorkflow()
 {
     namespace plugin = midichopper::plugin;
@@ -2699,6 +2789,7 @@ int main()
     padPressTracking();
     editorSnapshotCollection();
     chopEditorWorkflow();
+    crossBankChopWorkflow();
     chopEditorAutomaticSave();
     splitEditorWorkflow();
     waveformVisibleSummary();

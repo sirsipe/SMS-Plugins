@@ -920,9 +920,205 @@ void pad_structure_edits()
     check(paged.importPad(22U, source), "populate the end of an eight-pad page");
     std::array<std::uint64_t, 2> pageGenerations{
         paged.padMetadata(22U).generation, paged.padMetadata(23U).generation};
-    check(paged.splitPadAndShiftRight(22U, 23U, 2U, pageGenerations) &&
-          !paged.splitPadAndShiftRight(23U, 24U, 1U, pageGenerations),
-          "all-bank split stays inside an eight-pad page");
+    check(paged.splitPadAndShiftRight(22U, 23U, 2U, pageGenerations),
+          "all-bank split within an eight-pad page");
+    pageGenerations = {paged.padMetadata(23U).generation, paged.padMetadata(24U).generation};
+    check(paged.splitPadAndShiftRight(23U, 24U, 1U, pageGenerations),
+          "all-bank split continues into the next eight-pad page");
+}
+
+void cross_bank_edits_and_preview() {
+    using namespace midichopper;
+    auto sample = [](const float first) {
+        PadData result;
+        result.sampleRate = 1000.0;
+        result.frames = 4U;
+        for (std::uint32_t i = 0; i < result.frames; ++i) {
+            result.stereo.push_back(first + i);
+            result.stereo.push_back(-first - i);
+        }
+        return result;
+    };
+    for (const auto layout : kPadsPerBankByLayout) {
+        for (const auto mode : {MidiBankMode::SelectedBank, MidiBankMode::AllBanks}) {
+            SamplerEngine engine(1000.0, 10.0);
+            auto settings = engine.settings();
+            settings.padsPerBank = layout;
+            settings.midiBankMode = mode;
+            settings.monitorInput = false;
+            engine.setSettings(settings);
+            const auto total = layout * kBankCount;
+            for (std::uint32_t i = 0; i < total; ++i) {
+                const auto pad = padForVisibleIndex(i, layout, mode);
+                check(visiblePadIndex(pad, layout, mode) == i, "visible sequence round trip");
+            }
+            check(padForVisibleIndex(total, layout, mode) == kPadCount,
+                  "visible sequence stops after four pages");
+            std::array<std::uint64_t, kPadCount> hiddenGenerations{};
+            if (mode == MidiBankMode::SelectedBank && layout < kPadsPerBank) {
+                for (std::uint32_t bank = 0; bank < kBankCount; ++bank) {
+                    const auto hidden = bank * kPadsPerBank + layout;
+                    check(visiblePadIndex(hidden, layout, mode) == kPadCount,
+                          "hidden slots are excluded from visible sequence");
+                    check(engine.importPad(hidden, sample(99.0f)), "populate hidden sentinel");
+                    hiddenGenerations[hidden] = engine.padMetadata(hidden).generation;
+                }
+            }
+            for (std::uint32_t bank = 1; bank < kBankCount; ++bank) {
+                engine.clearAllPads();
+                // clearAllPads also clears hidden sentinels; install them again.
+                if (mode == MidiBankMode::SelectedBank && layout < kPadsPerBank) {
+                    for (std::uint32_t b = 0; b < kBankCount; ++b) {
+                        const auto hidden = b * kPadsPerBank + layout;
+                        check(engine.importPad(hidden, sample(99.0f)), "restore hidden sentinel");
+                        hiddenGenerations[hidden] = engine.padMetadata(hidden).generation;
+                    }
+                }
+                const auto firstIndex = bank * layout - 1U;
+                const auto first = padForVisibleIndex(firstIndex, layout, mode);
+                const auto next = padForVisibleIndex(firstIndex + 1U, layout, mode);
+                const auto third = padForVisibleIndex(firstIndex + 2U, layout, mode);
+                check(engine.importPad(first, sample(1.0f)) && engine.importPad(next, sample(5.0f)) &&
+                      engine.importPad(third, sample(9.0f)), "populate cross-bank cuts");
+                sms::dsp::SampleMixerSettings mix;
+                mix.pan = 0.25f;
+                engine.setPadMixerSettings(next, mix);
+                std::array<sms::audio::WaveformSummary, 3> summaries;
+                std::array<std::uint64_t, 3> generations;
+                check(engine.getChopSnapshot(first, 3U, summaries, generations) &&
+                      summaries[0].pad == first && summaries[1].pad == next && summaries[2].pad == third,
+                      "chop baseline crosses bank with mapped source identities");
+                sms::audio::WaveformSummary detail;
+                check(engine.summarizePadRange(first, 3U, 3U, 6U, detail),
+                      "raw waveform detail spans bank boundary");
+                check(*std::max_element(detail.maximum.begin(), detail.maximum.end()) == 6.0f,
+                      "cross-bank detail reads visible source PCM");
+                engine.startChopPreview(first, 3U, 3U, 6U);
+                float left[3]{}, right[3]{};
+                engine.process(nullptr, nullptr, left, right, 3U);
+                check(left[0] == 4.0f && left[1] == 5.0f && left[2] == 6.0f &&
+                      right[0] == -4.0f && right[1] == -5.0f && right[2] == -6.0f,
+                      "raw preview crosses bank in exact stereo source order");
+                check(engine.chopPreviewPosition() == 0.0f, "cross-bank preview stops at requested end");
+                ChopMidiPreview preview;
+                preview.active = true;
+                preview.firstPad = first;
+                preview.sourcePadCount = preview.previewPadCount = 3U;
+                preview.sourceFrames = {0U, 4U, 8U};
+                preview.sourceEndFrames = {4U, 8U, 12U};
+                engine.setChopMidiPreview(preview);
+                const MidiEvent note(0U, midiNoteForPad(next, settings.baseNote, mode), 127U, MidiEventType::NoteOn);
+                engine.process(nullptr, nullptr, left, right, 1U, &note, 1U);
+                check(left[0] == 5.0f && engine.settings().activeBank == 0U,
+                      "preview MIDI addresses next-bank displayed pad without bank switching");
+                engine.stopChopPreview();
+                const auto unrelated = padForVisibleIndex(firstIndex - 1U, layout, mode);
+                const MidiEvent unrelatedNote(0U, midiNoteForPad(unrelated, settings.baseNote, mode), 127U, MidiEventType::NoteOn);
+                engine.process(nullptr, nullptr, left, right, 1U, &unrelatedNote, 1U);
+                check(left[0] == 0.0f && engine.chopPreviewPosition() == 0.0f,
+                      "unrelated note cannot trigger cross-bank preview");
+                engine.setChopMidiPreview({});
+                const std::array<std::int64_t, 2> offsets{1, 0};
+                auto wrongBaseline = engine.settings();
+                wrongBaseline.midiBankMode = mode == MidiBankMode::AllBanks
+                    ? MidiBankMode::SelectedBank : MidiBankMode::AllBanks;
+                check(!engine.rechopPads(first, 3U, offsets, generations, &wrongBaseline),
+                      "cut Apply rejects baseline from an old MIDI mapping");
+                wrongBaseline = engine.settings();
+                wrongBaseline.padsPerBank = layout == 8U ? 12U : 8U;
+                check(!engine.rechopPads(first, 3U, offsets, generations, &wrongBaseline),
+                      "cut Apply rejects baseline from an old layout");
+                PadData unmodified;
+                check(engine.exportPad(first, unmodified) && unmodified.stereo == sample(1.0f).stereo &&
+                      engine.padMetadata(first).generation == generations[0] &&
+                      engine.exportPad(next, unmodified) && unmodified.stereo == sample(5.0f).stereo &&
+                      engine.padMetadata(next).generation == generations[1] &&
+                      engine.exportPad(third, unmodified) && unmodified.stereo == sample(9.0f).stereo &&
+                      engine.padMetadata(third).generation == generations[2],
+                      "old cut layout and mapping rejections preserve every sample and generation");
+                const auto baseline = engine.settings();
+                check(engine.rechopPads(first, 3U, offsets, generations, &baseline), "apply cross-bank cut");
+                PadData moved;
+                check(engine.exportPad(first, moved) && moved.frames == 5U && moved.stereo.back() == -5.0f,
+                      "cross-bank cut moves exact source prefix");
+                check(engine.exportPad(next, moved) && moved.frames == 3U && moved.stereo.front() == 6.0f &&
+                      engine.padMixerSettings(next).pan == mix.pan,
+                      "cross-bank cut preserves destination mixer and suffix");
+                check(!engine.rechopPads(first, 3U, offsets, generations),
+                      "cross-bank cuts reject stale baseline atomically");
+                // Split shifts the full later visible sequence, potentially across several banks.
+                engine.clearAllPads();
+                if (mode == MidiBankMode::SelectedBank && layout < kPadsPerBank) {
+                    for (std::uint32_t b = 0; b < kBankCount; ++b) {
+                        const auto hidden = b * kPadsPerBank + layout;
+                        check(engine.importPad(hidden, sample(99.0f)), "restore split hidden sentinel");
+                        hiddenGenerations[hidden] = engine.padMetadata(hidden).generation;
+                    }
+                }
+                const auto lastIndex = total - 1U;
+                for (auto i = firstIndex; i < lastIndex; ++i) {
+                    const auto pad = padForVisibleIndex(i, layout, mode);
+                    check(engine.importPad(pad, sample(static_cast<float>(i))), "populate split shift run");
+                    engine.setPadMixerSettings(pad, mix);
+                }
+                std::array<std::uint64_t, kPadCount> expected{};
+                const auto count = lastIndex - firstIndex + 1U;
+                auto refresh = [&]() {
+                    for (std::uint32_t i = 0; i < count; ++i)
+                        expected[i] = engine.padMetadata(padForVisibleIndex(firstIndex + i, layout, mode)).generation;
+                };
+                refresh();
+                const auto lastPad = padForVisibleIndex(lastIndex, layout, mode);
+                auto changed = mix; changed.pan = -0.25f;
+                engine.setPadMixerSettings(next, changed);
+                check(!engine.splitPadAndShiftRight(first, lastPad, 2U, std::span(expected).first(count)),
+                      "cross-bank split rejects stale shifted-pad settings");
+                check(engine.padMetadata(first).frames == 4U && !engine.padMetadata(lastPad).occupied,
+                      "stale cross-bank split leaves all pads unchanged");
+                refresh();
+                auto wrongSettings = engine.settings();
+                wrongSettings.midiBankMode = mode == MidiBankMode::AllBanks
+                    ? MidiBankMode::SelectedBank : MidiBankMode::AllBanks;
+                check(!engine.splitPadAndShiftRight(first, lastPad, 2U,
+                      std::span(expected).first(count), &wrongSettings),
+                      "split rejects an old mapping even when physical generations match");
+                wrongSettings = engine.settings();
+                wrongSettings.activeBank = 1U;
+                check(!engine.splitPadAndShiftRight(first, lastPad, 2U,
+                      std::span(expected).first(count), &wrongSettings),
+                      "split rejects an old selected bank before preparation");
+                wrongSettings = engine.settings();
+                wrongSettings.padsPerBank = layout == 8U ? 12U : 8U;
+                check(!engine.splitPadAndShiftRight(first, lastPad, 2U,
+                      std::span(expected).first(count), &wrongSettings),
+                      "split rejects an old layout before preparation");
+                check(engine.splitPadAndShiftRight(first, lastPad, 2U, std::span(expected).first(count)),
+                      "split shifts through final visible bank");
+                check(engine.exportPad(first, moved) && moved.frames == 2U &&
+                      moved.stereo == std::vector<float>({static_cast<float>(firstIndex), -static_cast<float>(firstIndex),
+                                                       static_cast<float>(firstIndex + 1U), -static_cast<float>(firstIndex + 1U)}),
+                      "cross-bank split keeps exact stereo prefix");
+                check(engine.exportPad(next, moved) && moved.frames == 2U &&
+                      moved.stereo.front() == static_cast<float>(firstIndex + 2U),
+                      "cross-bank split inserts exact suffix in next visible slot");
+                for (auto i = firstIndex + 2U; i <= lastIndex; ++i) {
+                    const auto pad = padForVisibleIndex(i, layout, mode);
+                    check(engine.exportPad(pad, moved) && moved.stereo == sample(static_cast<float>(i - 1U)).stereo,
+                          "cross-bank split preserves every shifted sample");
+                }
+                check(engine.padMixerSettings(third).pan == changed.pan,
+                      "cross-bank shift preserves complete mixer settings");
+                if (mode == MidiBankMode::SelectedBank && layout < kPadsPerBank) {
+                    for (std::uint32_t b = 0; b < kBankCount; ++b) {
+                        const auto hidden = b * kPadsPerBank + layout;
+                        check(engine.exportPad(hidden, moved) && moved.stereo == sample(99.0f).stereo &&
+                              engine.padMetadata(hidden).generation == hiddenGenerations[hidden],
+                              "split leaves hidden sample and generation untouched");
+                    }
+                }
+            }
+        }
+    }
 }
 
 void full_bank_and_undo() {
@@ -3311,6 +3507,7 @@ int main() {
     rechop_empty_neighbors();
     long_sample_split_and_roll();
     pad_structure_edits();
+    cross_bank_edits_and_preview();
     full_bank_and_undo();
     bank_and_layout_mapping();
     hold_release_after_bank_switch();

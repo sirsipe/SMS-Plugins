@@ -1,8 +1,9 @@
 # Adjust cut points
 
 Choose **Adjust cut points** on an occupied pad to correct its surrounding cuts.
-It needs slots immediately before and after, so bank edge pads cannot open it.
-Either neighbor may be empty.
+It uses the visible slots immediately before and after, including across bank
+boundaries. Only the first pad of Bank A and the last pad of Bank D cannot open
+it. Either neighbor may be empty; hidden slots in smaller layouts are skipped.
 
 The editor combines the pad and neighbors into one raw waveform. **Cut 1**
 divides the left/selected pads; **Cut 2** divides selected/right. Drag or wheel a
@@ -29,7 +30,8 @@ MIDI preview is one-shot, follows every pending cut adjustment, and moves the
 waveform playhead just like clicking a pad button.
 
 **Exit**, Escape, and the previous/next arrows automatically save pending cuts
-before leaving or loading the neighboring eligible bank pad. With no edits,
+before leaving or loading the neighboring eligible pad, including across banks.
+With no edits,
 they act immediately. While saving, the controls are disabled and preview MIDI
 is muted. **Cancel Changes** becomes available when cuts differ from the loaded
 positions; it restores both cuts and their preview ranges while keeping the
@@ -49,14 +51,17 @@ the cuts again.
 ## Split a sample and insert a pad
 
 Right-click an occupied pad and choose **Split Sample...** when an empty slot is
-available later in the visible bank. The editor shows the selected raw sample
+available later in the current bank or any following bank. The editor shows the
+selected raw sample
 split at its midpoint. Drag the single **SPLIT** line and use the two pad buttons
 to preview the proposed halves. The target pad's MIDI note previews the first
 half, and the following pad's note previews the second, virtual half. All other
 notes are silent until you apply or leave the view.
 
 Choose **Apply** to insert both halves. Occupied pads between the sample and the
-nearest empty slot move right by one. Their audio and settings move together.
+nearest empty visible slot move right by one, across banks when needed. Hidden
+slots stay in place. Bank D is the end of the search; insertion never wraps to A.
+Their audio and settings move together.
 The new halves keep the original Gain, Pan, and Tune, while Start/End and ADSR
 return to defaults. Apply performs the shift and split together, then exits the
 split view and opens Adjust Cut Points with both new halves visible. **Exit** or

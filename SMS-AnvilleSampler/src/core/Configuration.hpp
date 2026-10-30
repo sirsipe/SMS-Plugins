@@ -58,6 +58,38 @@ inline constexpr MidiBankMode kDefaultMidiBankMode = MidiBankMode::AllBanks;
     return pad % bankStride(padsPerBank, mode);
 }
 
+/** Gapless visible-pad sequence across four pages; hidden slots return kPadCount. */
+[[nodiscard]] inline constexpr std::uint32_t visiblePadIndex(
+    const std::uint32_t pad, const std::uint8_t padsPerBank,
+    const MidiBankMode mode) noexcept
+{
+    if (padsPerBank == 0U || padsPerBank > kPadsPerBank || pad >= kPadCount)
+        return kPadCount;
+    const auto bank = bankForPad(pad, padsPerBank, mode);
+    const auto local = localPadInBank(pad, padsPerBank, mode);
+    return bank < kBankCount && local < padsPerBank
+        ? bank * padsPerBank + local : kPadCount;
+}
+
+/** Physical slot for a visible sequence index, or kPadCount beyond the last page. */
+[[nodiscard]] inline constexpr std::uint32_t padForVisibleIndex(
+    const std::uint32_t index, const std::uint8_t padsPerBank,
+    const MidiBankMode mode) noexcept
+{
+    if (padsPerBank == 0U || padsPerBank > kPadsPerBank || index >= padsPerBank * kBankCount)
+        return kPadCount;
+    return (index / padsPerBank) * bankStride(padsPerBank, mode) + index % padsPerBank;
+}
+
+[[nodiscard]] inline constexpr std::uint32_t advanceVisiblePad(
+    const std::uint32_t pad, const std::uint32_t count,
+    const std::uint8_t padsPerBank, const MidiBankMode mode) noexcept
+{
+    const auto index = visiblePadIndex(pad, padsPerBank, mode);
+    return index < kPadCount && count < kPadCount && index + count < kPadCount
+        ? padForVisibleIndex(index + count, padsPerBank, mode) : kPadCount;
+}
+
 /** MIDI note emitted for a global pad index in the selected addressing mode. */
 [[nodiscard]] inline constexpr std::uint8_t midiNoteForPad(
     const std::uint32_t pad, const std::uint8_t baseNote,

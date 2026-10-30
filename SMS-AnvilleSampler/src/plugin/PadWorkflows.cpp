@@ -20,6 +20,32 @@ namespace {
         reinterpret_cast<const char8_t*>(path.data()), path.size()));
 }
 
+/** Called only inside a dispatcher callback. */
+[[nodiscard]] std::uint32_t splitEmptyPad(const SamplerEngine& sampler,
+    const PadStructureRequest& request, const EngineSettings& settings) noexcept
+{
+    const auto visibleFirst = static_cast<std::uint32_t>(settings.activeBank) *
+        bankStride(settings.padsPerBank, settings.midiBankMode);
+    if (settings.armed || request.firstPad != visibleFirst ||
+        request.padCount != settings.padsPerBank || request.targetPad < visibleFirst ||
+        request.targetPad >= visibleFirst + request.padCount)
+        return kPadCount;
+    const auto source = sampler.padMetadata(request.targetPad);
+    if (!source.occupied || source.recording || source.frames < 2U)
+        return kPadCount;
+    auto index = visiblePadIndex(request.targetPad, settings.padsPerBank,
+                                 settings.midiBankMode) + 1U;
+    for (; index < static_cast<std::uint32_t>(settings.padsPerBank) * kBankCount; ++index) {
+        const auto pad = padForVisibleIndex(index, settings.padsPerBank, settings.midiBankMode);
+        const auto metadata = sampler.padMetadata(pad);
+        if (metadata.recording)
+            return kPadCount;
+        if (!metadata.occupied)
+            return pad;
+    }
+    return kPadCount;
+}
+
 } // namespace
 
 void PadWorkflows::reset()
@@ -36,10 +62,11 @@ void PadWorkflows::reset()
 }
 
 void PadWorkflows::publishPadSettings(const std::uint32_t firstPad,
-                        const std::uint32_t padCount)
+                        const std::uint32_t padCount, const std::uint8_t padsPerBank,
+                        const MidiBankMode mode)
 {
     for (std::uint32_t index = 0; index < padCount; ++index) {
-        const std::uint32_t pad = firstPad + index;
+        const std::uint32_t pad = advanceVisiblePad(firstPad, index, padsPerBank, mode);
         const std::string editor = midichopper::plugin::encodePlaybackSettings(
             sampler_.padPlaybackSettings(pad));
         observer_.publishUiState(
@@ -77,6 +104,17 @@ void PadWorkflows::handlePadStructureRequest(const std::string_view encoded)
                 pendingSplitPlan_ = {};
             return;
         }
+        if (request.action == PadStructureAction::querySplit) {
+            bool available = false;
+            controlDispatcher_.invoke([&]() noexcept {
+                available = splitEmptyPad(sampler_, request, sampler_.settings()) < kPadCount;
+            });
+            mutationLock.unlock();
+            const std::string status = "PS1;A;" + std::to_string(request.targetPad) +
+                (available ? ";1" : ";0");
+            observer_.publishUiState(kPadStructureStatusKey, status.c_str());
+            return;
+        }
         if (request.action == PadStructureAction::collapse) {
             committedStatus = "PS1;O;0;C";
             pendingSplitPlan_ = {};
@@ -87,7 +125,8 @@ void PadWorkflows::handlePadStructureRequest(const std::string_view encoded)
             }
             committed = true;
             mutationLock.unlock();
-            publishPadSettings(request.firstPad, request.padCount);
+            publishPadSettings(request.firstPad, request.padCount,
+                static_cast<std::uint8_t>(kPadsPerBank), MidiBankMode::SelectedBank);
             observer_.publishUiState(
                 kPadStructureStatusKey, committedStatus.c_str());
             return;
@@ -100,34 +139,22 @@ void PadWorkflows::handlePadStructureRequest(const std::string_view encoded)
             bool valid = false;
             controlDispatcher_.invoke([&]() noexcept {
                 const auto settings = sampler_.settings();
-                if (settings.armed)
-                    return;
-                const std::uint32_t visibleFirst =
-                    static_cast<std::uint32_t>(settings.activeBank) *
-                    midichopper::bankStride(settings.padsPerBank, settings.midiBankMode);
-                if (request.firstPad != visibleFirst ||
-                    request.padCount != settings.padsPerBank ||
-                    request.targetPad < visibleFirst ||
-                    request.targetPad >= visibleFirst + request.padCount)
-                    return;
-                const auto source = sampler_.padMetadata(request.targetPad);
-                if (!source.occupied || source.recording || source.frames < 2U)
-                    return;
-                std::uint32_t empty = request.targetPad + 1U;
-                const std::uint32_t end = visibleFirst + request.padCount;
-                while (empty < end && sampler_.padMetadata(empty).occupied)
-                    ++empty;
-                if (empty == end)
+                const auto empty = splitEmptyPad(sampler_, request, settings);
+                if (empty == kPadCount)
                     return;
                 prepared.active = true;
-                prepared.visibleFirst = visibleFirst;
+                prepared.visibleFirst = request.firstPad;
                 prepared.visibleCount = request.padCount;
+                prepared.midiBankMode = settings.midiBankMode;
                 prepared.firstPad = request.targetPad;
                 prepared.emptyPad = empty;
-                prepared.generationCount = empty - request.targetPad + 1U;
+                prepared.generationCount = visiblePadIndex(empty, settings.padsPerBank,
+                    settings.midiBankMode) - visiblePadIndex(request.targetPad,
+                    settings.padsPerBank, settings.midiBankMode) + 1U;
                 for (std::uint32_t index = 0; index < prepared.generationCount; ++index)
-                    prepared.generations[index] =
-                        sampler_.padMetadata(request.targetPad + index).generation;
+                    prepared.generations[index] = sampler_.padMetadata(advanceVisiblePad(
+                        request.targetPad, index, settings.padsPerBank,
+                        settings.midiBankMode)).generation;
                 valid = true;
             });
             if (valid) {
@@ -142,11 +169,13 @@ void PadWorkflows::handlePadStructureRequest(const std::string_view encoded)
                 controlDispatcher_.invoke([&]() noexcept {
                     const auto settings = sampler_.settings();
                     valid = !settings.armed && settings.padsPerBank == prepared.visibleCount &&
+                        settings.midiBankMode == prepared.midiBankMode &&
                         static_cast<std::uint32_t>(settings.activeBank) *
                             midichopper::bankStride(settings.padsPerBank, settings.midiBankMode) ==
                             prepared.visibleFirst;
                     for (std::uint32_t index = 0; valid && index < prepared.generationCount; ++index) {
-                        const auto metadata = sampler_.padMetadata(prepared.firstPad + index);
+                        const auto metadata = sampler_.padMetadata(advanceVisiblePad(
+                            prepared.firstPad, index, settings.padsPerBank, settings.midiBankMode));
                         valid = !metadata.recording &&
                             metadata.generation == prepared.generations[index];
                     }
@@ -176,25 +205,29 @@ void PadWorkflows::handlePadStructureRequest(const std::string_view encoded)
         committedStatus = "PS1;O;" + std::to_string(request.planId) + ";S";
         pendingSplitPlan_ = {};
         bool visible = false;
+        EngineSettings planSettings;
         controlDispatcher_.invoke([&]() noexcept {
             const auto settings = sampler_.settings();
             const std::uint32_t visibleFirst =
                 static_cast<std::uint32_t>(settings.activeBank) *
                 midichopper::bankStride(settings.padsPerBank, settings.midiBankMode);
+            planSettings = settings;
             visible = visibleFirst == plan.visibleFirst &&
-                      settings.padsPerBank == plan.visibleCount;
+                      settings.padsPerBank == plan.visibleCount &&
+                      settings.midiBankMode == plan.midiBankMode;
         });
         if (!visible || !sampler_.splitPadAndShiftRight(
                 plan.firstPad, plan.emptyPad, request.splitFrame,
                 std::span<const std::uint64_t>{
-                    plan.generations.data(), plan.generationCount})) {
+                    plan.generations.data(), plan.generationCount}, &planSettings)) {
             publishPadStructureError(
                 request.planId, "Pads changed; reopen Split Sample");
             return;
         }
         committed = true;
         mutationLock.unlock();
-        publishPadSettings(plan.firstPad, plan.emptyPad - plan.firstPad + 1U);
+        publishPadSettings(plan.firstPad, plan.generationCount,
+            static_cast<std::uint8_t>(plan.visibleCount), plan.midiBankMode);
         observer_.publishUiState(
             kPadStructureStatusKey, committedStatus.c_str());
     } catch (...) {
@@ -257,25 +290,24 @@ void PadWorkflows::handleChopApplyRequestImpl(const std::string_view encoded)
         return;
     }
     const std::lock_guard lock(padMutationMutex_);
+    EngineSettings settings;
+    controlDispatcher_.invoke([&]() noexcept { settings = sampler_.settings(); });
+    if (request.padsPerBank != 0U) {
+        settings.padsPerBank = request.padsPerBank;
+        settings.midiBankMode = request.midiBankMode;
+    }
     if (!sampler_.rechopPads(request.firstPad, request.padCount,
             std::span<const std::int64_t>{request.boundaryOffsets.data(),
                                           request.padCount - 1U},
             std::span<const std::uint64_t>{request.expectedGenerations.data(),
-                                           request.padCount})) {
+                                           request.padCount}, &settings)) {
         const auto status = midichopper::plugin::encodeChopStatus(request.sequence,
             false, "Pads changed or storage is unavailable; reopen Adjust Cut Points");
         observer_.publishUiState(kChopStatusKey, status.c_str());
         return;
     }
-    for (std::uint32_t index = 0; index < request.padCount; ++index) {
-        const auto pad = request.firstPad + index;
-        const std::string editor = midichopper::plugin::encodePlaybackSettings(
-            sampler_.padPlaybackSettings(pad));
-        observer_.publishUiState(kPadEditStateKeys[pad].c_str(), editor.c_str());
-        const std::string mixer = midichopper::plugin::encodeMixerSettings(
-            sampler_.padMixerSettings(pad));
-        observer_.publishUiState(kPadMixerStateKeys[pad].c_str(), mixer.c_str());
-    }
+    publishPadSettings(request.firstPad, request.padCount,
+        settings.padsPerBank, settings.midiBankMode);
     const auto status = midichopper::plugin::encodeChopStatus(request.sequence, true);
     observer_.publishUiState(kChopStatusKey, status.c_str());
 }

@@ -580,6 +580,22 @@ void chopProtocolRoundTrip()
         check(!midichopper::plugin::decodeChopApplyRequest(invalid, decodedApply),
               "malformed revision-checked cut command rejected");
 
+    apply.firstPad = 7U;
+    apply.padCount = 3U;
+    apply.padsPerBank = 8U;
+    apply.midiBankMode = midichopper::MidiBankMode::SelectedBank;
+    check(midichopper::plugin::decodeChopApplyRequest(
+              midichopper::plugin::encodeChopApplyRequest(apply), decodedApply) &&
+          decodedApply.revisionChecked && decodedApply.padsPerBank == 8U &&
+          decodedApply.midiBankMode == midichopper::MidiBankMode::SelectedBank &&
+          decodedApply.expectedGenerations[2] == UINT64_MAX,
+          "CH3 binds a cross-bank Apply to its displayed layout and mapping");
+    for (const auto invalid : {"CH3;1;7;3;0;0;1;2;3;0;0", "CH3;1;7;3;9;0;1;2;3;0;0",
+             "CH3;1;7;3;8;2;1;2;3;0;0", "CH3;1;8;3;8;0;1;2;3;0;0",
+             "CH3;1;7;3;8;0;1;2;3;0;0;", "CH3;1;7;3;8;0;1;2;3;0"})
+        check(!midichopper::plugin::decodeChopApplyRequest(invalid, decodedApply),
+              "CH3 rejects invalid layout/mapping, hidden source slots and malformed fields");
+
     midichopper::plugin::ChopSnapshotRequest snapshotRequest{UINT64_MAX, 61U, 3U};
     midichopper::plugin::ChopSnapshotRequest decodedRequest;
     check(midichopper::plugin::decodeChopSnapshotRequest(
@@ -619,7 +635,7 @@ void chopProtocolRoundTrip()
     snapshot.waveforms[1].pad = 63U;
     check(!midichopper::plugin::decodeChopSnapshotReply(
               midichopper::plugin::encodeChopSnapshotReply(snapshot), decodedSnapshot),
-          "baseline waveforms must match their contiguous pad range");
+          "baseline waveforms must have ordered source pad identities");
 
     midichopper::plugin::ChopApplyStatus status;
     check(midichopper::plugin::decodeChopApplyStatus(
@@ -746,6 +762,21 @@ void padStructureProtocolRoundTrip()
           decodedReady.waveform.frames == ready.waveform.frames &&
           decodedReady.waveform.minimum.front() < -0.49f,
           "split plan response round-trips");
+
+    ready.emptyPad = 63U;
+    check(midichopper::plugin::decodeSplitPlanReady(
+              midichopper::plugin::encodeSplitPlanReady(ready), decodedReady) &&
+          decodedReady.emptyPad == 63U,
+          "split plan supports insertion through multiple later banks");
+    apply.action = midichopper::plugin::PadStructureAction::querySplit;
+    apply.firstPad = 16U;
+    apply.padCount = 8U;
+    apply.targetPad = 23U;
+    check(midichopper::plugin::decodePadStructureRequest(
+              midichopper::plugin::encodePadStructureRequest(apply), decoded) &&
+          decoded.action == midichopper::plugin::PadStructureAction::querySplit &&
+          decoded.targetPad == 23U,
+          "read-only cross-bank split availability query round-trips");
 
     check(!midichopper::plugin::decodePadStructureRequest("PS2;C;0;16;1", decoded) &&
           !midichopper::plugin::decodePadStructureRequest("PS1;C;63;2;63", decoded) &&

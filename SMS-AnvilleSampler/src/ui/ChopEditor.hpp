@@ -16,7 +16,7 @@ namespace midichopper::ui::chop {
 inline constexpr std::uint32_t kPadCount = 3U;
 inline constexpr std::uint32_t kBoundaryCount = kPadCount - 1U;
 
-/** Return the adjacent center-pad slot, or -1 when its window would cross a bank edge. */
+/** Return the adjacent center-pad slot, or -1 when its window would cross the visible sequence edge. */
 [[nodiscard]] constexpr int navigationTarget(const int currentPad,
                                              const int direction,
                                              const int visiblePadCount) noexcept

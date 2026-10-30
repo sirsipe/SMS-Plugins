@@ -19,7 +19,8 @@ public:
     std::array<sms::audio::WaveformSummary, chop::kPadCount> waveforms{};
     std::array<std::int64_t, chop::kBoundaryCount> offsets{};
 
-    void begin(const std::uint32_t firstPad) noexcept
+    void begin(const std::uint32_t firstPad, const std::uint8_t visibleCount = kPadsPerBank,
+               const MidiBankMode mode = kDefaultMidiBankMode) noexcept
     {
         waveforms.fill({});
         offsets.fill(0);
@@ -34,6 +35,10 @@ public:
         if (sequence == 0U)
             sequence = nextSequence.fetch_add(1U, std::memory_order_relaxed);
         fRequest = {sequence, firstPad, chop::kPadCount};
+        fVisibleCount = visibleCount;
+        fBankMode = mode;
+        for (std::uint32_t index = 0U; index < chop::kPadCount; ++index)
+            fPads[index] = advanceVisiblePad(firstPad, index, visibleCount, mode);
         fRetryDeadline = {};
     }
 
@@ -60,7 +65,7 @@ public:
         if (!fPending || !matches(reply.request))
             return false;
         for (std::size_t index = 0; index < waveforms.size(); ++index) {
-            if (reply.waveforms[index].pad != fRequest.firstPad + index)
+            if (reply.waveforms[index].pad != fPads[index])
                 return false;
         }
         waveforms = reply.waveforms;
@@ -88,6 +93,8 @@ public:
         result.sequence = fRequest.sequence;
         result.expectedGenerations = fGenerations;
         result.revisionChecked = true;
+        result.padsPerBank = fVisibleCount;
+        result.midiBankMode = fBankMode;
         std::copy(offsets.begin(), offsets.end(), result.boundaryOffsets.begin());
         fApplying = true;
         return result;
@@ -109,6 +116,9 @@ private:
     }
 
     plugin::ChopSnapshotRequest fRequest{};
+    std::array<std::uint32_t, chop::kPadCount> fPads{};
+    std::uint8_t fVisibleCount = kPadsPerBank;
+    MidiBankMode fBankMode = kDefaultMidiBankMode;
     std::array<std::uint64_t, kPadsPerBank> fGenerations{};
     Clock::time_point fRetryDeadline{};
     bool fPending = false;

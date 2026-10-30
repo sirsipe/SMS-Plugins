@@ -6,10 +6,10 @@ or retry. Unread requests are superseded as a whole.
 
 ## Model
 
-The action needs a pad and both immediate neighbors; bank edge pads cannot
-open it. Three raw 128-bin summaries form one waveform. Two signed frame offsets
-stay UI-local until Exit/navigation saves them; they are neither host parameters
-nor saved state.
+The action needs both visible neighbors across banks, skipping hidden slots.
+Only A's first and D's last slots are ineligible. Three raw 128-bin summaries
+form one waveform. Two signed frame offsets remain UI-local until Exit/navigation
+saves them; they are neither host parameters nor saved state.
 
 The initial center is occupied; navigation and neighbors may be empty. One
 `chop_snapshot_request/data` reply carries all three waveforms and generations
@@ -30,14 +30,13 @@ save refresh, and Exit reset the viewport. Zoom preserves source offsets.
 Zoom/scroll controls request raw 128-bin detail; drawing stays visible through the
 [viewport cache](../../SMS-AnvilleSampler/Docs/ARCHITECTURE.md#project-state).
 
-From entry through saving/loading, the editor owns MIDI exclusively; all notes
-are silent until its waveform data is ready. Then the three displayed notes
+The editor owns MIDI exclusively, muting notes until waveform data is ready. Then the three displayed notes
 trigger proposed slices. Split mode maps the target and following notes to the
 prefix and virtual suffix. Other notes cannot sound or activate banks. Preview
 is monophonic and one-shot, ignores note-off, and drives the raw playhead.
 
 Exit (including Escape) and arrows save dirty cuts before leaving or loading the
-previous/next eligible bank center. Clean transitions act immediately. Cancel
+previous/next eligible center across banks. Clean transitions act immediately. Cancel
 Changes is enabled only for edits; it stops preview and restores both loaded
 cuts/MIDI ranges without reloading or leaving. Split retains explicit Apply/Cancel.
 
@@ -50,9 +49,9 @@ map while the editor is loading or applying.
 
 ## Apply
 
-`chop_apply_request` uses CH2: first pad, count three, two offsets, baseline
-sequence, and expected generations. The parser understands old CH1 commands,
-but the adapter rejects unguarded Apply requests. Durable state stays compatible.
+`chop_apply_request` uses CH3: first pad, count three, layout/mapping, two offsets,
+baseline sequence, and expected generations. Legacy CH2 parses; unguarded CH1 Apply
+is rejected. Layout/mapping changes reject queued saves. Durable state remains compatible.
 
 The control worker retains a coherent source snapshot, validates bounds/rates,
 and stages the repartitioned PCM. The callback rechecks generations, Arm, and
@@ -69,16 +68,15 @@ continue. Ownership is specified in
 
 `chop_status` matches the request sequence. Success completes the pending
 Exit/navigation once; navigation requests a fresh baseline. Failure abandons the transition, reports the error, discards offsets,
-and reloads the current center. Controls stay disabled during saving; MIDI stays
-muted until the destination/baseline is ready. Forced invalidation (Arm, bank or
-layout changes) cancels the UI workflow and its pending transition. Replies and
-statuses from earlier navigation or UI instances are ignored.
+and reloads the current center. Saving disables controls and mutes MIDI until ready. Arm, external bank, layout
+or mapping changes cancel the workflow and pending transition. Stale replies are ignored.
 
 ## Split Sample mode
 
 **Split Sample...** becomes a two-pad insertion editor when an occupied target
-has a later empty visible slot. The DSP records a non-mutating plan through the
-nearest empty slot.
+has an empty visible slot later in the four-bank sequence. The DSP plans
+through the nearest empty slot, skipping hidden slots. Metadata-only `PS1;Q`
+query supplies menu availability.
 
 The target waveform starts split at `frames / 2`; the virtual second slot is the
 suffix. Preview excludes the physical neighbor.
@@ -111,7 +109,7 @@ Cancellation and failures do not mutate.
   before/after edits; other notes stay silent without switching banks.
 - Split: preview midpoint/adjusted halves by buttons and MIDI, cancel, then
   Apply. Verify one shift, moved settings, ordinary editor opening, and intact
-  hidden/next-bank slots.
+  hidden slots and correct cross-bank shifts.
 
 ## Limitation
 

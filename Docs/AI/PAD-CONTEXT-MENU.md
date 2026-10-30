@@ -1,8 +1,6 @@
 # Pad context menu
 
-Audience: agents changing pad interactions. The shared menu and actions below
-are implemented. MIDI assignment is outside this menu's current scope. This is
-a general pad menu.
+Audience: agents changing pad interactions. MIDI assignment is outside this menu.
 
 ## Interaction contract
 
@@ -31,7 +29,6 @@ the NanoVG adapter belongs inside it. The menu must not own sampler, host,
 clipboard, MIDI-mapping, or filesystem responsibilities.
 
 Add later actions without another menu type or a large conditional handler.
-Avoid abstractions until an action needs them.
 
 ## Implemented actions
 
@@ -60,8 +57,8 @@ preserves released parameter identities and keeps sampler mutation on the audio
 boundary.
 
 WAV Import and Export follow the separate [pad WAV contract](PAD-WAV-IO.md).
-Maintain coverage for every action and the menu lifecycle in both Play and Sample
-Editor. Verify target selection without audition, pad layouts and banks,
+Cover actions and menu lifecycle in Play and Sample Editor. Verify target
+selection without audition, pad layouts and banks,
 disabled entries, hover transitions, dismissal by mapped MIDI playback and
 other interactions, canvas-edge placement, resizing, and UI scaling.
 
@@ -94,7 +91,10 @@ empty slot. All audio metadata and settings move; vacated slots are empty. It
 never crosses the visible boundary or consumes hidden slots.
 
 **Split Sample...** is enabled on an occupied pad when a later empty visible
-slot exists. The DSP prepares a non-mutating, generation-stamped plan through
+slot exists in the current or a following bank. A read-only structure query
+checks later-bank availability. Shifts follow visible order through Bank D,
+skipping hidden slots in Selected Bank layouts. The DSP prepares a non-mutating,
+generation-stamped plan through
 the nearest empty slot. The editor shows two virtual halves and one midpoint
 split. Apply revalidates the plan, shifts intervening pads right, and writes
 both halves atomically. The halves reset Start/End and ADSR and inherit mixer

@@ -748,7 +748,19 @@ protected:
         else if (std::strcmp(key, "pad_structure_status") == 0)
         {
             midichopper::plugin::SplitPlanReady plan;
-            if (midichopper::plugin::decodeSplitPlanReady(value, plan)) {
+            if (std::string_view(value).starts_with("PS1;A;")) {
+                const auto reply = std::string_view(value).substr(6U);
+                const auto separator = reply.find(';');
+                int pad = -1;
+                if (separator != std::string_view::npos &&
+                    midichopper::plugin::parsePadStructureInteger(reply.substr(0U, separator), pad) &&
+                    fPadContextMenuOpen && pad == fPadContextTarget &&
+                    (reply.substr(separator + 1U) == "0" || reply.substr(separator + 1U) == "1")) {
+                    fSplitAvailablePad = pad;
+                    fSplitAvailable = reply.substr(separator + 1U) == "1";
+                    requestRepaint();
+                }
+            } else if (midichopper::plugin::decodeSplitPlanReady(value, plan)) {
                 const bool expected = fPadStructureBusy && fPendingSplitTarget >= 0 &&
                     plan.targetPad == static_cast<std::uint32_t>(fPendingSplitTarget) &&
                     !fArm && globalPad(0) == fPendingSplitFirst &&
@@ -758,7 +770,7 @@ protected:
                 fPendingSplitFirst = -1;
                 fPendingSplitCount = 0;
                 if (expected) {
-                    fChopEditor.openSplit(plan);
+                    fChopEditor.openSplit(plan, static_cast<std::uint8_t>(visiblePadCount()), midiBankMode());
                 } else {
                     fChopEditor.cancelPlan(plan.planId);
                     copyString(fStatus, "Split cancelled because pad context changed");
@@ -768,7 +780,7 @@ protected:
                 copyString(fStatus, "Pad gap collapsed");
                 if (fEditorMode)
                     refreshSelectedWaveform();
-            } else if (fChopEditor.acceptSplitStatus(value, globalPad(0), visiblePadCount())) {
+            } else if (fChopEditor.acceptSplitStatus(value, globalPad(0), visiblePadCount(), midiBankMode())) {
                 fPendingSplitTarget = -1;
                 fPendingSplitFirst = -1;
                 fPendingSplitCount = 0;
@@ -1011,8 +1023,8 @@ protected:
             fChopEditor.firstPad(), fSelectedPad, fChopEditor.previewPosition(), fChopEditor.previewPad(),
             fChopEditor.activeBoundary(), fChopEditor.ready(),
             fChopEditor.dirty(), fChopEditor.applying(),
-            fChopEditor.canNavigate(-1, globalPad(0), visiblePadCount()),
-            fChopEditor.canNavigate(1, globalPad(0), visiblePadCount()), fStatus,
+            fChopEditor.canNavigate(-1, globalPad(0), visiblePadCount(), midiBankMode()),
+            fChopEditor.canNavigate(1, globalPad(0), visiblePadCount(), midiBankMode()), fStatus,
             fWaveformDetail.viewport(), fWaveformDetail.detail(),
             fLogo ? &*fLogo : nullptr, fBackground ? &*fBackground : nullptr,
             fLogoGlow ? &*fLogoGlow : nullptr,
@@ -1335,7 +1347,7 @@ protected:
                 }
                 if (midichopper::ui::isTarget(
                         clicked, midichopper::ui::InteractiveType::chopPrevious)) {
-                    fChopEditor.navigate(-1, globalPad(0), visiblePadCount());
+                    fChopEditor.navigate(-1, globalPad(0), visiblePadCount(), midiBankMode());
                     return true;
                 }
                 if (midichopper::ui::isTarget(
@@ -1345,7 +1357,7 @@ protected:
                 }
                 if (midichopper::ui::isTarget(
                         clicked, midichopper::ui::InteractiveType::chopNext)) {
-                    fChopEditor.navigate(1, globalPad(0), visiblePadCount());
+                    fChopEditor.navigate(1, globalPad(0), visiblePadCount(), midiBankMode());
                     return true;
                 }
                 return false;
@@ -2302,6 +2314,8 @@ private:
     bool fPadClipboardAvailable = false;
     bool fPadClipboardBusy = false;
     bool fPadStructureBusy = false;
+    int fSplitAvailablePad = -1;
+    bool fSplitAvailable = false;
     int fPendingSplitTarget = -1;
     int fPendingSplitFirst = -1;
     int fPendingSplitCount = 0;
@@ -2482,10 +2496,10 @@ private:
         context.chopApplying = fChopEditor.applying();
         context.chopActionEnabled = fChopEditor.ready() && fChopEditor.dirty() && !fChopEditor.applying();
         context.chopPreviousEnabled =
-            fChopEditor.canNavigate(-1, globalPad(0), visiblePadCount()) && !fChopEditor.applying();
+            fChopEditor.canNavigate(-1, globalPad(0), visiblePadCount(), midiBankMode()) && !fChopEditor.applying();
         context.chopExitEnabled = !fChopEditor.applying();
         context.chopNextEnabled =
-            fChopEditor.canNavigate(1, globalPad(0), visiblePadCount()) && !fChopEditor.applying();
+            fChopEditor.canNavigate(1, globalPad(0), visiblePadCount(), midiBankMode()) && !fChopEditor.applying();
         context.padLayout = fLayout;
         context.padContextMenu = fPadContextMenu;
         context.padContextMenuEnabled = menuEnabled;
@@ -2593,6 +2607,17 @@ private:
         fPadContextClearArmed = false;
         fPadContextCollapseArmed = false;
         fPadContextMenuOpen = true;
+        fSplitAvailablePad = -1;
+        fSplitAvailable = false;
+        if (!padActionBusy() && padContextTargetOccupied()) {
+            midichopper::plugin::PadStructureRequest request;
+            request.action = midichopper::plugin::PadStructureAction::querySplit;
+            request.firstPad = static_cast<std::uint32_t>(globalPad(0));
+            request.padCount = static_cast<std::uint32_t>(visiblePadCount());
+            request.targetPad = static_cast<std::uint32_t>(pad);
+            sendChopState("pad_structure_request",
+                midichopper::plugin::encodePadStructureRequest(request));
+        }
     }
 
     void closePadContextMenu() noexcept
@@ -2670,10 +2695,11 @@ private:
     {
         if (padActionBusy() || !padContextTargetOccupied())
             return false;
-        const int localPad = localPadForGlobalPad(fPadContextTarget);
-        if (localPad <= 0 || localPad + 1 >= visiblePadCount())
-            return false;
-        return true;
+        const auto index = midichopper::visiblePadIndex(
+            static_cast<std::uint32_t>(fPadContextTarget),
+            static_cast<std::uint8_t>(visiblePadCount()), midiBankMode());
+        return index > 0U && index + 1U <
+            static_cast<std::uint32_t>(visiblePadCount()) * midichopper::kBankCount;
     }
 
     [[nodiscard]] bool localPadOccupied(const int localPad) const noexcept
@@ -2693,7 +2719,7 @@ private:
             if (!localPadOccupied(pad))
                 return true;
         }
-        return false;
+        return fSplitAvailablePad == fPadContextTarget && fSplitAvailable;
     }
 
     [[nodiscard]] int collapseShiftCount() const noexcept
@@ -2818,7 +2844,7 @@ private:
         case PadMenuAction::adjustCutPoints: {
             const int pad = fPadContextTarget;
             closePadContextMenu();
-            fChopEditor.open(pad, globalPad(0), visiblePadCount());
+            fChopEditor.open(pad, globalPad(0), visiblePadCount(), midiBankMode());
             return;
         }
         case PadMenuAction::splitSample: {
@@ -3410,6 +3436,11 @@ private:
         fEditorMode = false;
         fEditorSnapshot.complete();
         fSelectedPad = pad;
+        const int bank = bankForGlobalPad(pad);
+        if (fBank != bank) {
+            fBank = bank;
+            setParameterValue(kParameterActiveBank, static_cast<float>(bank + 1));
+        }
     }
 
     void leaveChopEditor() override

@@ -48,24 +48,32 @@ public:
         return fSplit ? ready() : std::any_of(fSession.offsets.begin(), fSession.offsets.end(),
             [](const std::int64_t offset) { return offset != 0; });
     }
-    [[nodiscard]] bool canNavigate(const int direction, const int bankFirst,
-                                   const int visibleCount) const noexcept
+    [[nodiscard]] bool canNavigate(const int direction, const int /* bankFirst */,
+                                   const int visibleCount,
+                                   const MidiBankMode mode = kDefaultMidiBankMode) const noexcept
     {
-        return fActive && direction != 0 &&
-            chop::navigationTarget(fTargetPad - bankFirst, direction, visibleCount) >= 0;
+        const auto index = visiblePadIndex(static_cast<std::uint32_t>(fTargetPad),
+            static_cast<std::uint8_t>(visibleCount), mode);
+        return fActive && index < midichopper::kPadCount &&
+            chop::navigationTarget(static_cast<int>(index), direction,
+                visibleCount * static_cast<int>(kBankCount)) >= 0;
     }
 
-    void open(const int targetPad, const int bankFirst, const int visibleCount)
+    void open(const int targetPad, const int /* bankFirst */, const int visibleCount,
+              const MidiBankMode mode = kDefaultMidiBankMode)
     {
-        const int localPad = targetPad - bankFirst;
-        if (targetPad < 0 || localPad <= 0 || localPad + 1 >= visibleCount)
+        const auto index = visiblePadIndex(static_cast<std::uint32_t>(targetPad),
+            static_cast<std::uint8_t>(visibleCount), mode);
+        if (index == 0U || index + 1U >= static_cast<std::uint32_t>(visibleCount) * kBankCount)
             return;
         stopPreview();
+        fVisibleCount = static_cast<std::uint8_t>(visibleCount);
+        fBankMode = mode;
         fActive = true;
         fSplit = false;
         fPlanId = 0U;
         fTargetPad = targetPad;
-        fFirstPad = targetPad - 1;
+        fFirstPad = static_cast<int>(padForVisibleIndex(index - 1U, fVisibleCount, mode));
         fHost.selectChopPad(targetPad);
         resetBaseline();
         fApplying = false;
@@ -75,20 +83,27 @@ public:
         fHost.repaintChopEditor();
     }
 
-    void openSplit(const plugin::SplitPlanReady& plan)
+    void openSplit(const plugin::SplitPlanReady& plan,
+                   const std::uint8_t visibleCount = kPadsPerBank,
+                   const MidiBankMode mode = kDefaultMidiBankMode)
     {
-        if (plan.targetPad >= kPadCount || plan.emptyPad <= plan.targetPad ||
-            plan.emptyPad >= kPadCount || plan.waveform.pad != plan.targetPad ||
+        const auto firstIndex = visiblePadIndex(plan.targetPad, visibleCount, mode);
+        const auto emptyIndex = visiblePadIndex(plan.emptyPad, visibleCount, mode);
+        if (firstIndex >= midichopper::kPadCount || emptyIndex >= midichopper::kPadCount ||
+            emptyIndex <= firstIndex || plan.waveform.pad != plan.targetPad ||
             plan.waveform.frames < 2U)
             return;
         stopPreview();
+        fVisibleCount = visibleCount;
+        fBankMode = mode;
         fActive = fSplit = true;
         fTargetPad = fFirstPad = static_cast<int>(plan.targetPad);
         fPlanId = plan.planId;
         fHost.selectChopPad(fTargetPad);
         resetBaseline();
         fSession.waveforms[0] = plan.waveform;
-        fSession.waveforms[1] = {plan.targetPad + 1U, 0U, plan.waveform.sampleRate, {}, {}};
+        fSession.waveforms[1] = {advanceVisiblePad(plan.targetPad, 1U, visibleCount, mode),
+            0U, plan.waveform.sampleRate, {}, {}};
         fSession.waveforms[2] = fSession.waveforms[1];
         fHost.resetChopViewport(plan.waveform.frames);
         fSession.offsets[0] = static_cast<std::int64_t>(plan.waveform.frames / 2U) -
@@ -100,19 +115,25 @@ public:
         fHost.repaintChopEditor();
     }
 
-    void navigate(const int direction, const int bankFirst, const int visibleCount)
+    void navigate(const int direction, const int bankFirst, const int visibleCount,
+                  const MidiBankMode mode = kDefaultMidiBankMode)
     {
-        if (fApplying || !canNavigate(direction, bankFirst, visibleCount))
+        if (fApplying || !canNavigate(direction, bankFirst, visibleCount, mode))
             return;
-        const int next = chop::navigationTarget(fTargetPad - bankFirst, direction, visibleCount);
+        const auto index = visiblePadIndex(static_cast<std::uint32_t>(fTargetPad),
+            static_cast<std::uint8_t>(visibleCount), mode);
+        const int next = chop::navigationTarget(static_cast<int>(index), direction,
+            visibleCount * static_cast<int>(kBankCount));
+        const int target = static_cast<int>(padForVisibleIndex(
+            static_cast<std::uint32_t>(next), static_cast<std::uint8_t>(visibleCount), mode));
         if (!fSplit && dirty()) {
-            fAfterApply = {false, bankFirst + next, bankFirst, visibleCount};
+            fAfterApply = {false, target, bankFirst, visibleCount, mode};
             apply();
             return;
         }
         if (fSplit)
             cancelPlan(fPlanId);
-        open(bankFirst + next, bankFirst, visibleCount);
+        open(target, bankFirst, visibleCount, mode);
     }
 
     /** User-requested Exit (also Escape); forced invalidation uses cancel(). */
@@ -210,7 +231,7 @@ public:
                     return true;
                 }
                 if (status.success && destination.targetPad >= 0) {
-                    open(destination.targetPad, destination.bankFirst, destination.visibleCount);
+                    open(destination.targetPad, destination.bankFirst, destination.visibleCount, destination.mode);
                     return true;
                 }
                 stopPreview();
@@ -224,13 +245,18 @@ public:
     }
 
     [[nodiscard]] bool acceptSplitStatus(const char* value, const int bankFirst,
-                                         const int visibleCount)
+                                         const int visibleCount,
+                                         const MidiBankMode mode = kDefaultMidiBankMode)
     {
         if (fPlanId != 0U && "PS1;O;" + std::to_string(fPlanId) + ";S" == value) {
             fHost.setChopStructureBusy(false);
-            const int target = chop::postSplitEditorTarget(fTargetPad - bankFirst, visibleCount);
+            const int index = static_cast<int>(visiblePadIndex(
+                static_cast<std::uint32_t>(fTargetPad), static_cast<std::uint8_t>(visibleCount), mode));
+            const int target = chop::postSplitEditorTarget(index,
+                visibleCount * static_cast<int>(kBankCount));
             if (target >= 0)
-                open(bankFirst + target, bankFirst, visibleCount);
+                open(static_cast<int>(padForVisibleIndex(static_cast<std::uint32_t>(target),
+                    static_cast<std::uint8_t>(visibleCount), mode)), bankFirst, visibleCount, mode);
             else
                 cancel();
             fHost.setChopStatus("Sample split applied");
@@ -286,7 +312,13 @@ public:
             fPlaying = true;
             fPreviewPad = -1;
             if (fActive && ready()) {
-                const int originalPad = static_cast<int>(std::floor(value)) - 1 - fFirstPad;
+                const int sourcePad = static_cast<int>(std::floor(value)) - 1;
+                int originalPad = -1;
+                for (int index = 0; index < (fSplit ? 1 : 3); ++index) {
+                    if (fSession.waveforms[static_cast<std::size_t>(index)].pad ==
+                        static_cast<std::uint32_t>(sourcePad))
+                        originalPad = index;
+                }
                 const double frame = chop::sourceFrameForPlayhead(
                     fSession.waveforms, originalPad, value - std::floor(value));
                 for (int pad = 0; frame >= 0.0 && pad < (fSplit ? 2 : 3); ++pad) {
@@ -376,7 +408,7 @@ private:
         fSession.waveforms.fill({});
         fSession.offsets.fill(0);
         if (!fSplit && fFirstPad >= 0)
-            fSession.begin(static_cast<std::uint32_t>(fFirstPad));
+            fSession.begin(static_cast<std::uint32_t>(fFirstPad), fVisibleCount, fBankMode);
         else
             fSession.cancel();
         fActiveBoundary = -1;
@@ -439,6 +471,8 @@ private:
     std::uint64_t fPlanId = 0U;
     int fTargetPad = -1;
     int fFirstPad = -1;
+    std::uint8_t fVisibleCount = kPadsPerBank;
+    MidiBankMode fBankMode = kDefaultMidiBankMode;
     int fActiveBoundary = -1;
     float fDragStartX = 0.0f;
     std::int64_t fDragStartOffset = 0;
@@ -451,6 +485,7 @@ private:
         int targetPad = -1;
         int bankFirst = 0;
         int visibleCount = 0;
+        MidiBankMode mode = kDefaultMidiBankMode;
     };
     AfterApply fAfterApply{};
 };

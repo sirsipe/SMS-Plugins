@@ -169,7 +169,7 @@ public:
         sms::dsp::SampleMixerSettings* mixer = nullptr) const;
     void snapshotPadSettings(std::uint32_t pad, sms::dsp::SamplePlaybackSettings& playback,
         sms::dsp::SampleMixerSettings& mixer) const;
-    /** Summarize retained adjacent-pad storage on the control thread while audio continues. */
+    /** Summarize retained consecutive visible-pad storage on the control thread while audio continues. */
     [[nodiscard]] bool summarizePadRange(std::uint32_t firstPad, std::uint32_t padCount,
                                          std::uint64_t start, std::uint64_t end,
                                          sms::audio::WaveformSummary& result) const;
@@ -199,13 +199,16 @@ public:
     [[nodiscard]] bool stateRestoreFailed() const noexcept
     { return stateRestoreFailed_.load(std::memory_order_acquire); }
     /**
-     * Repartition raw audio across consecutive pad slots. Empty slots may
+     * Repartition raw audio across consecutive visible pad slots, across bank boundaries. Empty slots may
      * receive audio, and a zero-length result clears that pad. Boundary offsets
-     * are frame deltas from the original boundaries. Control thread only.
+     * are frame deltas from the original boundaries. Optional expectedSettings
+     * checks the baseline layout and MIDI mapping before preparing audio.
+     * Control thread only.
      */
     [[nodiscard]] bool rechopPads(std::uint32_t firstPad, std::uint32_t padCount,
                                   std::span<const std::int64_t> boundaryOffsets,
-                                  std::span<const std::uint64_t> expectedGenerations = {});
+                                  std::span<const std::uint64_t> expectedGenerations = {},
+                                  const EngineSettings* expectedSettings = nullptr);
     /**
      * Close the empty run containing targetPad by moving the immediately
      * following occupied run left. Complete pad contents and settings move
@@ -216,15 +219,18 @@ public:
                                       std::uint32_t padCount,
                                       std::uint32_t targetPad);
     /**
-     * Split firstPad at splitFrame and insert the suffix into firstPad + 1.
-     * Occupied pads through emptyPad shift right by one, preserving their
+     * Split firstPad at splitFrame and insert the suffix into the next visible pad.
+     * Occupied visible pads through emptyPad shift right by one, preserving their
      * complete contents and settings. expectedGenerations covers the inclusive
-     * [firstPad, emptyPad] range and rejects stale UI plans. Control thread only.
+     * visible sequence [firstPad, emptyPad], skipping hidden slots, and rejects
+     * stale UI plans. Optional expectedSettings checks the plan's bank, layout,
+     * and mapping before preparing audio. Control thread only.
      */
     [[nodiscard]] bool splitPadAndShiftRight(
         std::uint32_t firstPad, std::uint32_t emptyPad,
         std::uint32_t splitFrame,
-        std::span<const std::uint64_t> expectedGenerations);
+        std::span<const std::uint64_t> expectedGenerations,
+        const EngineSettings* expectedSettings = nullptr);
     /** Allocation-free raw preview used by the Cut Point Editor. Audio thread only. */
     void startChopPreview(std::uint32_t firstPad, std::uint32_t padCount,
                           std::uint64_t sourceFrame, std::uint64_t sourceEndFrame) noexcept;

@@ -15,6 +15,7 @@ enum class PadStructureAction : std::uint8_t {
     prepareSplit,
     applySplit,
     cancelSplit,
+    querySplit,
 };
 
 struct PadStructureRequest {
@@ -50,8 +51,10 @@ template <class Integer>
     case PadStructureAction::collapse:
         return "PS1;C;" + std::to_string(request.firstPad) + ";" +
             std::to_string(request.padCount) + ";" + std::to_string(request.targetPad);
+    case PadStructureAction::querySplit:
     case PadStructureAction::prepareSplit:
-        return "PS1;P;" + std::to_string(request.firstPad) + ";" +
+        return std::string(request.action == PadStructureAction::querySplit ? "PS1;Q;" : "PS1;P;") +
+            std::to_string(request.firstPad) + ";" +
             std::to_string(request.padCount) + ";" + std::to_string(request.targetPad);
     case PadStructureAction::applySplit:
         return "PS1;A;" + std::to_string(request.planId) + ";" +
@@ -84,7 +87,7 @@ template <class Integer>
     std::string_view third;
     if (!token(first))
         return false;
-    if (action == 'C' || action == 'P') {
+    if (action == 'C' || action == 'P' || action == 'Q') {
         if (!token(second) || !token(third) || !rest.empty() ||
             !parsePadStructureInteger(first, decoded.firstPad) ||
             !parsePadStructureInteger(second, decoded.padCount) ||
@@ -95,7 +98,8 @@ template <class Integer>
             decoded.targetPad >= decoded.firstPad + decoded.padCount)
             return false;
         decoded.action = action == 'C'
-            ? PadStructureAction::collapse : PadStructureAction::prepareSplit;
+            ? PadStructureAction::collapse : (action == 'Q'
+                ? PadStructureAction::querySplit : PadStructureAction::prepareSplit);
     } else if (action == 'A') {
         if (!token(second) || !rest.empty() ||
             !parsePadStructureInteger(first, decoded.planId) || decoded.planId == 0U ||
@@ -143,7 +147,6 @@ template <class Integer>
         !sms::audio::decodeWaveformSummary(encoded.substr(thirdEnd + 1U), decoded.waveform) ||
         decoded.planId == 0U || decoded.targetPad >= kPadCount ||
         decoded.emptyPad <= decoded.targetPad || decoded.emptyPad >= kPadCount ||
-        decoded.emptyPad - decoded.targetPad >= kPadsPerBank ||
         decoded.waveform.pad != decoded.targetPad || decoded.waveform.frames < 2U)
         return false;
     plan = decoded;

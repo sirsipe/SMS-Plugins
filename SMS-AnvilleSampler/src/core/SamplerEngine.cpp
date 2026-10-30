@@ -170,6 +170,11 @@ void SamplerEngine::setSettings(const EngineSettings& s) noexcept {
     settings_.dirty = globalColor.dirty;
     settings_.maxVoices = static_cast<std::uint8_t>(
         std::clamp<std::uint32_t>(settings_.maxVoices, 1U, kPadsPerBank));
+    if (settings_.padsPerBank != previous.padsPerBank ||
+        settings_.midiBankMode != previous.midiBankMode) {
+        stopChopPreview();
+        chopMidiPreview_ = {};
+    }
     if (settings_.reverse != previous.reverse) {
         for (std::uint32_t pad = 0; pad < kPadCount; ++pad)
             if (pads_[pad].mixerGlobalMixer.load(std::memory_order_acquire) >= 0.5f)
@@ -868,23 +873,23 @@ void SamplerEngine::handleEvent(const MidiEvent& event) noexcept {
         }
         return;
     }
-    const auto pad = noteToPad(event.note);
-    if (pad >= kPadCount) return;
     if (chopMidiPreview_.active) {
-        if (pad < chopMidiPreview_.firstPad)
+        for (std::uint32_t i = 0; i < chopMidiPreview_.previewPadCount; ++i) {
+            const auto sourcePad = advanceVisiblePad(chopMidiPreview_.firstPad, i,
+                settings_.padsPerBank, settings_.midiBankMode);
+            if (event.note != midiNoteForPad(sourcePad, settings_.baseNote, settings_.midiBankMode))
+                continue;
+            const auto sourceFrame = chopMidiPreview_.sourceFrames[i];
+            const auto sourceEndFrame = chopMidiPreview_.sourceEndFrames[i];
+            if (sourceEndFrame > sourceFrame)
+                startChopPreview(chopMidiPreview_.firstPad, chopMidiPreview_.sourcePadCount,
+                                 sourceFrame, sourceEndFrame);
             return;
-        const auto previewPad = pad - chopMidiPreview_.firstPad;
-        if (previewPad >= chopMidiPreview_.previewPadCount)
-            return;
-        const auto sourceFrame = chopMidiPreview_.sourceFrames[previewPad];
-        const auto sourceEndFrame = chopMidiPreview_.sourceEndFrames[previewPad];
-        if (sourceEndFrame > sourceFrame) {
-            startChopPreview(chopMidiPreview_.firstPad,
-                             chopMidiPreview_.sourcePadCount,
-                             sourceFrame, sourceEndFrame);
         }
         return;
     }
+    const auto pad = noteToPad(event.note);
+    if (pad >= kPadCount) return;
     startVoice(pad, event.velocity, settings_.playbackMode == PlaybackMode::Hold
         ? VoiceMode::Hold : VoiceMode::OneShot, event.note);
 }
@@ -1118,9 +1123,15 @@ bool SamplerEngine::summarizePadRange(const std::uint32_t firstPad,
         padCount > kPadCount - firstPad || start >= end) return false;
     const std::lock_guard lock(storageControlMutex_);
     std::array<Snapshot, 3> snapshots;
+    bool valid = false;
     dispatchControl([&]() noexcept {
-        for (std::uint32_t i = 0; i < padCount; ++i) captureSnapshot(firstPad + i, snapshots[i]);
+        valid = advanceVisiblePad(firstPad, padCount - 1U, settings_.padsPerBank,
+                                  settings_.midiBankMode) < kPadCount;
+        if (valid) for (std::uint32_t i = 0; i < padCount; ++i)
+            captureSnapshot(advanceVisiblePad(firstPad, i, settings_.padsPerBank,
+                                             settings_.midiBankMode), snapshots[i]);
     });
+    if (!valid) return false;
     std::array<std::uint64_t, 4> edges{};
     double rate = 0.0;
     for (std::uint32_t i = 0; i < padCount; ++i) {
@@ -1160,19 +1171,24 @@ bool SamplerEngine::getChopSnapshot(const std::uint32_t firstPad,
         summaries.size() != padCount || generations.size() != padCount) return false;
     const std::lock_guard lock(storageControlMutex_);
     std::array<Snapshot, 3> snapshots;
-    bool armed = false;
+    std::array<std::uint32_t, 3> slots{};
+    bool valid = false;
     dispatchControl([&]() noexcept {
-        armed = settings_.armed;
-        for (std::uint32_t i = 0; i < padCount; ++i) captureSnapshot(firstPad + i, snapshots[i]);
+        valid = !settings_.armed && advanceVisiblePad(firstPad, padCount - 1U,
+            settings_.padsPerBank, settings_.midiBankMode) < kPadCount;
+        if (valid) for (std::uint32_t i = 0; i < padCount; ++i) {
+            slots[i] = advanceVisiblePad(firstPad, i, settings_.padsPerBank, settings_.midiBankMode);
+            captureSnapshot(slots[i], snapshots[i]);
+        }
     });
-    if (armed) return false;
+    if (!valid) return false;
     for (std::uint32_t i = 0; i < padCount; ++i) {
         const auto& snapshot = snapshots[i];
         if (snapshot.metadata.recording) return false;
         generations[i] = snapshot.metadata.generation;
         auto& result = summaries[i];
         result = {};
-        result.pad = firstPad + i;
+        result.pad = slots[i];
         result.frames = snapshot.metadata.frames;
         result.sampleRate = snapshot.metadata.sampleRate;
         for (std::size_t bin = 0; bin < sms::audio::kWaveformBins; ++bin) {
@@ -1325,19 +1341,30 @@ bool SamplerEngine::importPad(const std::uint32_t pad, const PadData& source,
 
 bool SamplerEngine::rechopPads(const std::uint32_t firstPad, const std::uint32_t padCount,
     const std::span<const std::int64_t> boundaryOffsets,
-    const std::span<const std::uint64_t> expectedGenerations) {
+    const std::span<const std::uint64_t> expectedGenerations,
+    const EngineSettings* expectedSettings) {
     if (padCount < 2U || padCount > kPadsPerBank || firstPad >= kPadCount ||
         padCount > kPadCount - firstPad || boundaryOffsets.size() != padCount - 1U ||
         (!expectedGenerations.empty() && expectedGenerations.size() != padCount)) return false;
     const std::lock_guard lock(storageControlMutex_);
     collectImportedStorage();
     std::array<Snapshot, kPadsPerBank> snapshots;
-    bool armed = false;
+    std::array<std::uint32_t, kPadsPerBank> slots{};
+    EngineSettings baselineSettings;
+    bool valid = false;
     dispatchControl([&]() noexcept {
-        armed = settings_.armed;
-        for (std::uint32_t i = 0; i < padCount; ++i) captureSnapshot(firstPad + i, snapshots[i]);
+        baselineSettings = settings_;
+        valid = !settings_.armed && (!expectedSettings ||
+            (settings_.padsPerBank == expectedSettings->padsPerBank &&
+             settings_.midiBankMode == expectedSettings->midiBankMode)) &&
+            advanceVisiblePad(firstPad, padCount - 1U,
+            settings_.padsPerBank, settings_.midiBankMode) < kPadCount;
+        if (valid) for (std::uint32_t i = 0; i < padCount; ++i) {
+            slots[i] = advanceVisiblePad(firstPad, i, settings_.padsPerBank, settings_.midiBankMode);
+            captureSnapshot(slots[i], snapshots[i]);
+        }
     });
-    if (armed) return false;
+    if (!valid) return false;
     std::array<std::uint64_t, kPadsPerBank + 1U> edges{}, moved{};
     double rate = 0.0;
     for (std::uint32_t i = 0; i < padCount; ++i) {
@@ -1409,22 +1436,23 @@ bool SamplerEngine::rechopPads(const std::uint32_t firstPad, const std::uint32_t
     }
     bool applied = false;
     dispatchControl([&]() noexcept {
-        if (settings_.armed) return;
+        if (settings_.armed || settings_.padsPerBank != baselineSettings.padsPerBank ||
+            settings_.midiBankMode != baselineSettings.midiBankMode) return;
         std::uint32_t oldBlocks = 0;
         for (std::uint32_t i = 0; i < padCount; ++i) {
-            if (pads_[firstPad + i].generation.load(std::memory_order_acquire) != snapshots[i].metadata.generation) return;
-            oldBlocks += pads_[firstPad + i].allocatedBlocks;
+            if (pads_[slots[i]].generation.load(std::memory_order_acquire) != snapshots[i].metadata.generation) return;
+            oldBlocks += pads_[slots[i]].allocatedBlocks;
         }
         if (required > total_blocks_ - used_blocks_ + oldBlocks) return;
         // Release the whole transaction's capacity before publishing any replacement.
-        for (std::uint32_t i = 0; i < padCount; ++i) PadMutation::begin(pads_[firstPad + i]);
-        for (std::uint32_t i = 0; i < padCount; ++i) releasePadBlocks(firstPad + i);
+        for (std::uint32_t i = 0; i < padCount; ++i) PadMutation::begin(pads_[slots[i]]);
+        for (std::uint32_t i = 0; i < padCount; ++i) releasePadBlocks(slots[i]);
         for (std::uint32_t i = 0; i < padCount; ++i) {
-            publishStorage(firstPad + i, replacements[i], false);
-            setPadPlaybackSettingsDirect(firstPad + i, playback[i]);
-            if (replacements[i]) setPadMixerSettingsDirect(firstPad + i, snapshots[i].mixer);
+            publishStorage(slots[i], replacements[i], false);
+            setPadPlaybackSettingsDirect(slots[i], playback[i]);
+            if (replacements[i]) setPadMixerSettingsDirect(slots[i], snapshots[i].mixer);
         }
-        for (std::uint32_t i = 0; i < padCount; ++i) PadMutation::finish(pads_[firstPad + i]);
+        for (std::uint32_t i = 0; i < padCount; ++i) PadMutation::finish(pads_[slots[i]]);
         applied = true;
     });
     collectImportedStorage();
@@ -1530,21 +1558,31 @@ bool SamplerEngine::collapsePadGap(const std::uint32_t firstPad,
 
 bool SamplerEngine::splitPadAndShiftRight(const std::uint32_t firstPad,
     const std::uint32_t emptyPad, const std::uint32_t splitFrame,
-    const std::span<const std::uint64_t> expectedGenerations) {
+    const std::span<const std::uint64_t> expectedGenerations,
+    const EngineSettings* expectedSettings) {
     if (firstPad >= kPadCount || emptyPad <= firstPad || emptyPad >= kPadCount ||
-        emptyPad - firstPad >= kPadsPerBank || expectedGenerations.size() != emptyPad - firstPad + 1U) return false;
+        expectedGenerations.size() < 2U || expectedGenerations.size() > kPadCount) return false;
     const std::lock_guard lock(storageControlMutex_);
     collectImportedStorage();
     Snapshot snapshot;
     EngineSettings baselineSettings;
+    std::array<std::uint32_t, kPadCount> slots{};
+    std::uint32_t count = 0;
     bool valid = false;
     auto validate = [&]() noexcept {
-        const auto first = static_cast<std::uint32_t>(settings_.activeBank) * bankStride(settings_.padsPerBank, settings_.midiBankMode);
-        if (settings_.armed || activePad_ >= 0 || firstPad < first || emptyPad >= first + settings_.padsPerBank) return false;
-        for (std::uint32_t pad = firstPad; pad <= emptyPad; ++pad) {
-            const auto& p = pads_[pad];
-            if (p.generation.load(std::memory_order_acquire) != expectedGenerations[pad - firstPad] ||
-                p.occupied.load(std::memory_order_acquire) != (pad < emptyPad)) return false;
+        if (expectedSettings && (settings_.activeBank != expectedSettings->activeBank ||
+            settings_.padsPerBank != expectedSettings->padsPerBank ||
+            settings_.midiBankMode != expectedSettings->midiBankMode)) return false;
+        const auto first = visiblePadIndex(firstPad, settings_.padsPerBank, settings_.midiBankMode);
+        const auto last = visiblePadIndex(emptyPad, settings_.padsPerBank, settings_.midiBankMode);
+        if (settings_.armed || activePad_ >= 0 || first >= kPadCount || last >= kPadCount ||
+            last <= first || expectedGenerations.size() != last - first + 1U) return false;
+        count = last - first + 1U;
+        for (std::uint32_t i = 0; i < count; ++i) {
+            slots[i] = padForVisibleIndex(first + i, settings_.padsPerBank, settings_.midiBankMode);
+            const auto& p = pads_[slots[i]];
+            if (p.generation.load(std::memory_order_acquire) != expectedGenerations[i] ||
+                p.occupied.load(std::memory_order_acquire) != (i + 1U < count)) return false;
         }
         return true;
     };
@@ -1577,15 +1615,15 @@ bool SamplerEngine::splitPadAndShiftRight(const std::uint32_t firstPad,
             settings_.padsPerBank != baselineSettings.padsPerBank ||
             settings_.midiBankMode != baselineSettings.midiBankMode ||
             !validate() || required > total_blocks_ - used_blocks_ + pads_[firstPad].allocatedBlocks) return;
-        for (std::uint32_t pad = firstPad; pad <= emptyPad; ++pad) PadMutation::begin(pads_[pad]);
+        for (std::uint32_t i = 0; i < count; ++i) PadMutation::begin(pads_[slots[i]]);
         stopChopPreview();
-        for (std::uint32_t pad = emptyPad; pad > firstPad + 1U; --pad) movePadContents(pad - 1U, pad);
+        for (std::uint32_t i = count - 1U; i > 1U; --i) movePadContents(slots[i - 1U], slots[i]);
         releasePadBlocks(firstPad);
         publishStorage(firstPad, halves[0], true);
-        publishStorage(firstPad + 1U, halves[1], true);
+        publishStorage(slots[1], halves[1], true);
         setPadMixerSettingsDirect(firstPad, snapshot.mixer);
-        setPadMixerSettingsDirect(firstPad + 1U, snapshot.mixer);
-        for (std::uint32_t pad = firstPad; pad <= emptyPad; ++pad) PadMutation::finish(pads_[pad]);
+        setPadMixerSettingsDirect(slots[1], snapshot.mixer);
+        for (std::uint32_t i = 0; i < count; ++i) PadMutation::finish(pads_[slots[i]]);
         lastCommittedPad_ = -1;
         playbackPositionOutput_ = 0.0f;
         playbackPositionHoldFrames_ = 0U;
@@ -1601,20 +1639,22 @@ void SamplerEngine::startChopPreview(const std::uint32_t firstPad,
                                      const std::uint64_t sourceFrame,
                                      const std::uint64_t sourceEndFrame) noexcept {
     stopChopPreview();
-    if (settings_.armed || padCount == 0U || firstPad >= kPadCount ||
-        padCount > kPadCount - firstPad || sourceEndFrame <= sourceFrame)
+    if (settings_.armed || padCount == 0U ||
+        advanceVisiblePad(firstPad, padCount - 1U, settings_.padsPerBank,
+                          settings_.midiBankMode) >= kPadCount || sourceEndFrame <= sourceFrame)
         return;
     for (std::uint32_t pad = 0; pad < kPadCount; ++pad)
         hardStopVoice(pad);
     std::uint64_t remaining = sourceFrame;
     for (std::uint32_t index = 0; index < padCount; ++index) {
-        const auto frames = pads_[firstPad + index].publishedFrames.load(std::memory_order_acquire);
+        const auto pad = advanceVisiblePad(firstPad, index, settings_.padsPerBank, settings_.midiBankMode);
+        const auto frames = pads_[pad].publishedFrames.load(std::memory_order_acquire);
         if (frames == 0U)
             continue;
         if (remaining < frames) {
             chopPreviewFirstPad_ = firstPad;
             chopPreviewPadCount_ = padCount;
-            chopPreviewPad_ = firstPad + index;
+            chopPreviewPad_ = pad;
             chopPreviewFrame_ = static_cast<double>(remaining);
             chopPreviewRemainingFrames_ = static_cast<double>(sourceEndFrame - sourceFrame);
             chopPreviewActive_ = true;
@@ -1634,9 +1674,12 @@ void SamplerEngine::stopChopPreview() noexcept {
 void SamplerEngine::setChopMidiPreview(const ChopMidiPreview& preview) noexcept {
     const bool valid = preview.active && preview.firstPad < kPadCount &&
         preview.sourcePadCount > 0U && preview.sourcePadCount <= 3U &&
-        preview.sourcePadCount <= kPadCount - preview.firstPad &&
         preview.previewPadCount <= 3U &&
-        preview.previewPadCount <= kPadCount - preview.firstPad;
+        advanceVisiblePad(preview.firstPad, preview.sourcePadCount - 1U,
+            settings_.padsPerBank, settings_.midiBankMode) < kPadCount &&
+        (preview.previewPadCount == 0U ||
+         advanceVisiblePad(preview.firstPad, preview.previewPadCount - 1U,
+            settings_.padsPerBank, settings_.midiBankMode) < kPadCount);
     if (!valid) {
         chopMidiPreview_ = {};
         stopChopPreview();
@@ -1656,8 +1699,8 @@ float SamplerEngine::chopPreviewPosition() const noexcept {
         return 0.0f;
     const auto frames = pads_[chopPreviewPad_].publishedFrames.load(std::memory_order_acquire);
     if (frames == 0U ||
-        (chopPreviewPad_ + 1U >= chopPreviewFirstPad_ + chopPreviewPadCount_ &&
-         chopPreviewFrame_ >= frames))
+        (chopPreviewPad_ == advanceVisiblePad(chopPreviewFirstPad_, chopPreviewPadCount_ - 1U,
+            settings_.padsPerBank, settings_.midiBankMode) && chopPreviewFrame_ >= frames))
         return 0.0f;
     return static_cast<float>(chopPreviewPad_ + 1U) +
            static_cast<float>(std::clamp(chopPreviewFrame_ / frames, 0.0, 0.999999));
@@ -1668,19 +1711,20 @@ void SamplerEngine::mixChopPreview(float& left, float& right) noexcept {
         stopChopPreview();
         return;
     }
-    const auto endPad = chopPreviewFirstPad_ + chopPreviewPadCount_;
-    while (chopPreviewPad_ < endPad) {
+    const auto lastPad = advanceVisiblePad(chopPreviewFirstPad_, chopPreviewPadCount_ - 1U,
+        settings_.padsPerBank, settings_.midiBankMode);
+    while (chopPreviewPad_ <= lastPad && chopPreviewPad_ < kPadCount) {
         const auto frames = pads_[chopPreviewPad_].publishedFrames.load(std::memory_order_acquire);
         if (frames == 0U) {
-            ++chopPreviewPad_;
+            chopPreviewPad_ = advanceVisiblePad(chopPreviewPad_, 1U, settings_.padsPerBank, settings_.midiBankMode);
             continue;
         }
         if (chopPreviewFrame_ < frames)
             break;
         chopPreviewFrame_ -= frames;
-        ++chopPreviewPad_;
+        chopPreviewPad_ = advanceVisiblePad(chopPreviewPad_, 1U, settings_.padsPerBank, settings_.midiBankMode);
     }
-    if (chopPreviewPad_ >= endPad) {
+    if (chopPreviewPad_ > lastPad || chopPreviewPad_ >= kPadCount) {
         stopChopPreview();
         return;
     }
