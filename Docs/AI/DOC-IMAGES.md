@@ -8,9 +8,9 @@ its header before capturing.
 ## Capture inputs
 
 Use the 4×4 pad layout and the same window size for every capture, normally
-1344 × 756. Populate pads with related slices. Use colours sparingly to mark
-two neighbouring groups, such as blue and orange 2×2 blocks; leave other
-pads untinted. Select an untinted pad in Main View so selection does not obscure
+1344 × 756. Load related slices into at least the first three pads.
+Use a blue 2×2 group (pads 9, 10, 13, 14) and an orange 1×2 group
+(pads 12, 16); leave other pads untinted. Select an untinted pad in Main View so selection does not obscure
 a group colour. Show playback in Main View, a shaped envelope and edited region
 in Sample Editor, and meaningful proposed boundaries in the cut views.
 
@@ -41,7 +41,8 @@ For `hamburger-menu.png`, leave the hamburger and PAD LAYOUT submenu open so
 all top-level actions and layout choices, including CLEAR PADS, are visible;
 keep the pointer away from other menu rows. For `knob-context-menu.png`, open
 TUNE's Settings menu and its Value Mode submenu, with all three modes visible.
-These menu captures are exceptions to closing menus before capture.
+Crop the knob capture around both menus, retaining all labels. These menu
+captures are exceptions to closing menus before capture.
 
 Both READMEs share the Main View captures. The plugin README also shows each
 editor in all four appearances. Markdown tables and linked HTML `img` elements
@@ -51,8 +52,8 @@ The Skins section uses three equally sized, separate Main View images. Every
 image links to its original PNG; do not bake layouts, labels or scaling into assets.
 
 The [additional-skins gallery](../../SMS-AnvilleSampler/additional-skins/README.md)
-uses separate initial-state captures: empty pads, the default 4×4 layout, and
-unchanged factory controls. Capture every available additional skin at 1344 × 756
+uses the same loaded pads, colour groups and playback as Main View.
+Capture every available additional skin at 1344 × 756
 and store the PNGs directly in `SMS-AnvilleSampler/additional-skins/`, named
 after their skin folders (for example, `RedBlackSMSTag.png`), outside the
 downloadable skin folders. Each preview links to its full-resolution image

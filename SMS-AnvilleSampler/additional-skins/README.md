@@ -11,7 +11,7 @@ These optional skins supplement the three bundled choices. Open this page from
 
 [**Download** using https://download-directory.github.io/](https://download-directory.github.io/?url=https://github.com/sirsipe/SMS-Plugins/tree/main/SMS-AnvilleSampler/additional-skins/RedBlackSMSTag)
 
-[![Red Black SMS Tag — initial plugin state](RedBlackSMSTag.png)](RedBlackSMSTag.png)
+[![Red Black SMS Tag — v1.0.0 playback](RedBlackSMSTag.png)](RedBlackSMSTag.png)
 
 > Author: [@ManoloAnville](https://github.com/ManoloAnville)
 
@@ -21,7 +21,7 @@ These optional skins supplement the three bundled choices. Open this page from
 
 [**Download** using https://download-directory.github.io/](https://download-directory.github.io/?url=https://github.com/sirsipe/SMS-Plugins/tree/main/SMS-AnvilleSampler/additional-skins/XtremeSMSMetall)
 
-[![Xtreme SMS Metall — initial plugin state](XtremeSMSMetall.png)](XtremeSMSMetall.png)
+[![Xtreme SMS Metall — v1.0.0 playback](XtremeSMSMetall.png)](XtremeSMSMetall.png)
 
 > Author: [@ManoloAnville](https://github.com/ManoloAnville)
 

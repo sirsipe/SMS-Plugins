@@ -1,9 +1,5 @@
 # SMS-Anville Sampler
 
-> [!WARNING]
->
-> **BETA - PLEASE WAIT FOR v1.0.0 BEFORE USING**
-
 _Stereo chopping sampler that focuses on simplicity, usability, and professional-grade realtime engine._
 
 Available in [Releases](https://github.com/sirsipe/SMS-Plugins/releases):
@@ -17,7 +13,7 @@ Available in [Releases](https://github.com/sirsipe/SMS-Plugins/releases):
 Should work in any VST3 supporting DAW, but especially tested in:
 
 * Linux: **REAPER**, **Ardour**, **Carla**.
-* Windows: **Cubase**.
+* Windows: **REAPER**, **Cubase**.
 
 
 
@@ -33,7 +29,7 @@ Should work in any VST3 supporting DAW, but especially tested in:
 | --- | --- | --- |
 | [<img src="Docs/main-view-finnish-dream.png" width="224" alt="Finnish Dream Main View">](Docs/main-view-finnish-dream.png) | [<img src="Docs/main-view-looks-like-wu.png" width="224" alt="Looks like Wu Main View">](Docs/main-view-looks-like-wu.png) | [<img src="Docs/main-view-white-cadillac-vinyl.png" width="224" alt="White Cadillac Vinyl Main View">](Docs/main-view-white-cadillac-vinyl.png) |
 
-Captures: v0.0.13, except where noted.
+Plugin captures: v1.0.0.
 
 
 
@@ -134,7 +130,7 @@ Right-click global **PAN**, **TUNE**, **LOWPASS**, **HIGHPASS**, or the **OUT**
 fader to open **Settings: <control>**. These settings belong to that control;
 IN and pad controls retain their usual behavior.
 
-[<img src="Docs/knob-context-menu.png" width="672" alt="TUNE settings with the Value Mode submenu open">](Docs/knob-context-menu.png)
+[<img src="Docs/knob-context-menu.png" width="400" alt="TUNE settings with the Value Mode submenu open">](Docs/knob-context-menu.png)
 
 **Value Mode** chooses how incoming positions are interpreted:
 
@@ -194,8 +190,6 @@ Right-click a middle pad for **Adjust cut points**. **Exit**, Escape, and the
 previous/next arrows save pending cuts automatically. **Cancel Changes** restores
 the loaded cuts without leaving; it is enabled only when cuts change.
 See the [cut-point guide](Docs/CHOP-EDITOR.md).
-
-Adjust Cut Points captures: v0.9.0-beta.1.
 
 [<img src="Docs/adjust-cut-points.png" width="672" alt="Default">](Docs/adjust-cut-points.png)
 

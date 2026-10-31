@@ -1,11 +1,6 @@
 # SudoMetalStudio Plugins
 
-> [!WARNING]
-> 
-> **BETA - PLEASE WAIT FOR v1.0.0 BEFORE USING**
-
 _Professionally developed audio plugins for **Linux** (VST3/LV2) and **Windows** (VST3)._
-
 
 ## Plugins
 
