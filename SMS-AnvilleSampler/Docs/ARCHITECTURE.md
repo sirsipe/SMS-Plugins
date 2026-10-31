@@ -28,8 +28,8 @@ reports pad/preview activity. Views follow bank, notes and selection.
 toggle, and Stop Audition through one atomic command. UI-local Play/Loop/Off
 replaces previous auditions within the voice limit. MIDI retrigger takes ownership;
 Stop Audition cannot cut its replacement. Stop All also supports host control.
-All Banks limits the effective base note to 64 so every layout remains within
-MIDI notes 0–127. UI notes and labels use the engine mapping. Selected Bank reuses one range,
+All Banks caps the base note at 64, keeping layouts within MIDI 0–127.
+UI notes/labels use engine mapping. Selected Bank reuses one range,
 with `active_bank` choosing its target, and retains fixed 16-slot banks.
 Hold voices retain their triggering MIDI note; note-off releases matching voices
 across bank, layout, base-note, and mapping changes. Retriggering replaces that ownership.
@@ -69,12 +69,14 @@ Filter and Dirty follow [Mixing](../../Docs/AI/MIXING.md).
 Pad transfers commit retained immutable audio at block boundaries; unrelated
 audio continues and host reads never wait. [Storage handoff](../../Docs/AI/PAD-STORAGE.md).
 
-Collapse Gap moves descriptors/settings within the active bank/page without
-copying PCM. Split and cut edits stage PCM and validate generations before atomic
+Collapse Gap moves descriptors/settings without copying PCM; only the last
+visible pad can reach the next bank. Hidden slots stay untouched.
+[Contract](../../Docs/AI/PAD-CONTEXT-MENU.md).
+Split and cut edits stage PCM and validate generations before atomic
 cross-bank commit, skipping hidden slots. Recording, resets, audio,
 and settings changes invalidate stale plans.
 
-Four peak outputs; LEDs redraw at ≤30 FPS. Hard bypass cannot be metered.
+Four peak outputs; LEDs ≤30 FPS. Hard bypass cannot be metered.
 
 ## Project state
 
@@ -110,8 +112,8 @@ tint; colors stay with slots through sample edits and moves.
 mode, skin and startup default. Its released private `reset` request is retained.
 The control worker clears pads at block boundaries, clipboard, split plans and
 colors; the UI invalidates pad/editor snapshots and returns to the main view.
-`pad_file_request` carries action/pad/UTF-8 path. VST3 uses an instance worker;
-LV2 uses its required host worker. Small busy/status states and a hidden completion
+`pad_file_request`: action/pad/UTF-8 path. VST3 uses an instance worker;
+LV2 requires its host worker. Small busy/status states and a hidden completion
 output return results. VST3 bus excludes PCM, but DPF's initial state transfer
 may send DSP-only Base64 pad PCM to a newly opened UI.
 

@@ -1510,13 +1510,9 @@ void SamplerEngine::movePadContents(const std::uint32_t source,
     to.generation.fetch_add(1U, std::memory_order_release);
 }
 
-bool SamplerEngine::collapsePadGap(const std::uint32_t firstPad,
-                                   const std::uint32_t padCount,
-                                   const std::uint32_t targetPad) {
-    const std::lock_guard lock(storageControlMutex_);
-    bool result = false;
-    dispatchControl([&]() noexcept {
-    auto collapse = [&]() noexcept -> bool {
+SamplerEngine::CollapseGapPlan SamplerEngine::planCollapsePadGap(
+    const std::uint32_t firstPad, const std::uint32_t padCount,
+    const std::uint32_t targetPad) const noexcept {
     const std::uint32_t visibleFirst = static_cast<std::uint32_t>(settings_.activeBank) *
         bankStride(settings_.padsPerBank, settings_.midiBankMode);
     if (settings_.armed || activePad_ >= 0 || firstPad != visibleFirst ||
@@ -1524,34 +1520,58 @@ bool SamplerEngine::collapsePadGap(const std::uint32_t firstPad,
         firstPad >= kPadCount || padCount > kPadCount - firstPad ||
         targetPad < firstPad || targetPad >= firstPad + padCount ||
         pads_[targetPad].occupied.load(std::memory_order_acquire))
-        return false;
+        return {};
 
-    std::uint32_t gapStart = targetPad;
-    while (gapStart > firstPad &&
-           !pads_[gapStart - 1U].occupied.load(std::memory_order_acquire))
-        --gapStart;
-    std::uint32_t runStart = targetPad + 1U;
-    const std::uint32_t end = firstPad + padCount;
-    while (runStart < end &&
-           !pads_[runStart].occupied.load(std::memory_order_acquire))
-        ++runStart;
-    if (runStart == end)
-        return false;
-    std::uint32_t runEnd = runStart;
-    while (runEnd < end && pads_[runEnd].occupied.load(std::memory_order_acquire))
-        ++runEnd;
-
-    stopChopPreview();
-    const std::uint32_t gapSize = runStart - gapStart;
-    for (std::uint32_t source = runStart; source < runEnd; ++source)
-        movePadContents(source, source - gapSize);
-    lastCommittedPad_ = -1;
-    playbackPositionOutput_ = 0.0f;
-    playbackPositionHoldFrames_ = 0U;
-    playbackPositionWasActive_ = false;
-    return true;
+    const auto first = visiblePadIndex(firstPad, settings_.padsPerBank, settings_.midiBankMode);
+    const auto target = first + (targetPad - firstPad);
+    auto occupied = [&](const std::uint32_t index) noexcept {
+        return pads_[padForVisibleIndex(index, settings_.padsPerBank,
+            settings_.midiBankMode)].occupied.load(std::memory_order_acquire);
     };
-    result = collapse();
+    CollapseGapPlan plan;
+    plan.gapStart = target;
+    while (plan.gapStart > first && !occupied(plan.gapStart - 1U))
+        --plan.gapStart;
+    auto end = first + padCount;
+    if (targetPad == firstPad + padCount - 1U && settings_.activeBank + 1U < kBankCount)
+        end += padCount;
+    plan.runStart = target + 1U;
+    while (plan.runStart < end && !occupied(plan.runStart))
+        ++plan.runStart;
+    plan.runEnd = plan.runStart;
+    while (plan.runEnd < end && occupied(plan.runEnd))
+        ++plan.runEnd;
+    return plan;
+}
+
+std::uint32_t SamplerEngine::collapsePadGapShiftCount(const std::uint32_t firstPad,
+    const std::uint32_t padCount, const std::uint32_t targetPad) const noexcept {
+    const auto plan = planCollapsePadGap(firstPad, padCount, targetPad);
+    return plan.runEnd - plan.runStart;
+}
+
+bool SamplerEngine::collapsePadGap(const std::uint32_t firstPad,
+    const std::uint32_t padCount, const std::uint32_t targetPad,
+    std::uint32_t* const affectedPadCount) {
+    const std::lock_guard lock(storageControlMutex_);
+    bool result = false;
+    dispatchControl([&]() noexcept {
+        const auto plan = planCollapsePadGap(firstPad, padCount, targetPad);
+        if (plan.runStart == plan.runEnd)
+            return;
+        stopChopPreview();
+        const auto gapSize = plan.runStart - plan.gapStart;
+        for (auto source = plan.runStart; source < plan.runEnd; ++source)
+            movePadContents(padForVisibleIndex(source, settings_.padsPerBank, settings_.midiBankMode),
+                padForVisibleIndex(source - gapSize, settings_.padsPerBank, settings_.midiBankMode));
+        if (affectedPadCount)
+            *affectedPadCount = padForVisibleIndex(plan.runEnd - 1U,
+                settings_.padsPerBank, settings_.midiBankMode) - firstPad + 1U;
+        lastCommittedPad_ = -1;
+        playbackPositionOutput_ = 0.0f;
+        playbackPositionHoldFrames_ = 0U;
+        playbackPositionWasActive_ = false;
+        result = true;
     });
     return result;
 }

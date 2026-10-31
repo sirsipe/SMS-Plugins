@@ -390,6 +390,151 @@ void collapseGapPublishesMovedSettings()
                        "collapse publishes the complete moved playback and mixer settings");
 }
 
+void collapseAcrossBankBoundary()
+{
+    for (const auto layout : kPadsPerBankByLayout) {
+        for (const auto mode : {MidiBankMode::SelectedBank, MidiBankMode::AllBanks}) {
+            for (std::uint8_t bank = 0; bank < kBankCount; ++bank) {
+                for (const auto leadingGap : {0U, 1U}) {
+                    for (const bool fullRun : {false, true}) {
+                        SamplerEngine engine(48000, 0.02);
+                        auto settings = engine.settings();
+                        settings.padsPerBank = layout;
+                        settings.midiBankMode = mode;
+                        settings.activeBank = bank;
+                        engine.setSettings(settings);
+                        sms::audio::RealtimeCommandDispatcher dispatcher;
+                        engine.setControlDispatcher(&dispatcher,
+                            &sms::audio::RealtimeCommandDispatcher::dispatchFromEngine);
+                        Observer observer;
+                        PadWorkflows workflows(engine, dispatcher, observer);
+                        const auto first = bank * bankStride(layout, mode);
+                        const auto target = first + layout - 1U;
+                        const auto gapIndex = bank * layout + layout - 2U;
+                        const auto runIndex = (bank + 1U) * layout + leadingGap;
+                        const auto count = bank + 1U == kBankCount ? 0U :
+                            (fullRun ? layout - leadingGap : 2U);
+                        // Occupied hidden slots and later banks must stay untouched.
+                        for (std::uint32_t pad = 0; pad < kPadCount; ++pad) {
+                            const auto index = visiblePadIndex(pad, layout, mode);
+                            if (index < kPadCount && (index == gapIndex || index == gapIndex + 1U ||
+                                (bankForPad(pad, layout, mode) == bank + 1U &&
+                                 (index < runIndex || index == runIndex + count))))
+                                continue;
+                            auto audio = sample();
+                            audio.sampleRate = 32000.0 + pad * 100.0;
+                            for (auto& value : audio.stereo) value *= 0.2f + pad * 0.01f;
+                            check(engine.importPad(pad, audio), "seed boundary collapse PCM");
+                            engine.setPadPlaybackSettings(pad, {0.1f, 0.9f, 0.01f, 0.02f, 0.6f, 0.03f});
+                            auto mixer = engine.padMixerSettings(pad);
+                            mixer.pan = -0.4f + pad * 0.01f;
+                            mixer.reverse = 1.0f;
+                            engine.setPadMixerSettings(pad, mixer);
+                        }
+                        const auto before = snapshotRange<kPadCount>(engine, 0);
+                        workflows.handlePadStructureRequest(encodePadStructureRequest(
+                            {PadStructureAction::queryCollapse, first, layout, target}));
+                        check(observer.latest(kPadStructureStatusKey) ==
+                              "PS1;G;" + std::to_string(target) + ";" + std::to_string(count) &&
+                              sameSnapshots(before, snapshotRange<kPadCount>(engine, 0)),
+                              "collapse query counts the following bank run without changing pads");
+                        workflows.handlePadStructureRequest(encodePadStructureRequest(
+                            {PadStructureAction::collapse, first, layout, target - 1U}));
+                        check(observer.latest(kPadStructureStatusKey).starts_with("PS1;E;") &&
+                              sameSnapshots(before, snapshotRange<kPadCount>(engine, 0)),
+                              "an earlier slot in the same trailing gap cannot collapse across banks");
+                        auto armed = settings;
+                        armed.armed = true;
+                        engine.setSettings(armed);
+                        workflows.handlePadStructureRequest(encodePadStructureRequest(
+                            {PadStructureAction::collapse, first, layout, target}));
+                        check(observer.latest(kPadStructureStatusKey).starts_with("PS1;E;") &&
+                              sameSnapshots(before, snapshotRange<kPadCount>(engine, 0)),
+                              "armed collapse cannot mutate pads");
+                        engine.setSettings(settings);
+                        observer.messages.clear();
+                        workflows.handlePadStructureRequest(encodePadStructureRequest(
+                            {PadStructureAction::collapse, first, layout, target}));
+                        if (count == 0U) {
+                            check(observer.latest(kPadStructureStatusKey).starts_with("PS1;E;") &&
+                                  sameSnapshots(before, snapshotRange<kPadCount>(engine, 0)),
+                                  "Bank D trailing gap never wraps to Bank A");
+                            continue;
+                        }
+                        check(observer.latest(kPadStructureStatusKey) == "PS1;O;0;C",
+                              "last-slot collapse commits across the bank boundary");
+                        const auto after = snapshotRange<kPadCount>(engine, 0);
+                        for (std::uint32_t pad = 0; pad < kPadCount; ++pad) {
+                            const auto index = visiblePadIndex(pad, layout, mode);
+                            if (index >= gapIndex && index < gapIndex + count) {
+                                const auto source = padForVisibleIndex(
+                                    runIndex + index - gapIndex, layout, mode);
+                                check(after[pad].audio.stereo == before[source].audio.stereo &&
+                                      after[pad].audio.sampleRate == before[source].audio.sampleRate &&
+                                      after[pad].audio.frames == before[source].audio.frames,
+                                      "cross-bank collapse preserves exact ordered PCM and source rates");
+                                checkSettingsReply(observer, engine, pad,
+                                    before[source].playback, before[source].mixer,
+                                    "cross-bank collapse publishes complete moved settings");
+                            } else if (index >= gapIndex + count && index < runIndex + count) {
+                                check(!engine.padMetadata(pad).occupied && after[pad].audio.frames == 0U,
+                                      "cross-bank collapse clears every vacated slot");
+                                checkSettingsReply(observer, engine, pad, {}, {},
+                                    "cross-bank collapse publishes reset settings for vacated slots");
+                            } else {
+                                check(sameSnapshot(before[pad], after[pad]),
+                                      "collapse preserves hidden slots, later runs and all other banks");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+void collapseAvailabilityRevalidates()
+{
+    SamplerEngine engine(48000, 0.02);
+    auto settings = engine.settings();
+    settings.midiBankMode = MidiBankMode::SelectedBank;
+    engine.setSettings(settings);
+    sms::audio::RealtimeCommandDispatcher dispatcher;
+    engine.setControlDispatcher(&dispatcher,
+        &sms::audio::RealtimeCommandDispatcher::dispatchFromEngine);
+    Observer observer;
+    PadWorkflows workflows(engine, dispatcher, observer);
+    for (std::uint32_t pad = 0; pad <= 32U; ++pad)
+        if (pad != 1U) check(engine.importPad(pad, sample()), "seed adjacent full banks");
+    const auto nextBank = snapshotRange<16>(engine, 16);
+    workflows.handlePadStructureRequest(encodePadStructureRequest(
+        {PadStructureAction::collapse, 0, 16, 1}));
+    check(observer.latest(kPadStructureStatusKey) == "PS1;O;0;C" &&
+          !engine.padMetadata(15).occupied && sameSnapshots(nextBank, snapshotRange<16>(engine, 16)),
+          "ordinary collapse stops at its bank boundary even when the next bank is occupied");
+    workflows.handlePadStructureRequest(encodePadStructureRequest(
+        {PadStructureAction::queryCollapse, 0, 16, 15}));
+    check(observer.latest(kPadStructureStatusKey) == "PS1;G;15;16",
+          "last-slot query sees the full next bank");
+    settings.activeBank = 1;
+    engine.setSettings(settings);
+    const auto beforeBankChange = snapshotRange<kPadCount>(engine, 0);
+    workflows.handlePadStructureRequest(encodePadStructureRequest(
+        {PadStructureAction::collapse, 0, 16, 15}));
+    check(observer.latest(kPadStructureStatusKey).starts_with("PS1;E;") &&
+          sameSnapshots(beforeBankChange, snapshotRange<kPadCount>(engine, 0)),
+          "confirmation revalidates the active bank after an availability query");
+    settings.activeBank = 0;
+    engine.setSettings(settings);
+    for (std::uint32_t pad = 16; pad < 32; ++pad) engine.clearPad(pad);
+    const auto beforeClearedRun = snapshotRange<kPadCount>(engine, 0);
+    workflows.handlePadStructureRequest(encodePadStructureRequest(
+        {PadStructureAction::collapse, 0, 16, 15}));
+    check(observer.latest(kPadStructureStatusKey).starts_with("PS1;E;") &&
+          sameSnapshots(beforeClearedRun, snapshotRange<kPadCount>(engine, 0)),
+          "a removed run invalidates collapse; an empty next bank cannot pull from Bank C");
+}
+
 void chopApplyRevisionAndReplies()
 {
     SamplerEngine engine(48000, 0.001);
@@ -670,6 +815,8 @@ int main()
     splitPlanAndConflict();
     splitPlanLifecycle();
     collapseGapPublishesMovedSettings();
+    collapseAcrossBankBoundary();
+    collapseAvailabilityRevalidates();
     chopApplyRevisionAndReplies();
     crossBankWorkflowReplies();
     splitPlanCoversAllVisibleBanks();

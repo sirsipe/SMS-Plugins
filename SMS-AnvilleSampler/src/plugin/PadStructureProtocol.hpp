@@ -16,6 +16,7 @@ enum class PadStructureAction : std::uint8_t {
     applySplit,
     cancelSplit,
     querySplit,
+    queryCollapse,
 };
 
 struct PadStructureRequest {
@@ -49,7 +50,9 @@ template <class Integer>
 {
     switch (request.action) {
     case PadStructureAction::collapse:
-        return "PS1;C;" + std::to_string(request.firstPad) + ";" +
+    case PadStructureAction::queryCollapse:
+        return std::string(request.action == PadStructureAction::collapse ? "PS1;C;" : "PS1;G;") +
+            std::to_string(request.firstPad) + ";" +
             std::to_string(request.padCount) + ";" + std::to_string(request.targetPad);
     case PadStructureAction::querySplit:
     case PadStructureAction::prepareSplit:
@@ -87,7 +90,7 @@ template <class Integer>
     std::string_view third;
     if (!token(first))
         return false;
-    if (action == 'C' || action == 'P' || action == 'Q') {
+    if (action == 'C' || action == 'P' || action == 'Q' || action == 'G') {
         if (!token(second) || !token(third) || !rest.empty() ||
             !parsePadStructureInteger(first, decoded.firstPad) ||
             !parsePadStructureInteger(second, decoded.padCount) ||
@@ -97,7 +100,7 @@ template <class Integer>
             decoded.targetPad < decoded.firstPad ||
             decoded.targetPad >= decoded.firstPad + decoded.padCount)
             return false;
-        decoded.action = action == 'C'
+        decoded.action = action == 'G' ? PadStructureAction::queryCollapse : action == 'C'
             ? PadStructureAction::collapse : (action == 'Q'
                 ? PadStructureAction::querySplit : PadStructureAction::prepareSplit);
     } else if (action == 'A') {

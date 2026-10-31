@@ -1,6 +1,6 @@
 # Pad context menu
 
-Audience: agents changing pad interactions. MIDI assignment is outside this menu.
+Audience: pad interactions. MIDI assignment is outside this menu.
 
 ## Interaction contract
 
@@ -13,22 +13,16 @@ MIDI note-on closes it; note-off does not. Clamp it to the logical canvas under
 UI scaling. A dismissing pointer event must not activate the control underneath.
 If target state changes externally, close the menu or recompute enablement.
 
-Enabled actions highlight on hover. Repaint when the hovered target
-changes; disabled entries stay non-interactive.
-
-Keep reusable hover identity, transitions, geometry, and themed drawing in
-`Common-UI`, separate from product actions, so other SMS controls can reuse it.
+Enabled actions highlight on hover; repaint target changes. Disabled entries
+stay non-interactive. Shared hover state and drawing belong in `Common-UI`.
 
 ## Extensible action model
 
-Product code owns each action's stable identity, label, enabled state, and
-invocation. Reusable overlay layout, hit testing, keyboard/pointer dismissal,
-disabled-item behavior, hover transitions, and DPF drawing belong in
-`Common-UI`. Keep framework-neutral geometry and state outside `Common-UI/DPF`;
-the NanoVG adapter belongs inside it. The menu must not own sampler, host,
-clipboard, MIDI-mapping, or filesystem responsibilities.
-
-Add later actions without another menu type or a large conditional handler.
+Product code owns action identities, labels, enablement, and invocation.
+`Common-UI` owns layout, hit testing, dismissal, disabled items, hover, and drawing.
+Keep framework-neutral geometry/state outside `Common-UI/DPF`; NanoVG belongs
+inside it. Menus must not own sampler, host, clipboard, MIDI-mapping, or filesystem
+responsibilities.
 
 ## Implemented actions
 
@@ -56,11 +50,10 @@ content or a host parameter: its readable value is always neutral `0`. This
 preserves released parameter identities and keeps sampler mutation on the audio
 boundary.
 
-WAV Import and Export follow the separate [pad WAV contract](PAD-WAV-IO.md).
-Cover actions and menu lifecycle in Play and Sample Editor. Verify target
-selection without audition, pad layouts and banks,
-disabled entries, hover transitions, dismissal by mapped MIDI playback and
-other interactions, canvas-edge placement, resizing, and UI scaling.
+WAV Import and Export follow the [pad WAV contract](PAD-WAV-IO.md).
+Test actions/lifecycle in Play and Sample Editor: selection without audition,
+layouts/banks, disabled entries, hover, MIDI/interaction dismissal, canvas edges,
+resizing, and UI scaling.
 
 **Copy Pad** is enabled only for an occupied target. It takes a private snapshot
 of the pad's stereo sample, source sample rate, and all current non-destructive
@@ -75,20 +68,25 @@ Paste use an internal clipboard owned by one plug-in instance. It is not the OS
 clipboard, cannot cross plug-in instances, is not part of saved DAW state, and
 is lost when the instance is destroyed.
 
-The snapshot and replacement run outside the audio callback under the existing
-real-time access gate. The callback emits silence while access is granted; it
-never allocates, blocks, locks, or copies sample data. Keep clipboard storage and
-mutation framework-neutral in `src/core`; DPF state and output parameters carry
-only bounded commands and completion/availability signals. Paste publishes fresh
+Snapshot/replacement run outside the audio callback under the real-time access
+gate. The callback emits silence during access; it never allocates, blocks,
+locks, or copies PCM. Clipboard storage/mutation belongs in `src/core`; DPF
+carries bounded commands and completion/availability signals. Paste publishes fresh
 editor and waveform state through the same path as WAV Import. The
 [VST3 UI message bus](DPF-VST3-CONSTRAINTS.md) carries these replies where DPF's
 `updateStateValue()` callback is absent.
 
 **Collapse Gap** is enabled on an empty visible pad when an occupied pad follows
-in the current bank/page. **Confirm Collapse** finds the complete containing gap
-and shifts the next contiguous occupied run left into it, stopping at the next
-empty slot. All audio metadata and settings move; vacated slots are empty. It
-never crosses the visible boundary or consumes hidden slots.
+in the current bank/page. Selecting the last visible pad extends the search
+through the immediately following bank; selecting any earlier pad keeps it
+within the current bank, even in the same trailing gap. A read-only structure
+query supplies the cross-bank shift count for menu enablement and its label.
+**Confirm Collapse** revalidates the range, finds the complete containing gap
+back to the current bank's start, and shifts the next contiguous occupied run
+left into it, stopping at the next empty slot or the search boundary. All audio
+metadata and settings move; vacated slots are empty. Hidden slots stay in place,
+Bank D never wraps to A, and banks beyond the next one are untouched. Replies
+refresh settings for moved and vacated slots across both banks.
 
 **Split Sample...** is enabled on an occupied pad when a later empty visible
 slot exists in the current or a following bank. A read-only structure query

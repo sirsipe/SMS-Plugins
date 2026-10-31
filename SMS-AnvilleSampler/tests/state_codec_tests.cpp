@@ -777,6 +777,16 @@ void padStructureProtocolRoundTrip()
           decoded.action == midichopper::plugin::PadStructureAction::querySplit &&
           decoded.targetPad == 23U,
           "read-only cross-bank split availability query round-trips");
+    apply.action = PadStructureAction::queryCollapse;
+    check(midichopper::plugin::decodePadStructureRequest(
+              midichopper::plugin::encodePadStructureRequest(apply), decoded) &&
+          decoded.action == PadStructureAction::queryCollapse &&
+          decoded.firstPad == 16U && decoded.padCount == 8U && decoded.targetPad == 23U,
+          "read-only collapse count query round-trips");
+    check(!midichopper::plugin::decodePadStructureRequest("PS1;G;0;16;16", decoded) &&
+          !midichopper::plugin::decodePadStructureRequest("PS1;G;0;0;0", decoded) &&
+          !midichopper::plugin::decodePadStructureRequest("PS1;G;0;16;15;1", decoded),
+          "collapse queries reject invalid ranges and extra fields");
 
     check(!midichopper::plugin::decodePadStructureRequest("PS2;C;0;16;1", decoded) &&
           !midichopper::plugin::decodePadStructureRequest("PS1;C;63;2;63", decoded) &&

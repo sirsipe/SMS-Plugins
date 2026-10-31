@@ -72,7 +72,10 @@ Using an arrow also cancels the split before opening the neighboring cut view.
 To close holes without splitting, right-click an empty pad and choose
 **Collapse Gap**. Confirm the action to move the following uninterrupted group
 of occupied pads left into the complete empty gap. Collapse stops at the next
-empty pad and never crosses the visible bank.
+empty pad or the bank boundary. Choosing the bank's last visible pad extends
+the search through the next bank. Choosing an earlier pad in the same gap keeps
+the operation within the current bank. Hidden slots stay in place; Bank D never
+wraps to A.
 
 Adjust Cut Points requires all non-empty samples in its three-pad window to use
 the same sample rate. The plug-in does not store

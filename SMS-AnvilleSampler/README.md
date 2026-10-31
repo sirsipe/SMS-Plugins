@@ -255,8 +255,9 @@ length slice per note-on.
 6 dB/octave filter slopes.
 
 - Pad actions: copy/paste/import/export/clear/split/collapse gaps.
-  Split can shift pads across following banks; Collapse Gap stays within the
-  active bank. Copies can cross banks.
+  Split can shift pads across following banks; Collapse Gap can reach the next
+  bank when invoked on the last visible pad. See the
+  [cut-point guide](Docs/CHOP-EDITOR.md). Copies can cross banks.
 
 - Right-click a pad for **Color**; tint persists when empty.
 

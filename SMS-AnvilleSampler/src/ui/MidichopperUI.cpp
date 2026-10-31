@@ -717,7 +717,21 @@ protected:
         else if (std::strcmp(key, "pad_structure_status") == 0)
         {
             midichopper::plugin::SplitPlanReady plan;
-            if (std::string_view(value).starts_with("PS1;A;")) {
+            if (std::string_view(value).starts_with("PS1;G;")) {
+                const auto reply = std::string_view(value).substr(6U);
+                const auto separator = reply.find(';');
+                int pad = -1;
+                int count = 0;
+                if (separator != std::string_view::npos &&
+                    midichopper::plugin::parsePadStructureInteger(reply.substr(0U, separator), pad) &&
+                    midichopper::plugin::parsePadStructureInteger(reply.substr(separator + 1U), count) &&
+                    count >= 0 && count <= visiblePadCount() &&
+                    fPadContextMenuOpen && pad == fPadContextTarget) {
+                    fCollapseAvailablePad = pad;
+                    fCollapseAvailableCount = count;
+                    requestRepaint();
+                }
+            } else if (std::string_view(value).starts_with("PS1;A;")) {
                 const auto reply = std::string_view(value).substr(6U);
                 const auto separator = reply.find(';');
                 int pad = -1;
@@ -2283,6 +2297,8 @@ private:
     bool fPadClipboardAvailable = false;
     bool fPadClipboardBusy = false;
     bool fPadStructureBusy = false;
+    int fCollapseAvailablePad = -1;
+    int fCollapseAvailableCount = 0;
     int fSplitAvailablePad = -1;
     bool fSplitAvailable = false;
     int fPendingSplitTarget = -1;
@@ -2578,9 +2594,13 @@ private:
         fPadContextMenuOpen = true;
         fSplitAvailablePad = -1;
         fSplitAvailable = false;
-        if (!padActionBusy() && padContextTargetOccupied()) {
+        fCollapseAvailablePad = -1;
+        fCollapseAvailableCount = 0;
+        if (!padActionBusy() && (padContextTargetOccupied() ||
+            localPadForGlobalPad(pad) == visiblePadCount() - 1)) {
             midichopper::plugin::PadStructureRequest request;
-            request.action = midichopper::plugin::PadStructureAction::querySplit;
+            request.action = padContextTargetOccupied()
+                ? PadStructureAction::querySplit : PadStructureAction::queryCollapse;
             request.firstPad = static_cast<std::uint32_t>(globalPad(0));
             request.padCount = static_cast<std::uint32_t>(visiblePadCount());
             request.targetPad = static_cast<std::uint32_t>(pad);
@@ -2696,6 +2716,8 @@ private:
         if (!fPadContextMenuOpen || fPadContextTarget < 0 ||
             padContextTargetOccupied())
             return 0;
+        if (localPadForGlobalPad(fPadContextTarget) == visiblePadCount() - 1)
+            return fCollapseAvailablePad == fPadContextTarget ? fCollapseAvailableCount : 0;
         int pad = localPadForGlobalPad(fPadContextTarget) + 1;
         while (pad < visiblePadCount() && !localPadOccupied(pad))
             ++pad;

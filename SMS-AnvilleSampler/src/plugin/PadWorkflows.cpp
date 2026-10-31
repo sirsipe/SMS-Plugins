@@ -115,17 +115,30 @@ void PadWorkflows::handlePadStructureRequest(const std::string_view encoded)
             observer_.publishUiState(kPadStructureStatusKey, status.c_str());
             return;
         }
+        if (request.action == PadStructureAction::queryCollapse) {
+            std::uint32_t count = 0U;
+            controlDispatcher_.invoke([&]() noexcept {
+                count = sampler_.collapsePadGapShiftCount(
+                    request.firstPad, request.padCount, request.targetPad);
+            });
+            mutationLock.unlock();
+            const std::string status = "PS1;G;" + std::to_string(request.targetPad) +
+                ";" + std::to_string(count);
+            observer_.publishUiState(kPadStructureStatusKey, status.c_str());
+            return;
+        }
         if (request.action == PadStructureAction::collapse) {
             committedStatus = "PS1;O;0;C";
             pendingSplitPlan_ = {};
+            std::uint32_t affectedPadCount = 0U;
             if (!sampler_.collapsePadGap(
-                    request.firstPad, request.padCount, request.targetPad)) {
+                    request.firstPad, request.padCount, request.targetPad, &affectedPadCount)) {
                 publishPadStructureError(0U, "Could not collapse this gap");
                 return;
             }
             committed = true;
             mutationLock.unlock();
-            publishPadSettings(request.firstPad, request.padCount,
+            publishPadSettings(request.firstPad, affectedPadCount,
                 static_cast<std::uint8_t>(kPadsPerBank), MidiBankMode::SelectedBank);
             observer_.publishUiState(
                 kPadStructureStatusKey, committedStatus.c_str());

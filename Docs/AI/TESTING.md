@@ -38,7 +38,7 @@ Long-audio: `./build/anvillesampler_transfer_tests "/path/to/long-sample.wav"`.
 
 ## LV2 bundle discovery
 
-`lilv-utils`; discovery does not validate audio:
+`lilv-utils` discovery (not audio validation):
 
 ```bash
 LV2_PATH="$PWD/build/bin" \
@@ -46,8 +46,6 @@ LV2_PATH="$PWD/build/bin" \
 ```
 
 ## LV2 host integration
-
-Carla:
 
 ```bash
 LV2_URI='https://github.com/sirsipe/SMS-Plugins/SMS-AnvilleSampler'
@@ -64,12 +62,9 @@ LV2_PATH="$PWD/build/bin" pw-jack jalv -s "$LV2_URI"
 
 Jalv/Carla 2.5.10 cannot validate DSP-requested `active_bank` updates.
 
-Checks:
-
-- Capture: ARM; first note starts capture, later notes split consecutive visible
+- Capture (VST3/LV2): ARM; first note starts capture, later notes split visible
   pads; FINALIZE keeps the open slice. UNDO discards the open/last slice;
-  confirmed CLEAR empties all banks. Repeat in VST3/LV2; check affected capture
-  modes and compare recorded output for timing/pre-roll changes.
+  confirmed CLEAR empties all banks. Compare output timing/pre-roll.
 - Playback: verify notes/banks, polyphony and stereo. Hold/editor Loop repeat
   ADSR each pass; Hold note-off uses full Release across seams without retrigger,
   including after shared-bank switches. Check zero Release and One Shot.
@@ -84,11 +79,10 @@ Checks:
   scrolling, deleted skins and config-write failure. Forced `skin` hides selection.
   Verify SKIN's separator/pinned `<Get More>` with long collections; it opens the
   additional-skins README without changing appearance/preferences.
-- UI/editor: check drawing, pad selection, region/mixer/ADSR drag,
-  wheel/reset, sound/playhead, and hover. Embedded VST3 numeric
-  entry: double-click knob/fader or value; Enter/numpad Enter commit, Escape
-  cancels; Tab/Shift+Tab accept valid entries and follow the manual's visible
-  control order, retaining invalid entries. Middle-click resets. Check ARM/play/stop icons and
+- UI/editor: check drawing, selection, region/mixer/ADSR drag, wheel/reset,
+  sound/playhead, hover. VST3 numeric entry: double-click knob/fader/value;
+  Enter/numpad Enter commit, Escape cancels; Tab/Shift+Tab accept valid entries
+  in manual order, retaining invalid entries. Middle-click resets. Check ARM/play/stop icons and
   default green PLAY/red ARMED indicators. ARM hides the mixer; both edge faders remain
   editable in every view. Verify independent monitor/playback gain, raw preview,
   and unchanged captured PCM. Check global Settings headers, mode changes keeping
@@ -100,13 +94,16 @@ Checks:
   suppression. Lose focus while held, release, return, and retry. Menus, numeric
   entry, and cut-point views block Space. Verify DAW transport does not respond.
 - Cut Point Editor: follow its focused [validation contract](CHOP-EDITOR.md).
-- Waveforms: in Sample Editor, Adjust Cut Points, and Split Sample, continuously
-  drag zoom/scroll and Ctrl/Shift-wheel. Check visible, correctly positioned peaks,
-  coarse fallback/refinement, deep zoom, edges, zoom-out, pad switching, and
-  cut-save/split-Apply refresh without stale peaks.
+- Waveforms (Sample Editor, Adjust Cut Points, Split Sample): drag zoom/scroll,
+  Ctrl/Shift-wheel. Check peak alignment, coarse fallback/refinement, deep zoom,
+  edges, zoom-out, pad switching, cut-save/split-Apply refresh without stale peaks.
 - Pad clipboard: copy edited audio; alter/clear its source, then paste to
   empty/occupied targets. Verify copy-time PCM/settings and empty-clipboard disable.
-- State: save populated pads/settings, close, reload, and compare playback. Check DAW restoration.
+- Collapse Gap: A trailing gap, B occupied run. Earlier gap slot: disabled.
+  Last slot: verify count, confirmation, moved audio/settings and vacated slots.
+  Repeat Play/Sample Editor, both bank modes. Preserve hidden slots/later runs;
+  D never wraps to A.
+- State: save populated pads/settings, close/reload the DAW, compare playback.
 - CLEAR PADS: change globals, knob settings, pad edits/colors, clipboard and
   preferences. Verify timeout/dismissal cancels confirmation. Confirm within two
   seconds: pad audio/edits/colors/clipboard clear; all globals, knob settings,
@@ -119,9 +116,10 @@ Checks:
 [Dev Container tools](DEVELOPMENT.md#docker-development-environment): run `desktop-health`, adding `--dialogs` after portal changes.
 Avoid concurrent mouse input.
 
-`bash .devcontainer/scripts/test-plugin.sh` builds VST3/LV2, runs CTest/`lv2info`, launches Carla LV2, clicks ARM, and captures to ignored `build/gui-test/`; `--keep-open` enables interaction. Capture with `screenshot-window WINDOW_ID OUTPUT.png`; resolve IDs after relaunch/resize.
-
-Inspect screenshots; exclude private data/unrelated windows.
+`bash .devcontainer/scripts/test-plugin.sh`: build VST3/LV2, CTest/`lv2info`, Carla LV2,
+ARM click, captures in ignored `build/gui-test/`. `--keep-open` enables interaction.
+`screenshot-window WINDOW_ID OUTPUT.png`: resolve IDs after relaunch/resize;
+inspect captures for private data.
 
 VST3: `carla-single native vst3 "$PWD/build/bin/SMS-AnvilleSampler.vst3"`. Import WAV; check pads, waveform/settings, Split Sample or Adjust Cut Points. Save/reload after deleting the WAV; compare audio/editor values.
 

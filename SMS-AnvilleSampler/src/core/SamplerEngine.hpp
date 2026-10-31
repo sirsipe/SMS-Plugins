@@ -212,12 +212,19 @@ public:
     /**
      * Close the empty run containing targetPad by moving the immediately
      * following occupied run left. Complete pad contents and settings move
-     * together. The supplied range is one visible bank/page. Control thread
-     * only; no pad changes when validation fails.
+     * together. The supplied range is one visible bank/page. Only a target at
+     * its last slot extends the search through the immediately following bank,
+     * skipping hidden slots. Control thread only; no changes on failure.
+     * affectedPadCount receives the physical notification span from firstPad
+     * (including unchanged hidden slots) on success.
      */
     [[nodiscard]] bool collapsePadGap(std::uint32_t firstPad,
                                       std::uint32_t padCount,
-                                      std::uint32_t targetPad);
+                                      std::uint32_t targetPad,
+                                      std::uint32_t* affectedPadCount = nullptr);
+    /** Audio-owner only: read-only count for the same validated collapse plan. */
+    [[nodiscard]] std::uint32_t collapsePadGapShiftCount(std::uint32_t firstPad,
+        std::uint32_t padCount, std::uint32_t targetPad) const noexcept;
     /**
      * Split firstPad at splitFrame and insert the suffix into the next visible pad.
      * Occupied visible pads through emptyPad shift right by one, preserving their
@@ -414,6 +421,13 @@ private:
                                  std::uint32_t channel) const noexcept;
     [[nodiscard]] bool storeSample(std::uint32_t pad, std::uint32_t frame,
                                    float left, float right) noexcept;
+    struct CollapseGapPlan {
+        std::uint32_t gapStart = 0U;
+        std::uint32_t runStart = 0U;
+        std::uint32_t runEnd = 0U;
+    };
+    [[nodiscard]] CollapseGapPlan planCollapsePadGap(std::uint32_t firstPad,
+        std::uint32_t padCount, std::uint32_t targetPad) const noexcept;
     void movePadContents(std::uint32_t source, std::uint32_t destination) noexcept;
     void beginRecord(std::uint32_t pad) noexcept;
     void finishRecord(std::uint32_t pad, std::uint32_t trimFrames = 0) noexcept;
