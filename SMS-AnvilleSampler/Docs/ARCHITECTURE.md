@@ -92,7 +92,8 @@ settings/metadata; host state wins. Control-side mutex serialization and
 `RealtimeLatestMailbox` deliver settings to audio without locks/allocation.
 [Mapping](../../Docs/AI/MIXING.md); [restoration](../../Docs/AI/LAYOUT-PREFERENCE.md).
 
-Pad state stores versioned, CRC-checked PCM16 as Base64; decoding validates it.
+Pad state saves CRC-checked float32/Base64 and reads legacy PCM16.
+[Format](../src/plugin/StateCodec.hpp), [compatibility](WAV-FILES.md).
 Durable restoration stages per-pad desired updates without waiting for
 processing; published reads include them, and the next block commits them.
 

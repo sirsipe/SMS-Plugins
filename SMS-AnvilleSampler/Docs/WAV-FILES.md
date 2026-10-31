@@ -17,10 +17,17 @@ be split onto following pads. Imported audio is embedded in the DAW project,
 so the source file is not needed when the project is reopened. Large songs can
 make project files and save times substantially larger.
 
+New saves preserve finite float32 samples exactly, including quiet detail and
+levels above full scale. Older 16-bit projects still load and retain their
+decoded samples when resaved; previously lost precision cannot be recovered.
+Older plugin versions cannot load the new sample format. Sample data uses
+roughly twice the uncompressed storage of 16-bit saves.
+
 Transfers keep input monitoring and other pads playing. A recording target or
 a pad changed during import is rejected; retry after the conflicting action.
 
-Both exports are stereo 16-bit PCM WAV at the sample's stored rate. A missing
+Both exports are stereo 16-bit PCM WAV at the sample's stored rate, independent
+of project-state precision. A missing
 `.wav` suffix is added automatically; another suffix is rejected. Exporting
 over an existing file replaces it after the desktop's normal confirmation.
 

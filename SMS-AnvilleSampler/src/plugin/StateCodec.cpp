@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstddef>
 #include <cstring>
@@ -16,9 +17,12 @@ namespace midichopper::plugin {
 namespace {
 
 constexpr std::array<std::uint8_t, 4> kMagic{{'S', 'S', 'P', '1'}};
-constexpr std::uint16_t kVersion = 1;
+constexpr std::uint16_t kPcm16Version = 1;
+constexpr std::uint16_t kFloat32Version = 2;
 constexpr std::uint16_t kChannels = 2;
 constexpr std::size_t kHeaderBytes = 24;
+static_assert(sizeof(float) == sizeof(std::uint32_t) && std::numeric_limits<float>::is_iec559,
+              "Pad state requires IEEE 754 binary32 samples");
 // Eight minutes at 384 kHz. Malformed project state must not request
 // unbounded memory; engine pool capacity is checked separately on import.
 constexpr std::uint32_t kMaximumFrames = 184'320'000;
@@ -103,7 +107,7 @@ void appendU32(std::vector<std::uint8_t>& output, const std::uint32_t value)
         return false;
 
     const std::size_t decodedSize = encoded.size() / 4U * 3U - padding;
-    if (decodedSize > kHeaderBytes + static_cast<std::size_t>(kMaximumFrames) * 4U)
+    if (decodedSize > kHeaderBytes + static_cast<std::size_t>(kMaximumFrames) * 8U)
         return false;
 
     try {
@@ -140,34 +144,28 @@ void appendU32(std::vector<std::uint8_t>& output, const std::uint32_t value)
     return output.size() == decodedSize;
 }
 
-[[nodiscard]] std::int16_t quantize(const float sample) noexcept
-{
-    const float limited = std::clamp(std::isfinite(sample) ? sample : 0.0f, -1.0f, 1.0f);
-    return static_cast<std::int16_t>(std::lrint(limited * 32767.0f));
-}
-
 } // namespace
 
 std::string encodePadState(const midichopper::PadData& pad, const std::uint32_t sourceSampleRate)
 {
     const std::size_t expectedSamples = static_cast<std::size_t>(pad.frames) * 2U;
-    if (sourceSampleRate == 0U || pad.frames > kMaximumFrames || pad.stereo.size() != expectedSamples)
+    if (sourceSampleRate == 0U || pad.frames > kMaximumFrames || pad.stereo.size() != expectedSamples ||
+        !std::all_of(pad.stereo.begin(), pad.stereo.end(),
+                     [](const float sample) noexcept { return std::isfinite(sample); }))
         return {};
 
     std::vector<std::uint8_t> bytes;
-    bytes.reserve(kHeaderBytes + expectedSamples * 2U);
+    bytes.reserve(kHeaderBytes + expectedSamples * sizeof(float));
     bytes.insert(bytes.end(), kMagic.begin(), kMagic.end());
-    appendU16(bytes, kVersion);
+    appendU16(bytes, kFloat32Version);
     appendU16(bytes, kChannels);
     appendU32(bytes, sourceSampleRate);
     appendU32(bytes, pad.frames);
     appendU32(bytes, 0U); // payload byte length, filled below
     appendU32(bytes, 0U); // checksum, filled below
 
-    for (const float sample : pad.stereo) {
-        const std::uint16_t pcm = static_cast<std::uint16_t>(quantize(sample));
-        appendU16(bytes, pcm);
-    }
+    for (const float sample : pad.stereo)
+        appendU32(bytes, std::bit_cast<std::uint32_t>(sample));
 
     const std::uint32_t payloadBytes = static_cast<std::uint32_t>(bytes.size() - kHeaderBytes);
     const std::uint32_t checksum = crc32(bytes.data() + kHeaderBytes, payloadBytes);
@@ -186,14 +184,18 @@ bool decodePadState(const char* const encoded, DecodedPadState& destination) noe
     std::vector<std::uint8_t> bytes;
     if (!base64Decode(encoded, bytes) || bytes.size() < kHeaderBytes ||
         !std::equal(kMagic.begin(), kMagic.end(), bytes.begin()) ||
-        readU16(bytes.data() + 4U) != kVersion || readU16(bytes.data() + 6U) != kChannels)
+        readU16(bytes.data() + 6U) != kChannels)
         return false;
 
+    const std::uint16_t version = readU16(bytes.data() + 4U);
+    if (version != kPcm16Version && version != kFloat32Version)
+        return false;
+    const std::size_t sampleBytes = version == kPcm16Version ? 2U : 4U;
     const std::uint32_t sourceSampleRate = readU32(bytes.data() + 8U);
     const std::uint32_t frames = readU32(bytes.data() + 12U);
     const std::uint32_t payloadBytes = readU32(bytes.data() + 16U);
     const std::uint32_t expectedChecksum = readU32(bytes.data() + 20U);
-    const std::size_t expectedBytes = static_cast<std::size_t>(frames) * 4U;
+    const std::size_t expectedBytes = static_cast<std::size_t>(frames) * kChannels * sampleBytes;
     if (sourceSampleRate == 0U || frames > kMaximumFrames || payloadBytes != expectedBytes ||
         bytes.size() != kHeaderBytes + expectedBytes ||
         crc32(bytes.data() + kHeaderBytes, expectedBytes) != expectedChecksum)
@@ -207,8 +209,12 @@ bool decodePadState(const char* const encoded, DecodedPadState& destination) noe
         float peak = 0.0f;
         double sumSquares = 0.0;
         for (std::size_t index = 0; index < restored.stereo.size(); ++index) {
-            const auto pcm = static_cast<std::int16_t>(readU16(bytes.data() + kHeaderBytes + index * 2U));
-            const float sample = static_cast<float>(pcm) / 32767.0f;
+            const auto* const data = bytes.data() + kHeaderBytes + index * sampleBytes;
+            const float sample = version == kPcm16Version
+                ? static_cast<float>(std::bit_cast<std::int16_t>(readU16(data))) / 32767.0f
+                : std::bit_cast<float>(readU32(data));
+            if (!std::isfinite(sample))
+                return false;
             restored.stereo[index] = sample;
             peak = std::max(peak, std::abs(sample));
             sumSquares += static_cast<double>(sample) * sample;

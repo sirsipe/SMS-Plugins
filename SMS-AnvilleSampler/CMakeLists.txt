@@ -301,6 +301,13 @@ if(BUILD_TESTING)
       ${anvillesampler_target}-dsp ${CMAKE_DL_LIBS})
     add_test(NAME audio-ports-${anvillesampler_target}
       COMMAND ${anvillesampler_target}-audio-port-tests)
+    add_executable(${anvillesampler_target}-project-state-tests
+      tests/project_state_tests.cpp
+      "${SMS_DPF_ROOT}/distrho/src/DistrhoPlugin.cpp")
+    target_link_libraries(${anvillesampler_target}-project-state-tests PRIVATE
+      ${anvillesampler_target}-dsp ${CMAKE_DL_LIBS})
+    add_test(NAME project-state-${anvillesampler_target}
+      COMMAND ${anvillesampler_target}-project-state-tests)
   endforeach()
 
   # POSIX environment overrides isolate user configuration. Native Windows

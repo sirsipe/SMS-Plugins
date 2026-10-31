@@ -43,9 +43,9 @@ may fill sooner when other pads contain audio. A 2 GiB file-read bound covers
 the supported eight-minute stereo float32 WAV at 384 kHz.
 
 Both exports remain little-endian stereo PCM16 RIFF/WAVE at the stored source
-rate, matching project-state precision and minimizing writer complexity. Append
-`.wav` when the chosen name lacks an extension; reject a conflicting extension
-rather than creating mislabeled data.
+rate, independent of project precision. Pad state uses SSP1, described in the
+[plugin architecture](../../SMS-AnvilleSampler/Docs/ARCHITECTURE.md#project-state).
+Append `.wav` when absent; reject conflicting extensions.
 
 ## Responsibilities and real-time safety
 

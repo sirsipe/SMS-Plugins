@@ -22,7 +22,7 @@ git diff --check
 | `sampler-transfer` | Concurrent transfers; exact monitoring/MIDI/recording continuity; retained storage, stale commits, capacity, host snapshots, dispatcher lifecycle, callback allocation/destruction |
 | `global-value-mode-*` | Modes/remapping, codec/grid/zero snap, raw preservation, private state/startup defaults, CLEAR PADS preservation, automation/mailbox |
 | `defaults-file` | Bounded flat INI, quoted Unicode/whitespace, atomic merged writes, unknown keys, concurrency and failures |
-| `state-codec` | Audio/editor/mixer compatibility, cut/waveform protocols, truncation/corruption, numeric rejection, unchanged destinations |
+| `state-codec`, `project-state-*` | PCM16/float32 compatibility, exact PCM/playback, restoration, editor/mixer/protocols, truncation/corruption, unchanged destinations |
 | `ui-skin` | Manifest bounds/versions, scalar/UTF-8/printf fallback, Unicode paths, confined images, startup snapshots |
 | `ui-skin-catalog` | Discovery/forced precedence, missing choices, config folders, Unicode atomic preferences/concurrent writes |
 | `layout-*` | [Preferences, startup/host precedence, dummy metadata](LAYOUT-PREFERENCE.md) |

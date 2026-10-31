@@ -257,7 +257,7 @@ length slice per note-on.
 
 - See [WAV files](Docs/WAV-FILES.md) for import formats and requirements.
 
-- DAW projects store all banks as 16-bit stereo.
+- DAW projects preserve float32 samples. [Formats and compatibility](Docs/WAV-FILES.md).
 
 - Stereo LEDs show raw input/final output.
 

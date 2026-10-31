@@ -12,6 +12,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <iostream>
 #include <limits>
 #include <string>
@@ -69,6 +70,30 @@ void setU32(std::vector<std::uint8_t>& bytes, const std::size_t offset,
         bytes[offset + byte] = static_cast<std::uint8_t>(value >> (byte * 8U));
 }
 
+void setU16(std::vector<std::uint8_t>& bytes, const std::size_t offset,
+            const std::uint16_t value)
+{
+    bytes[offset] = static_cast<std::uint8_t>(value);
+    bytes[offset + 1U] = static_cast<std::uint8_t>(value >> 8U);
+}
+
+std::uint32_t crc32(const std::vector<std::uint8_t>& bytes,
+                    const std::size_t offset)
+{
+    std::uint32_t crc = 0xffffffffU;
+    for (std::size_t index = offset; index < bytes.size(); ++index) {
+        crc ^= bytes[index];
+        for (unsigned bit = 0; bit < 8U; ++bit)
+            crc = (crc >> 1U) ^ (0xedb88320U & (0U - (crc & 1U)));
+    }
+    return ~crc;
+}
+
+bool sameFloatBits(const float left, const float right)
+{
+    return std::memcmp(&left, &right, sizeof(float)) == 0;
+}
+
 void check(const bool condition, const char* const message)
 {
     if (!condition) {
@@ -81,8 +106,14 @@ void roundTrip()
 {
     midichopper::PadData original;
     original.sampleRate = 44100.0;
-    original.frames = 3;
-    original.stereo = {-1.0f, -0.5f, 0.0f, 0.25f, 0.75f, 1.0f};
+    original.frames = 6;
+    const std::uint32_t sampleBits[]{
+        0x00000000U, 0x80000000U, 0x3fc00000U, 0xc0100000U,
+        0x00000001U, 0x80000001U, 0x7f7fffffU, 0xff7fffffU,
+        0x00800000U, 0x322bcc77U, 0x3dcccccdU, 0xbdcccccdU};
+    original.stereo.resize(12U);
+    for (std::size_t index = 0; index < original.stereo.size(); ++index)
+        std::memcpy(&original.stereo[index], &sampleBits[index], sizeof(float));
 
     const std::string encoded = midichopper::plugin::encodePadState(original, 44100U);
     check(!encoded.empty(), "encoded state is not empty");
@@ -93,8 +124,38 @@ void roundTrip()
     check(decoded.pad.frames == original.frames, "frame count round-trips");
     check(decoded.pad.stereo.size() == original.stereo.size(), "channel data size round-trips");
     for (std::size_t index = 0; index < original.stereo.size(); ++index)
-        check(std::abs(decoded.pad.stereo[index] - original.stereo[index]) < 4.0e-5f,
-              "PCM16 round-trip tolerance");
+        check(sameFloatBits(decoded.pad.stereo[index], original.stereo[index]),
+              "float32 round-trip preserves every PCM bit");
+}
+
+void floatV2WireFixture()
+{
+    // Independently constructed with Python struct.pack('<f') and
+    // zlib.crc32(payload); includes signed zero, subnormal, and >full-scale PCM.
+    constexpr char fixture[] =
+        "U1NQMQIAAgCAuwAABAAAACAAAAC71ma7AAAAAAAAAIAAAMA/AAAQwAEAAAAAAACAzczMPc3MzL0=";
+    const auto raw = decodeFixture(fixture);
+    check(raw.size() == 56U && encodeFixture(raw) == fixture,
+          "fixed float-v2 fixture has expected Base64 framing");
+
+    const std::uint32_t expectedBits[]{
+        0x00000000U, 0x80000000U, 0x3fc00000U, 0xc0100000U,
+        0x00000001U, 0x80000000U, 0x3dcccccdU, 0xbdcccccdU};
+    midichopper::PadData original;
+    original.sampleRate = 48000.0;
+    original.frames = 4U;
+    original.stereo.resize(8U);
+    for (std::size_t index = 0; index < original.stereo.size(); ++index)
+        std::memcpy(&original.stereo[index], &expectedBits[index], sizeof(float));
+    check(midichopper::plugin::encodePadState(original, 48000U) == fixture,
+          "encoder matches independently calculated float-v2 wire fixture");
+    midichopper::plugin::DecodedPadState decoded;
+    check(midichopper::plugin::decodePadState(fixture, decoded) &&
+          decoded.sourceSampleRate == 48000U && decoded.pad.frames == 4U,
+          "fixed float-v2 wire fixture decodes");
+    for (std::size_t index = 0; index < decoded.pad.stereo.size(); ++index)
+        check(sameFloatBits(decoded.pad.stereo[index], original.stereo[index]),
+              "fixed float-v2 fixture restores exact PCM bits");
 }
 
 void legacyStateFixtures()
@@ -116,6 +177,23 @@ void legacyStateFixtures()
     for (std::size_t index = 0; index < decodedPad.pad.stereo.size(); ++index)
         check(std::abs(decodedPad.pad.stereo[index] - expectedSamples[index]) < 1.0e-6f,
               "released SSP1 PCM16 samples decode exactly within quantization");
+    const auto upgraded = midichopper::plugin::encodePadState(
+        decodedPad.pad, decodedPad.sourceSampleRate);
+    midichopper::plugin::DecodedPadState upgradedAgain;
+    check(!upgraded.empty() && midichopper::plugin::decodePadState(
+              upgraded.c_str(), upgradedAgain) &&
+          upgradedAgain.pad.stereo.size() == decodedPad.pad.stereo.size(),
+          "released PCM16 state can be saved in the current format and restored");
+    for (std::size_t index = 0; index < decodedPad.pad.stereo.size(); ++index)
+        check(sameFloatBits(upgradedAgain.pad.stereo[index], decodedPad.pad.stereo[index]),
+              "legacy decode and new save preserve decoded PCM bits");
+    auto corruptLegacy = decodeFixture(legacyPad);
+    corruptLegacy[24U] ^= 1U;
+    midichopper::plugin::DecodedPadState untouched;
+    untouched.pad.stereo = {0.125f};
+    check(!midichopper::plugin::decodePadState(encodeFixture(corruptLegacy).c_str(), untouched) &&
+          untouched.pad.stereo.size() == 1U && untouched.pad.stereo[0] == 0.125f,
+          "corrupt released PCM16 state is rejected without changing destination");
 
     // Fixed SP1 output from the same tagged codec, including its original
     // decimal formatting; this verifies the historical wire representation.
@@ -188,7 +266,7 @@ void rejectsDamage()
               "failed state decode preserves the complete destination sentinel");
     };
     const auto raw = decodeFixture(encoded);
-    check(raw.size() == 28U && encodeFixture(raw) == encoded,
+    check(raw.size() == 32U && encodeFixture(raw) == encoded,
           "small valid state fixture has independently checked Base64 framing");
     check(midichopper::plugin::decodePadState(encoded.c_str(), decoded),
           "valid control state decodes before malformed cases");
@@ -218,12 +296,19 @@ void rejectsDamage()
         rejectedWithoutChange(text.c_str(), message);
     };
     rejectedMutation(0U, static_cast<std::uint8_t>('X'), "bad state magic is rejected");
-    rejectedMutation(4U, 2U, "unsupported state version is rejected");
+    auto badVersion = raw;
+    setU16(badVersion, 4U, 3U);
+    auto text = encodeFixture(badVersion);
+    rejectedWithoutChange(text.c_str(), "unsupported state version is rejected");
+    auto downgradedVersion = raw;
+    setU16(downgradedVersion, 4U, 1U);
+    text = encodeFixture(downgradedVersion);
+    rejectedWithoutChange(text.c_str(), "float payload cannot be relabeled as legacy PCM16");
     rejectedMutation(6U, 1U, "non-stereo state channel count is rejected");
 
     auto damagedRate = raw;
     setU32(damagedRate, 8U, 0U);
-    auto text = encodeFixture(damagedRate);
+    text = encodeFixture(damagedRate);
     rejectedWithoutChange(text.c_str(), "zero state sample rate is rejected");
     auto damagedFrames = raw;
     setU32(damagedFrames, 12U, UINT32_MAX);
@@ -247,8 +332,8 @@ void rejectsDamage()
                      "state checksum mismatch is rejected");
 
     std::string badPadding = encoded;
-    check(badPadding.size() >= 2U && badPadding[badPadding.size() - 2U] == '=' &&
-          badPadding.back() == '=', "state control fixture has two Base64 padding bytes");
+    check(!badPadding.empty() && badPadding.back() == '=',
+          "state control fixture has one Base64 padding byte");
     badPadding.pop_back();
     rejectedWithoutChange(badPadding.c_str(), "missing Base64 padding is rejected");
     rejectedWithoutChange("AAAA====", "excess Base64 padding is rejected");
@@ -266,6 +351,23 @@ void rejectsDamage()
           "stereo sample count mismatch cannot be encoded");
     check(midichopper::plugin::encodePadState(original, 0U).empty(),
           "zero source sample rate cannot be encoded");
+    for (const float invalid : {std::numeric_limits<float>::quiet_NaN(),
+                                std::numeric_limits<float>::infinity(),
+                                -std::numeric_limits<float>::infinity()}) {
+        invalidToEncode = original;
+        invalidToEncode.stereo[0] = invalid;
+        check(midichopper::plugin::encodePadState(invalidToEncode, 48000U).empty(),
+              "non-finite audio cannot be encoded");
+    }
+
+    for (const std::uint32_t invalidBits : {0x7fc00000U, 0x7f800000U, 0xff800000U}) {
+        auto invalidPayload = raw;
+        setU32(invalidPayload, 24U, invalidBits);
+        setU32(invalidPayload, 20U, crc32(invalidPayload, 24U));
+        const auto invalidState = encodeFixture(invalidPayload);
+        rejectedWithoutChange(invalidState.c_str(),
+                              "valid-CRC float-v2 state rejects NaN and infinities");
+    }
 }
 
 void playbackAndMixerRejectMalformedFields()
@@ -887,6 +989,7 @@ int main()
     padDirectionRequestRoundTrip();
     using namespace midichopper::plugin;
     legacyStateFixtures();
+    floatV2WireFixture();
     check(decodePadColorIndex("0", 6) == 0 &&
           decodePadColorIndex("4", 6) == 4 &&
           decodePadColorIndex("6", 6) == 6,

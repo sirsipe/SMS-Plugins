@@ -10,10 +10,12 @@
 namespace midichopper::plugin {
 
 /**
- * Project-state representation for a pad. Audio uses interleaved signed 16-bit
- * PCM before Base64 encoding: half the size of float32 and portable across
- * LV2, VST3, and future wrappers. The source sample rate is deliberately part
- * of the payload, rather than being inferred from the current project.
+ * Project-state representation for a pad. The SSP1 container writes version 2:
+ * interleaved little-endian IEEE 754 float32, Base64 encoded with a payload CRC.
+ * Finite sample bits, including headroom and signed zero, are preserved exactly.
+ * Version 1 signed PCM16 remains readable with its original conversion. Older
+ * binaries cannot read version 2. Both versions store the source sample rate
+ * instead of inferring it from the current project. Control-thread use only.
  */
 struct DecodedPadState {
     midichopper::PadData pad;
