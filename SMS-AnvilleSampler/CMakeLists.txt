@@ -56,8 +56,35 @@ add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../Common-UI"
 
 add_library(anvillesampler_core STATIC
   src/core/PadClipboard.cpp
+  src/core/PlaybackVoice.cpp
   src/core/SamplerEngine.cpp
   src/core/SampleStoragePool.cpp)
+
+# UI workflow/input logic has no DPF dependency and is tested without a window.
+add_library(anvillesampler_ui_controllers STATIC
+  src/ui/ApplicationMenuController.cpp
+  src/ui/MixerInteractionController.cpp
+  src/ui/PadActionController.cpp
+  src/ui/SamplerInputController.cpp
+  src/ui/SamplerUiSession.cpp)
+target_include_directories(anvillesampler_ui_controllers PUBLIC
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/plugin"
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/ui")
+target_link_libraries(anvillesampler_ui_controllers PUBLIC sms_common_ui)
+set_target_properties(anvillesampler_ui_controllers PROPERTIES
+  POSITION_INDEPENDENT_CODE ON
+  CXX_VISIBILITY_PRESET hidden
+  VISIBILITY_INLINES_HIDDEN ON)
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+  target_compile_options(anvillesampler_ui_controllers PRIVATE -Wall -Wextra -Wpedantic)
+elseif(MSVC)
+  target_compile_options(anvillesampler_ui_controllers PRIVATE /W4 /permissive-)
+endif()
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+  # Match DPF's UI objects so private helper statics do not pin loaded modules.
+  target_compile_options(anvillesampler_ui_controllers PRIVATE -fno-gnu-unique)
+endif()
 
 target_include_directories(anvillesampler_core
   PUBLIC
@@ -84,6 +111,8 @@ endif()
 set(ANVILLESAMPLER_DSP_SOURCES
   ../Common-Src/Audio/WavCodec.cpp
   src/plugin/MidichopperPlugin.cpp
+  src/plugin/PluginControls.cpp
+  src/plugin/PluginMetadata.cpp
   src/plugin/PadFileActions.cpp
   src/plugin/PadWorkflows.cpp
   src/plugin/StateCodec.cpp)
@@ -103,6 +132,11 @@ add_custom_command(
 set(ANVILLESAMPLER_UI_SOURCES
   src/ui/MidichopperUI.cpp
   src/ui/MidichopperView.cpp
+  src/ui/MainViewRenderer.cpp
+  src/ui/SampleEditorRenderer.cpp
+  src/ui/CutEditorRenderer.cpp
+  src/ui/MenuRenderer.cpp
+  src/ui/ProductControlsRenderer.cpp
   "${ANVILLESAMPLER_ARTWORK_DIR}/anvillesampler_artwork.cpp"
   "${ANVILLESAMPLER_ARTWORK_DIR}/anvillesampler_artwork.hpp")
 
@@ -184,6 +218,7 @@ foreach(anvillesampler_target IN LISTS anvillesampler_targets)
     "${CMAKE_CURRENT_SOURCE_DIR}/src/ui")
   target_link_libraries(${anvillesampler_target} PUBLIC sms_common_ui)
   target_link_libraries(${anvillesampler_target}-dsp PRIVATE anvillesampler_core sms_file_io Threads::Threads)
+  target_link_libraries(${anvillesampler_target}-ui PRIVATE anvillesampler_ui_controllers)
   target_include_directories(${anvillesampler_target}-ui PRIVATE
     "${ANVILLESAMPLER_ARTWORK_DIR}")
   target_compile_definitions(${anvillesampler_target}-dsp PRIVATE
@@ -381,6 +416,10 @@ if(BUILD_TESTING)
   target_link_libraries(anvillesampler_core_tests PRIVATE anvillesampler_core)
   add_test(NAME sampler-core COMMAND anvillesampler_core_tests)
 
+  add_executable(anvillesampler_playback_voice_tests tests/playback_voice_tests.cpp)
+  target_link_libraries(anvillesampler_playback_voice_tests PRIVATE anvillesampler_core)
+  add_test(NAME playback-voice COMMAND anvillesampler_playback_voice_tests)
+
   add_executable(anvillesampler_buffer_timing_tests tests/buffer_timing_tests.cpp)
   target_link_libraries(anvillesampler_buffer_timing_tests PRIVATE anvillesampler_core)
   add_test(NAME buffer-timing COMMAND anvillesampler_buffer_timing_tests)
@@ -412,6 +451,27 @@ if(BUILD_TESTING)
     "${CMAKE_CURRENT_SOURCE_DIR}/src/ui")
   target_link_libraries(anvillesampler_ui_geometry_tests PRIVATE sms_common_ui)
   add_test(NAME ui-geometry COMMAND anvillesampler_ui_geometry_tests)
+
+  add_executable(anvillesampler_pad_action_controller_tests
+    tests/pad_action_controller_tests.cpp)
+  target_link_libraries(anvillesampler_pad_action_controller_tests PRIVATE anvillesampler_ui_controllers)
+  add_test(NAME ui-pad-actions COMMAND anvillesampler_pad_action_controller_tests)
+
+  add_executable(anvillesampler_ui_session_tests tests/ui_session_tests.cpp)
+  target_link_libraries(anvillesampler_ui_session_tests PRIVATE anvillesampler_ui_controllers)
+  add_test(NAME ui-session COMMAND anvillesampler_ui_session_tests)
+
+  add_executable(anvillesampler_mixer_interaction_controller_tests tests/mixer_interaction_controller_tests.cpp)
+  target_link_libraries(anvillesampler_mixer_interaction_controller_tests PRIVATE anvillesampler_ui_controllers)
+  add_test(NAME ui-mixer-interaction COMMAND anvillesampler_mixer_interaction_controller_tests)
+
+  add_executable(anvillesampler_application_menu_tests tests/application_menu_tests.cpp)
+  target_link_libraries(anvillesampler_application_menu_tests PRIVATE anvillesampler_ui_controllers)
+  add_test(NAME ui-application-menu COMMAND anvillesampler_application_menu_tests)
+
+  add_executable(anvillesampler_ui_input_tests tests/ui_input_tests.cpp)
+  target_link_libraries(anvillesampler_ui_input_tests PRIVATE anvillesampler_ui_controllers)
+  add_test(NAME ui-input-routing COMMAND anvillesampler_ui_input_tests)
 
   add_executable(anvillesampler_browser_launcher_tests tests/browser_launcher_tests.cpp)
   target_include_directories(anvillesampler_browser_launcher_tests PRIVATE src/ui)

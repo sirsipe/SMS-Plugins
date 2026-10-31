@@ -10,22 +10,46 @@ interface. VST3 is the preferred format; DPF supplies the format wrappers.
 flowchart LR
     Host[DAW / plugin host] <--> Adapter["«component» DPF adapter"]
     UI["«component» Sampler UI"] <--> Adapter
+    Adapter --> Controls["«component» Parameter / command control"]
+    Adapter --> Metadata["«component» Host registration"]
     Adapter --> Workflows["«component» Pad workflows"]
     Adapter --> Engine["«component» Sampler engine"]
     Workflows --> Engine
     Engine --> Storage["«component» Sample storage"]
+    Engine --> Voice["«component» Playback voice"]
     Engine --> Shared["«component» Common-Src DSP / audio / codecs"]
     Workflows --> Shared
-    UI --> View["«component» View / Common-UI"]
+    UI --> Session["«component» Sampler UI session"]
+    UI --> Input["«component» Input / mixer / application menus"]
+    Input --> Session
+    Session --> Actions["«component» Pad action controller"]
+    UI --> View["«component» View renderers / Common-UI"]
 ```
 
-The adapter translates parameters, MIDI, state, and lifecycle calls. It delegates
-file import/export, clipboard, and pad-edit transactions to a control-thread
-workflow controller. The engine owns capture timing, voices, pad publication,
-and logical capacity. Its storage pool owns PCM and physical capture blocks.
-The UI coordinates host communication; focused controllers own editor workflows
-and interaction state. `MidichopperView.cpp` draws `ViewState` snapshots through
-a free function.
+The adapter coordinates host lifecycle, state, MIDI, workers and output
+publication. `PluginMetadata` registers parameters and state; `PluginControls`
+owns atomic parameter values and translates queued commands into engine calls.
+`PadWorkflows` prepares file import/export, clipboard and pad-edit transactions
+on the control thread. The engine owns capture timing, voice selection, pad
+publication and logical capacity. Each pad's `PlaybackVoice` owns its cursor,
+envelope, interpolation and effects; `SampleStoragePool` owns PCM and blocks.
+
+`MidichopperUI` adapts DPF callbacks, host effects and graphics resources.
+`SamplerUiSession` owns sampler state, selection, audition and editor reply
+synchronization. It exposes read-only state and typed edit commands.
+`SamplerInputController` owns input precedence, key/pointer capture and waveform
+gestures. `MixerInteractionController` owns mixer gestures, numeric entry and
+global-control settings; `ApplicationMenuController` owns layout/skin menus and
+CLEAR PADS confirmation. `PadActionController` owns pad menus and asynchronous
+file/clipboard/structure requests within the session.
+
+These controllers are independent of DPF and graphics resources. The
+`anvillesampler_ui_controllers` library is shared by format UIs and tests that
+check host effects, event ordering and stale replies without opening a window.
+`MidichopperView.cpp` composes a frame from immutable `ViewState`.
+Separate main, sample editor, cut editor and menu renderers own their drawing;
+`ProductControlsRenderer` shares product controls between them. The render
+context borrows only the canvas and state for that frame.
 
 ## Classes and responsibilities
 
@@ -41,20 +65,35 @@ classDiagram
     }
     MidichopperPlugin ..|> PadWorkflowObserver
     MidichopperPlugin *-- SamplerEngine
+    MidichopperPlugin *-- PluginControls
+    MidichopperPlugin ..> PluginMetadata : registration
     MidichopperPlugin *-- PadWorkflows
     MidichopperPlugin *-- RealtimeCommandDispatcher
     PadWorkflows --> PadWorkflowObserver : notifications
     PadWorkflows --> SamplerEngine : prepare edits
     PadWorkflows --> RealtimeCommandDispatcher : commit edits
     SamplerEngine *-- SampleStoragePool
-    MidichopperUI ..|> ChopEditorHost
-    MidichopperUI *-- ChopEditorController
+    SamplerEngine *-- PlaybackVoice
+    MidichopperUI *-- SamplerUiSession
+    MidichopperUI *-- SamplerInputController
+    MidichopperUI *-- MixerInteractionController
+    MidichopperUI *-- ApplicationMenuController
+    SamplerInputController --> SamplerUiSession : commands / read-only state
+    SamplerInputController --> MixerInteractionController : routed input
+    SamplerInputController --> ApplicationMenuController : routed input
+    SamplerUiSession ..|> ChopEditorHost
+    SamplerUiSession *-- ChopEditorController
+    SamplerUiSession ..|> PadActionHost
+    SamplerUiSession *-- PadActionController
+    PadActionController --> PadActionHost : presentation / transport
+    PadActionController --> ChopEditorController : split handoff
     ChopEditorController --> ChopEditorHost : presentation / transport
     ChopEditorController *-- ChopEditorSession
-    MidichopperUI *-- EditorSnapshotSession
-    MidichopperUI *-- WaveformDetailSession
-    MidichopperUI *-- PlaybackIndicator
-    MidichopperUI *-- MixerValueEntry
+    SamplerUiSession *-- EditorSnapshotSession
+    SamplerUiSession *-- WaveformDetailSession
+    SamplerUiSession *-- PlaybackIndicator
+    MixerInteractionController *-- MixerValueEntry
+    MixerInteractionController *-- GlobalControlMenu
     MidichopperUI --> ViewState : builds render snapshot
 ```
 
@@ -84,8 +123,18 @@ Start with the [engine](../SMS-AnvilleSampler/src/core/SamplerEngine.hpp),
 [storage pool](../SMS-AnvilleSampler/src/core/SampleStoragePool.hpp),
 [pad workflows](../SMS-AnvilleSampler/src/plugin/PadWorkflows.hpp), and
 [cut editor](../SMS-AnvilleSampler/src/ui/ChopEditorController.hpp).
+The [voice](../SMS-AnvilleSampler/src/core/PlaybackVoice.hpp),
+[parameter controls](../SMS-AnvilleSampler/src/plugin/PluginControls.hpp),
+[pad actions](../SMS-AnvilleSampler/src/ui/PadActionController.hpp) and
+[renderer entry points](../SMS-AnvilleSampler/src/ui/ViewRenderers.hpp) define
+the smaller component boundaries.
+The UI [session](../SMS-AnvilleSampler/src/ui/SamplerUiSession.hpp),
+[input router](../SMS-AnvilleSampler/src/ui/SamplerInputController.hpp),
+[mixer](../SMS-AnvilleSampler/src/ui/MixerInteractionController.hpp) and
+[application menus](../SMS-AnvilleSampler/src/ui/ApplicationMenuController.hpp)
+define the host-independent interaction contracts.
 The [engineering reference](../SMS-AnvilleSampler/Docs/ARCHITECTURE.md) describes
 MIDI, capture and state contracts; the [storage contract](AI/PAD-STORAGE.md)
-details ownership. The [README](../README.md) links a technical review prompt.
+details ownership.
 Public version compatibility is defined in the
 [release procedure](RELEASING.md#public-version-compatibility).

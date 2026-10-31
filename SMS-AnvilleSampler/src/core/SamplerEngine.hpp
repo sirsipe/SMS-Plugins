@@ -2,9 +2,8 @@
 
 #include "Configuration.hpp"
 #include "SampleStoragePool.hpp"
+#include "PlaybackVoice.hpp"
 #include "Audio/WaveformSummary.hpp"
-#include "DSP/AdsrEnvelope.hpp"
-#include "DSP/ColorEffects.hpp"
 #include "DSP/SampleMixerSettings.hpp"
 #include "DSP/SamplePlaybackSettings.hpp"
 
@@ -328,7 +327,9 @@ private:
     void setPadMixerSettingsDirect(std::uint32_t pad,
         const sms::dsp::SampleMixerSettings& settings, bool redirectGlobal = true) noexcept;
     void redirectPadVoice(std::uint32_t pad, bool reverse) noexcept;
-    enum class VoiceMode : std::uint8_t { OneShot, Hold, Loop };
+    using VoiceMode = PlaybackVoice::Mode;
+    [[nodiscard]] PlaybackVoice::Parameters voiceParameters(std::uint32_t pad,
+        std::uint32_t frames) const noexcept;
     std::uint32_t auditionPad_ = kPadCount;
     struct Pad {
         Storage* storage = nullptr;
@@ -340,24 +341,7 @@ private:
         std::uint32_t allocatedBlocks = 0;
         bool recording = false;
         bool held = false;
-        bool playing = false;
-        VoiceMode voiceMode = VoiceMode::OneShot;
-        std::int16_t triggerNote = -1; // MIDI ownership survives bank/mapping changes; -1 for auditions.
-        bool voiceReverse = false; // latched at trigger; mixer edits affect the next voice
-        std::uint64_t voiceOrder = 0;
-        double playPosition = 0.0;
-        double playStep = 1.0;
-        std::uint32_t voiceStartFrame = 0;
-        std::uint32_t voiceEndFrame = 0;
-        bool releaseFromEnd = false;
-        bool noteReleased = false;
-        float velocityGain = 1.0f;
-        float mixerGainLeft = 1.0f;
-        float mixerGainRight = 1.0f;
-        bool dirtyPlayback = false;
-        sms::dsp::ColorFilters padFilters;
-        sms::dsp::ColorFilters globalFilters;
-        sms::dsp::AdsrEnvelope envelope;
+        PlaybackVoice voice;
         float recordPeak = 0.0f;
         double recordSumSquares = 0.0;
         std::atomic<double> sourceSampleRate{48000.0};

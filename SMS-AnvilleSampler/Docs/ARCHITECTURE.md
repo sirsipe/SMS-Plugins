@@ -1,26 +1,30 @@
 # SMS-Anville Sampler architecture
 
-- `src/core`: `SamplerEngine` manages capture, voices, pad publication, and capacity. `SampleStoragePool` owns PCM, capture reserve, block
-  maps, immutable imports, resampling, and bounded reclamation.
-- `src/plugin`: `MidichopperPlugin` adapts DPF parameters, audio, MIDI, state,
-  and lifecycle. `PadWorkflows` owns serialized file/clipboard/cut/split actions;
-  `PadWorkflowObserver` returns transport messages and output notifications.
-- `src/ui`: `MidichopperUI` coordinates host communication and input;
-  `MidichopperInteraction` resolves gestures and `MidichopperView` draws.
-  `ChopEditorController` owns cut/split sessions; `EditorSnapshotSession` matches
-  waveform/settings replies. `WaveformDetailSession` owns zoom/detail requests,
-  `PlaybackIndicator` displays host source positions; `MixerValueEntry` edits text,
-  `MixerValueNavigation` traverses entries, and `GlobalControlMenu` manages modes/ranges.
+- `src/core`: `SamplerEngine` owns capture, voice selection, publication and capacity.
+  `PlaybackVoice` owns per-voice DSP. `SampleStoragePool` owns PCM, capture reserve,
+  block maps, immutable imports, resampling and reclamation.
+- `src/plugin`: `MidichopperPlugin` coordinates DPF lifecycle, audio, MIDI and state.
+  `PluginMetadata` registers host contracts; `PluginControls` owns parameters/commands.
+  `PadWorkflows` owns file/clipboard/cut/split transactions; `PadWorkflowObserver` returns notifications.
+- `src/ui`: `MidichopperUI` adapts DPF and graphics. `SamplerUiSession` owns
+  sampler state, selection/audition and editor synchronization, composing
+  `PadActionController` and `ChopEditorController`. `SamplerInputController` routes
+  input and owns captures/waveform gestures; `MixerInteractionController` owns
+  numeric/mixer/range editing; `ApplicationMenuController` owns layout/skin menus.
+  `EditorSnapshotSession` matches replies; `WaveformDetailSession` owns zoom/detail;
+  `PlaybackIndicator` tracks source positions. `MidichopperInteraction` resolves
+  targets; `MidichopperView` composes renderers. Controllers exclude DPF.
 - `Common-Src` provides framework-neutral DSP, codecs, audio handoff, geometry,
   and bounded atomic-merge defaults through `IO/DefaultsFile.*`.
   `Common-UI` provides shared controls, pads, waveform editing and DPF rendering.
 
-Skins are per-instance, outside DSP/project state. [Guide](SKINS.md).
+Per-instance skins exclude DSP/project state. [Guide](SKINS.md).
+[Component boundaries](../../Docs/ARCHITECTURE.md).
 
 ## MIDI mapping
 
-`midi_bank_mode` selects mappings. All Banks maps four gapless pages from the
-base note; note-on updates the active bank. Layouts regroup slots without changing
+`midi_bank_mode` selects mappings. All Banks maps four gapless pages from
+base note; note-on updates active bank. Layouts regroup slots, preserving
 notes. Alternating-range hidden output reports playback pad indices; another
 reports pad/preview activity. Views follow bank, notes and selection.
 `play_stop_request` toggles audition/Stop All at block boundaries.
@@ -29,7 +33,7 @@ toggle, and Stop Audition through one atomic command. UI-local Play/Loop/Off
 replaces previous auditions within the voice limit. MIDI retrigger takes ownership;
 Stop Audition cannot cut its replacement. Stop All also supports host control.
 All Banks caps the base note at 64, keeping layouts within MIDI 0–127.
-UI notes/labels use engine mapping. Selected Bank reuses one range,
+UI labels follow engine mapping. Selected Bank reuses one range,
 with `active_bank` choosing its target, and retains fixed 16-slot banks.
 Hold voices retain their triggering MIDI note; note-off releases matching voices
 across bank, layout, base-note, and mapping changes. Retriggering replaces that ownership.
@@ -81,8 +85,7 @@ Four peak outputs; LEDs ≤30 FPS. Hard bypass cannot be metered.
 ## Project state
 
 `pad_layout` and `midi_bank_mode` use remembered startup defaults; host values win.
-Layout, bank mode, skin and global knob settings share one `defaults.ini`; only
-explicit UI choices update it.
+Layout, bank mode, skin and global knobs share `defaults.ini`; explicit UI choices update it.
 [Schema, initialization and format limits](../../Docs/AI/LAYOUT-PREFERENCE.md).
 
 `GlobalValueMode` maps raw parameters through Normal/Quantized/Zero Snap and
@@ -94,14 +97,14 @@ settings/metadata; host state wins. Control-side mutex serialization and
 
 Pad state saves CRC-checked float32/Base64 and reads legacy PCM16.
 [Format](../src/plugin/StateCodec.hpp), [compatibility](WAV-FILES.md).
-Durable restoration stages per-pad desired updates without waiting for
-processing; published reads include them, and the next block commits them.
+Durable restoration stages pad updates without waiting for processing;
+published reads include them before the next block commits them.
 
-Cut/ADSR and mixer states are versioned. Import resets both; rechopping preserves
-mixers and rebases markers on non-empty results, resets changed-pad ADSR,
-and clears empty-pad settings. The UI matches waveform/settings replies, rejecting stale replies
-and retrying failures. LV2 state/VST3 direct access carries 128-bin summaries.
-Control-worker zoom detail is range/sequence checked; editors reproject cached
+Versioned cut/ADSR/mixer states reset on import. Rechopping preserves mixers,
+rebases non-empty markers, resets changed-pad ADSR, and clears empty-pad settings.
+UI matches waveform/settings replies, rejects stale data and retries failures.
+LV2 state/VST3 direct access carries 128-bin summaries.
+Worker zoom detail is range/sequence checked; editors reproject cached
 extrema with whole-source fallback. Pad/editor changes reset caches.
 [Editor detail](../../Docs/AI/CHOP-EDITOR.md).
 
@@ -111,8 +114,8 @@ tint; colors stay with slots through sample edits and moves.
 `pad_clear_request` publishes an atomic command consumed at the next block.
 **CLEAR PADS** preserves every global parameter, knob mode/range, layout, bank
 mode, skin and startup default. Its released private `reset` request is retained.
-The control worker clears pads at block boundaries, clipboard, split plans and
-colors; the UI invalidates pad/editor snapshots and returns to the main view.
+The worker clears pads at block boundaries, clipboard, split plans and
+colors; the UI invalidates pad/editor snapshots and returns to main view.
 `pad_file_request`: action/pad/UTF-8 path. VST3 uses an instance worker;
 LV2 requires its host worker. Small busy/status states and a hidden completion
 output return results. VST3 bus excludes PCM, but DPF's initial state transfer

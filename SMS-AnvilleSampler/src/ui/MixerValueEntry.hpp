@@ -11,7 +11,7 @@
 
 namespace midichopper::ui {
 
-/** Numeric-entry editing state; host parameter gestures remain in the UI adapter. */
+/** Numeric text and validation; MixerInteractionController owns host gestures. */
 class MixerValueEntry {
 public:
     [[nodiscard]] sms::ui::InteractiveTarget target() const noexcept { return fTarget; }
