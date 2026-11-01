@@ -1,6 +1,6 @@
 # Testing reference
 
-[Build/skin tests](DEVELOPMENT.md); [packaging tests](../RELEASING.md#licenses-and-corresponding-source).
+[Build/skins](DEVELOPMENT.md); [packaging](../RELEASING.md#licenses-and-corresponding-source).
 
 ## Checks
 
@@ -22,7 +22,7 @@ Filter with `ctest --test-dir build -R NAME`:
 | `sampler-transfer`, `capture-storage` | Transfers, continuous audio, dynamic growth/reuse, delayed/failed refills, snapshots, exhaustion recovery, callback allocation/destruction |
 | `global-value-mode-*` | Modes/remapping, codec/grid/zero snap, raw preservation, private state/startup defaults, CLEAR PADS preservation, automation/mailbox |
 | `defaults-file` | Bounded flat INI, quoted Unicode/whitespace, atomic merged writes, unknown keys, concurrency and failures |
-| `state-codec`, `project-state-*` | PCM16/float32 compatibility, exact PCM/playback/restoration, editor/mixer/protocols, corrupt/truncated input, unchanged destinations |
+| `state-codec`, `project-state-*`, `vst3-state-transport` | PCM16/float32, exact restoration, editor/mixer/protocols, corrupt/truncated-input rejection without mutation; DSP-only UI filtering |
 | `ui-skin` | Manifest bounds/versions, scalar/UTF-8/printf fallback, Unicode paths, confined images, startup snapshots |
 | `ui-skin-catalog` | Discovery/forced precedence, missing choices, config folders, Unicode atomic/concurrent preferences |
 | `layout-*` | [Preferences, startup/host precedence, dummy metadata](LAYOUT-PREFERENCE.md) |

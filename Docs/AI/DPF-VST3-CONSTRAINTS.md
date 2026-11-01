@@ -62,16 +62,14 @@ Carla checks at 48 kHz/2048 frames covered 64-second song restoration without
 the source, preserved playback/waveform/edits, VST3/LV2 import/export/save during
 continuous monitoring and repeating-pad playback, and VST3 clipboard/split/cut UI actions.
 
-An earlier Carla chunk-loading check observed about 0.47 seconds of silence
-without identifying a plugin cause. The maintainer reports that
-[issue #18](https://github.com/sirsipe/SMS-Plugins/issues/18) no longer reproduces.
-Treat that observation as historical, not a confirmed current preset defect.
 Codec regression does not exercise DAW project restoration or simultaneous views;
 manual host evidence matters. Public compatibility begins with v1.0.0 under the
 [release policy](../RELEASING.md#public-version-compatibility).
-The pinned VST3 wrapper also sends every state key to a newly opened view,
-without filtering the DSP-only hint; loaded pad PCM may therefore cross that
-initial view path despite the hint. Review this when changing VST3 transport.
+The maintained DPF patch skips DSP-only state getters during editor initialization
+and filters every DSP-to-UI state send, including restoration with an editor open.
+Host save/restore still includes all durable pad PCM. `vst3-state-transport` tests
+the real wrapper with a headless fixture: initial/reopened views, cached DSP-only
+blobs, UI-visible state, and complete host state round trips.
 
 Direct instance access is local to one process and cannot serve a remote UI.
 If remote VST3 views become a requirement, add a bounded component-to-view

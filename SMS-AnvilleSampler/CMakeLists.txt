@@ -358,6 +358,21 @@ if(BUILD_TESTING)
   target_link_libraries(anvillesampler_layout_preference_tests PRIVATE sms_common_ui)
   add_test(NAME layout-preference COMMAND anvillesampler_layout_preference_tests)
 
+  if(ANVILLESAMPLER_BUILD_VST3)
+    # Exercise the patched wrapper with a tiny plugin and fake host messages;
+    # no editor window or DGL library is needed.
+    add_executable(anvillesampler_vst3_state_tests
+      tests/vst3_state_tests.cpp
+      "${SMS_DPF_ROOT}/distrho/src/DistrhoPlugin.cpp"
+      "${SMS_DPF_ROOT}/distrho/src/DistrhoUtils.cpp")
+    target_include_directories(anvillesampler_vst3_state_tests PRIVATE
+      tests/vst3-state "${SMS_DPF_ROOT}/distrho" "${SMS_DPF_ROOT}/dgl")
+    target_compile_definitions(anvillesampler_vst3_state_tests PRIVATE
+      HAVE_DGL DISTRHO_PLUGIN_TARGET_VST3 DISTRHO_IS_STANDALONE=0)
+    target_link_libraries(anvillesampler_vst3_state_tests PRIVATE ${CMAKE_DL_LIBS})
+    add_test(NAME vst3-state-transport COMMAND anvillesampler_vst3_state_tests)
+  endif()
+
   foreach(anvillesampler_target IN LISTS anvillesampler_targets)
     add_executable(${anvillesampler_target}-audio-port-tests
       tests/audio_port_tests.cpp

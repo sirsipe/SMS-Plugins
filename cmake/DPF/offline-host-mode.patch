@@ -106,6 +106,48 @@
 
          // activate plugin if not done yet
          if (! fPlugin.isActive())
+@@ -2203,11 +2209,12 @@
+            #endif
+
+            #if DISTRHO_PLUGIN_WANT_FULL_STATE
+-            // Update current state from plugin side
++            // Refresh only UI-visible state; DSP-only blobs belong to host saves.
+             for (StringMap::const_iterator cit=fStateMap.begin(), cite=fStateMap.end(); cit != cite; ++cit)
+             {
+                 const String& key(cit->first);
+-                fStateMap[key] = fPlugin.getStateValue(key);
++                if (isStateForUI(key))
++                    fStateMap[key] = fPlugin.getStateValue(key);
+             }
+            #endif
+
+@@ -3011,8 +3018,26 @@
+         v3_cpp_obj_unref(message);
+     }
+
++    bool isStateForUI(const char* const key) const noexcept
++    {
++       #if DISTRHO_PLUGIN_WANT_STATE
++        for (uint32_t i=0, count=fPlugin.getStateCount(); i<count; ++i)
++        {
++            if (fPlugin.getStateKey(i) == key)
++                return (fPlugin.getStateHints(i) & kStateIsOnlyForDSP) == 0;
++        }
++       #else
++        (void)key;
++       #endif
++        return true;
++    }
++
+     void sendStateSetToUI(const char* const key, const char* const value) const
+     {
++        // This also covers host state restoration while an editor is open.
++        if (! isStateForUI(key))
++            return;
++
+         v3_message** const message = createMessage("state-set");
+         DISTRHO_SAFE_ASSERT_RETURN(message != nullptr,);
+
 --- a/distrho/src/DistrhoPluginLV2.cpp
 +++ b/distrho/src/DistrhoPluginLV2.cpp
 @@ -82,6 +82,9 @@

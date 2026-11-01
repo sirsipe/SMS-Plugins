@@ -47,10 +47,9 @@ Prerequisites, native build commands, remaining gaps and validation live in
 ### Pinned DPF patch
 
 CMake [prepares](../../scripts/prepare_dpf.py) `_deps/dpf-patched` using
-[patch](../../cmake/DPF/offline-host-mode.patch) and
-[input hashes](../../cmake/DPF/offline-host-mode.inputs.json).
-Git is required; vendored sources stay unchanged.
-Patched targets use LF regardless of Git settings.
+[patch](../../cmake/DPF/offline-host-mode.patch) (offline signals, VST3 state filtering)
+and [input hashes](../../cmake/DPF/offline-host-mode.inputs.json).
+Git is required. Vendored sources stay unchanged; targets use LF.
 
 ## Native skin filesystem tests
 

@@ -120,8 +120,8 @@ The worker clears pads at block boundaries, clipboard, split plans and
 colors; the UI invalidates pad/editor snapshots and returns to main view.
 `pad_file_request`: action/pad/UTF-8 path. VST3 uses an instance worker;
 LV2 requires its host worker. Small busy/status states and a hidden completion
-output return results. VST3 bus excludes PCM, but DPF's initial state transfer
-may send DSP-only Base64 pad PCM to a newly opened UI.
+output return results. VST3 bus and wrapper UI transfers exclude DSP-only pad PCM;
+host project/preset state retains it. Editor initialization skips PCM serialization.
 
 ## Validation
 
