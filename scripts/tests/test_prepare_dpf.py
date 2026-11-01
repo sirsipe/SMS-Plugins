@@ -86,6 +86,27 @@ class PrepareDpfTests(unittest.TestCase):
         self.assertEqual((self.source / "plugin.cpp").read_bytes(), original)
         self.assertEqual((self.destination / "plugin.cpp").read_bytes(), b"int offline = 1;\n")
 
+    def test_git_line_ending_settings_do_not_affect_generated_copy(self):
+        for autocrlf in ("true", "false"):
+            with self.subTest(autocrlf=autocrlf):
+                self.destination = self.root / "build" / autocrlf
+                environment = os.environ.copy()
+                # Supply Git settings directly so this covers Windows-style
+                # conversions on every platform without changing user config.
+                environment.update({
+                    "GIT_CONFIG_COUNT": "2",
+                    "GIT_CONFIG_KEY_0": "core.autocrlf",
+                    "GIT_CONFIG_VALUE_0": autocrlf,
+                    "GIT_CONFIG_KEY_1": "core.eol",
+                    "GIT_CONFIG_VALUE_1": "crlf",
+                })
+                original = (self.source / "plugin.cpp").read_bytes()
+                self.prepare(environment=environment)
+                self.assertEqual((self.destination / "plugin.cpp").read_bytes(),
+                                 b"int offline = 1;\n")
+                self.assertEqual((self.source / "plugin.cpp").read_bytes(), original)
+                self.assertIn("cached", self.prepare(environment=environment).stdout)
+
     def test_input_drift_fails_without_modifying_old_tree(self):
         self.prepare()
         (self.source / "plugin.cpp").write_text("unreviewed upstream change\n", encoding="utf-8")

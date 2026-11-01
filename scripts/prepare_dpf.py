@@ -56,7 +56,10 @@ def apply_patch(git, destination, patch, check=False):
     for name in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"):
         environment.pop(name, None)
     environment["GIT_CEILING_DIRECTORIES"] = str(destination.parent)
-    command = [git, "-C", str(destination), "apply", "--whitespace=error"]
+    # Git's checkout conversion can reintroduce CRLF after normalization,
+    # including when applying outside a repository on Windows.
+    command = [git, "-c", "core.autocrlf=false", "-c", "core.eol=lf",
+               "-C", str(destination), "apply", "--whitespace=error"]
     if check:
         command.append("--check")
     result = subprocess.run(command + [str(patch)], env=environment,

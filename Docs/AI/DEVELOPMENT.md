@@ -46,10 +46,11 @@ Prerequisites, native build commands, remaining gaps and validation live in
 
 ### Pinned DPF patch
 
-CMake [prepares](../../scripts/prepare_dpf.py) cached `_deps/dpf-patched` using the
+CMake [prepares](../../scripts/prepare_dpf.py) `_deps/dpf-patched` using
 [patch](../../cmake/DPF/offline-host-mode.patch) and
 [input hashes](../../cmake/DPF/offline-host-mode.inputs.json).
-Git is required, including for archives; the pinned submodule stays unchanged.
+Git is required; vendored sources stay unchanged.
+Patched targets use LF regardless of Git settings.
 
 ## Native skin filesystem tests
 
