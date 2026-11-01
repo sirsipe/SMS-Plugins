@@ -41,15 +41,16 @@ across bank, layout, base-note, and mapping changes. Retriggering replaces that 
 ## Capture model
 
 Arm targets the first empty visible pad (first pad when full); idle selection
-overrides it. A hidden output reports the target. The first
-Sequential note-on begins capture; later note-ons publish sample-accurate
-boundaries and advance through Bank D. Selected Bank skips hidden slots;
+overrides it. A hidden output reports the target.
+Sequential note-ons begin capture, then publish sample-accurate boundaries
+through Bank D. Selected Bank skips hidden slots;
 All Banks uses contiguous pages. Note-off does not affect capture. Disarming or
 Finalize publishes the last slice.
 
-Pre-roll ring holds up to 100 ms. At a boundary, history starts the new
-slice and is trimmed from the previous one. Fixed mode records the chosen
-duration after each note-on.
+Pre-roll holds up to 100 ms. Boundaries move history from the previous
+slice to the new one. Peak/RMS describe retained PCM; bounded peak history
+avoids full-recording scans. Fixed mode records the chosen duration after
+each note-on.
 
 ## Real-time behavior
 

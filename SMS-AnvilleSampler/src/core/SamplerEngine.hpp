@@ -455,6 +455,9 @@ private:
     std::array<Pad, kPadCount> pads_{};
     std::uint32_t ringCapacityFrames_ = 0;
     std::vector<float> ring_;
+    // One active capture: cumulative peaks for every possible pre-roll trim,
+    // plus the untrimmed endpoint. Allocated only during construction/rate changes.
+    std::vector<float> recordPeakHistory_;
     std::uint32_t ringWritePosition_ = 0;
     std::uint32_t ringCount_ = 0;
     std::uint32_t preRollFrames_ = 0;

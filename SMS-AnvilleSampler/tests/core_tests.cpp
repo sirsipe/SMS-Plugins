@@ -339,6 +339,71 @@ void sequential_boundaries_and_preroll() {
     close(p1.stereo[4], 5, "pad one contains post-boundary audio");
 }
 
+void preroll_trim_metadata() {
+    using namespace midichopper;
+    SamplerEngine engine(1000.0, 1.0);
+    for (const double rate : {1000.0, 2000.0}) {
+        engine.setSampleRate(rate);
+        for (const float preRollMs : {0.0f, 5.0f, 100.0f}) {
+            const auto preRoll = static_cast<std::uint32_t>(preRollMs * rate / 1000.0);
+            // Include empty/fully trimmed slices, history wrap, and storage-block crossings.
+            for (const std::uint32_t captured : {0U, 3U, 10U, 101U, 202U, 2048U})
+                for (const bool history : {false, true})
+                    for (const bool retainedSignal : {false, true}) {
+                        engine.reset();
+                        EngineSettings settings;
+                        settings.armed = true;
+                        settings.preRollMilliseconds = preRollMs;
+                        engine.setSettings(settings);
+                        const auto start = history ? preRoll : 0U;
+                        const auto boundary = start + captured;
+                        const auto kept = boundary - std::min(preRoll, boundary);
+                        std::vector<float> left(boundary + 1U), right(boundary + 1U);
+                        if (captured != 0U) right[boundary - 1U] = -1.0f;
+                        if (retainedSignal && kept != 0U) {
+                            left[0] = 0.25f;
+                            right[kept - 1U] = -0.5f;
+                        }
+                        left[boundary] = 0.125f;
+                        std::vector<float> outLeft(left.size()), outRight(right.size());
+                        const std::array<MidiEvent, 2> events{{
+                            {start, 90U, 127U, MidiEventType::NoteOn},
+                            {boundary, 91U, 127U, MidiEventType::NoteOn}
+                        }};
+                        engine.process(left.data(), right.data(), outLeft.data(), outRight.data(),
+                                       static_cast<std::uint32_t>(left.size()), events);
+                        engine.finalizeRecording();
+                        engine.process(nullptr, nullptr, outLeft.data(), outRight.data(), 0U);
+                        for (std::uint32_t pad = 0U; pad < 2U; ++pad) {
+                            PadData data;
+                            check(engine.exportPad(pad, data), "export trimmed metadata regression");
+                            const auto first = pad == 0U ? 0U : kept;
+                            const auto end = pad == 0U ? kept : boundary + 1U;
+                            check(data.frames == end - first, "trim keeps expected frame count");
+                            float peak = 0.0f;
+                            double sumSquares = 0.0;
+                            for (auto frame = first; frame < end; ++frame) {
+                                const auto offset = (frame - first) * 2U;
+                                check(data.stereo[offset] == left[frame] &&
+                                      data.stereo[offset + 1U] == right[frame],
+                                      "trim preserves exact retained stereo PCM");
+                                peak = std::max({peak, std::abs(left[frame]), std::abs(right[frame])});
+                                sumSquares += static_cast<double>(left[frame]) * left[frame] +
+                                              static_cast<double>(right[frame]) * right[frame];
+                            }
+                            const auto rms = data.frames == 0U ? 0.0f :
+                                static_cast<float>(std::sqrt(sumSquares / (2.0 * data.frames)));
+                            close(data.peak, peak, "exported peak matches retained PCM");
+                            close(data.rms, rms, "exported RMS matches retained PCM");
+                            const auto metadata = engine.padMetadata(pad);
+                            close(metadata.peak, peak, "published peak matches retained PCM");
+                            close(metadata.rms, rms, "published RMS matches retained PCM");
+                        }
+                    }
+        }
+    }
+}
+
 void rechop_and_raw_preview() {
     midichopper::SamplerEngine engine(1000.0, 1.0);
     midichopper::PadData left;
@@ -3516,6 +3581,7 @@ int main() {
     color_effects();
     visible_waveform_range();
     sequential_boundaries_and_preroll();
+    preroll_trim_metadata();
     rechop_and_raw_preview();
     rechop_preserves_source_markers();
     rechop_repeated_asymmetric_markers();

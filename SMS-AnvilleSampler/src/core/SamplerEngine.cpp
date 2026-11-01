@@ -29,7 +29,8 @@ SamplerEngine::SamplerEngine(double sampleRate, double maxRecordSeconds)
       max_frames_(max_record_seconds_ > 0.0 ? total_blocks_ * kSampleBlockFrames : kMaximumPadFrames),
       storagePool_(max_record_seconds_ > 0.0 ? total_blocks_ : 0U, sample_rate_),
       ringCapacityFrames_(static_cast<std::uint32_t>(std::max(1.0, std::ceil(sample_rate_ * 0.1)))),
-      ring_(static_cast<std::size_t>(ringCapacityFrames_) * 2U, 0.0f) {
+      ring_(static_cast<std::size_t>(ringCapacityFrames_) * 2U, 0.0f),
+      recordPeakHistory_(static_cast<std::size_t>(ringCapacityFrames_) + 1U, 0.0f) {
     for (auto& p : pads_) p.sourceSampleRate = sample_rate_;
     setSettings(settings_);
 }
@@ -104,6 +105,7 @@ void SamplerEngine::setSampleRate(double sampleRate) {
         captureStorageExhausted_.store(false, std::memory_order_release);
     ringCapacityFrames_ = static_cast<std::uint32_t>(std::max(1.0, std::ceil(sample_rate_ * 0.1)));
     ring_.assign(static_cast<std::size_t>(ringCapacityFrames_) * 2U, 0.0f);
+    recordPeakHistory_.assign(static_cast<std::size_t>(ringCapacityFrames_) + 1U, 0.0f);
     ringWritePosition_ = ringCount_ = 0;
     activePad_ = -1;
     auditionPad_ = kPadCount;
@@ -545,6 +547,7 @@ void SamplerEngine::beginRecord(std::uint32_t pad) noexcept {
         if (!storeSample(pad, i, l, r))
             break;
         p.recordPeak = std::max(p.recordPeak, std::max(std::abs(l), std::abs(r)));
+        recordPeakHistory_[i % recordPeakHistory_.size()] = p.recordPeak;
         p.recordSumSquares += static_cast<double>(l) * l + static_cast<double>(r) * r;
         p.recordPosition = i + 1U;
         p.recordedFrames = i + 1U;
@@ -564,6 +567,10 @@ void SamplerEngine::finishRecord(std::uint32_t pad, std::uint32_t trimFrames) no
         p.recordSumSquares -= static_cast<double>(left) * left + static_cast<double>(right) * right;
     }
     p.recordedFrames -= trimFrames;
+    // Trims are at most the pre-roll ring capacity. The extra history entry
+    // retains the peak immediately before even a maximum-length trimmed tail.
+    p.recordPeak = p.recordedFrames == 0U ? 0.0f :
+        recordPeakHistory_[(p.recordedFrames - 1U) % recordPeakHistory_.size()];
     p.recordPosition = p.recordedFrames;
     trimPadBlocks(pad, p.recordedFrames);
     p.recordSumSquares = std::max(0.0, p.recordSumSquares);
@@ -599,6 +606,7 @@ void SamplerEngine::writeRecordFrame(std::uint32_t, float left, float right) noe
         return;
     }
     p.recordPeak = std::max(p.recordPeak, std::max(std::abs(left), std::abs(right)));
+    recordPeakHistory_[p.recordPosition % recordPeakHistory_.size()] = p.recordPeak;
     p.recordSumSquares += static_cast<double>(left) * left + static_cast<double>(right) * right;
     ++p.recordPosition;
     p.recordedFrames = p.recordPosition;
