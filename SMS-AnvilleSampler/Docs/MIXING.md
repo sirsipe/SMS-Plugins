@@ -48,6 +48,12 @@ leaves playback and recorded PCM unchanged. Both range from −24 to +12 dB and
 default to 0 dB. Monitor Off/On/Auto still controls whether input is audible.
 The surrounding stereo LEDs show raw input and the final combined output.
 
+Clean playback uses windowed-sinc resampling for Tune and sample-rate conversion,
+reducing aliasing when speeding samples up. Pad and global Tune combine. Stored
+audio stays unchanged; older pitched projects may sound different. Dirty retains
+its original interpolation and character. High speeds with many voices cost
+more CPU.
+
 Drag the fader cap or click its slot; wheel to adjust. Double-click the fader
 or its value for exact entry; middle-click resets to 0 dB within the selected
 range. See [numeric entry and keyboard navigation](../README.md#general-controls).

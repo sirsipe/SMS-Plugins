@@ -70,7 +70,8 @@ both gains. Neither gain changes stored or exported PCM.
 
 At playback, either pad or global Dirty enables the same source conversion.
 It folds stereo to mono, holds source frames at a 26.04 kHz clock, then quantizes
-the held signal to 12 bits before varispeed interpolation. It applies only to
+the held signal to 12 bits before linear varispeed interpolation. Clean playback
+uses the shared [windowed-sinc resampler](RESAMPLING.md). Dirty applies only to
 pad playback; recording, monitor input, raw previews, and exported PCM remain
 unchanged. Enabling Dirty in both places does not compound its conversion.
 

@@ -1,6 +1,8 @@
 #include "../src/core/PlaybackVoice.hpp"
+#include "reference_resampler.hpp"
 
 #include <array>
+#include <cmath>
 #include <cstdlib>
 #include <iostream>
 
@@ -34,11 +36,17 @@ struct Source {
 
     void render(PlaybackVoice& voice, const float expected) {
         check(voice.playing(), "caller only renders an active voice");
+        const bool integerPhase = voice.position() == std::floor(voice.position());
         float left = 8.0f, right = -16.0f;
         const bool active = voice.render(pool, storage, parameters.frames,
                                         parameters.sourceSampleRate, left, right);
         check(active == voice.playing(), "render reports resulting activity");
-        check(left == 8.0f + expected && right == -16.0f - expected,
+        if (integerPhase)
+            check(left == 8.0f + expected && right == -16.0f - expected,
+                  "integer phases preserve exact source PCM in the mix");
+        // Fractional phases compare the lookup kernel against an analytic oracle.
+        check(std::abs(left - (8.0f + expected)) < 1.0e-5f &&
+              std::abs(right - (-16.0f - expected)) < 1.0e-5f,
               "interpolated stereo adds to the existing mix");
         check(storage->references.load() == 1U, "DSP leaves storage ownership with the engine");
     }
@@ -48,17 +56,20 @@ void fractional_loop_and_direction() {
     Source source;
     PlaybackVoice voice;
     voice.start(source.parameters, 127U, PlaybackVoice::Mode::Loop, -1, 7U);
-    constexpr std::array expected{1.0f, 1.5f, 2.0f, 2.5f, 3.0f, 3.5f, 4.0f, 2.5f, 1.0f};
-    for (const auto sample : expected)
-        source.render(voice, sample);
+    constexpr std::array<float, 8> pcm{1,-1, 2,-2, 3,-3, 4,-4};
+    const auto sample = [&](double position, bool reverse = false) {
+        return reference_resampler::sample(pcm, position, 0.5, 0U, 4U, true, reverse);
+    };
+    for (unsigned frame = 0U; frame < 9U; ++frame)
+        source.render(voice, sample(std::fmod(frame * 0.5, 4.0)));
     check(voice.position() == 0.5, "loop retains fractional source phase");
     voice.redirect(source.parameters.frames, true);
     check(voice.reverse() && voice.position() == 2.5,
           "direction turn mirrors the active fractional cursor");
-    source.render(voice, 1.5f);
-    source.render(voice, 1.0f);
-    source.render(voice, 2.5f);
-    source.render(voice, 4.0f);
+    source.render(voice, sample(2.5, true));
+    source.render(voice, sample(3.0, true));
+    source.render(voice, sample(3.5, true));
+    source.render(voice, sample(0.0, true));
 }
 
 void cut_edits_report_engine_actions() {
@@ -66,19 +77,20 @@ void cut_edits_report_engine_actions() {
     PlaybackVoice voice;
     voice.start(source.parameters, 127U, PlaybackVoice::Mode::Hold, 36, 1U);
     source.render(voice, 1.0f);
-    source.render(voice, 1.5f);
+    constexpr std::array<float, 8> pcm{1,-1, 2,-2, 3,-3, 4,-4};
+    source.render(voice, reference_resampler::sample(pcm, 0.5, 0.5, 0U, 4U, true));
     source.render(voice, 2.0f);
     source.parameters.playback.start = 0.5f;
     check(voice.refresh(source.parameters), "loop accepts edited Start");
     check(voice.position() == 3.5, "edited loop wraps an earlier cursor fractionally");
-    source.render(voice, 3.5f);
+    source.render(voice, reference_resampler::sample(pcm, 3.5, 0.5, 2U, 4U, true));
 
     source.parameters.playback = {};
     voice.start(source.parameters, 127U, PlaybackVoice::Mode::OneShot, 36, 2U);
     source.render(voice, 1.0f);
     source.parameters.playback.start = 0.5f;
     check(voice.refresh(source.parameters), "one-shot accepts settings without moving Start");
-    source.render(voice, 1.5f);
+    source.render(voice, reference_resampler::sample(pcm, 0.5, 0.5, 0U, 4U, false));
     source.parameters.playback.start = 0.0f;
     source.parameters.playback.end = 0.25f;
     check(!voice.refresh(source.parameters), "one-shot cut past its cursor asks the engine to stop");

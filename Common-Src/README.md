@@ -12,6 +12,8 @@ host, or a specific plug-in's state model.
   semitone tune, filter, dirty-mode, playback direction, and global mixer routing.
 - `DSP/ColorEffects.hpp`: allocation-free per-voice stereo filters and 26.04 kHz,
   12-bit mono source conversion.
+- `DSP/SincResampler.hpp`: stereo windowed-sinc rate conversion and varispeed;
+  [filter, real-time and boundary contract](../Docs/AI/RESAMPLING.md).
 - `DSP/AdsrEnvelope.hpp`: allocation-free per-voice linear ADSR processor with
   phase-preserving live setting updates and explicit automatic-to-note-off release handoff.
 - `DSP/PeakMeter.hpp`: allocation-free stereo sample-peak follower with hold

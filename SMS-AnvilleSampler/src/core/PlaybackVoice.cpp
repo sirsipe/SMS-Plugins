@@ -43,6 +43,7 @@ void PlaybackVoice::start(const Parameters& parameters, const std::uint8_t veloc
         globalMixer ? global.lowpass : 0.0f,
         globalMixer ? global.highpass : 0.0f, global.filterSlope}, sampleRate);
     step_ = (sourceRate / sampleRate) * tuneRatio;
+    resampler_.configure(step_);
     const float regionSeconds = static_cast<float>(endFrame - startFrame) /
         static_cast<float>((sourceRate > 1.0 ? sourceRate : sampleRate) *
                            tuneRatio);
@@ -95,6 +96,7 @@ bool PlaybackVoice::refresh(const Parameters& parameters) noexcept {
         globalMixer ? global.highpass : 0.0f, global.filterSlope}, sampleRate);
     const double sourceRate = parameters.sourceSampleRate;
     step_ = (sourceRate / sampleRate) * tuneRatio;
+    resampler_.configure(step_);
     const float regionSeconds = static_cast<float>(endFrame_ - startFrame_) /
         static_cast<float>((sourceRate > 1.0 ? sourceRate : sampleRate) *
                            tuneRatio);
@@ -205,10 +207,15 @@ bool PlaybackVoice::render(const SampleStoragePool& pool,
             pool.sample(storage, sourceJ, 0U), pool.sample(storage, sourceJ, 1U));
         sampleL = sampleR = first * (1.0f - frac) + second * frac;
     } else {
-        sampleL = pool.sample(storage, sourceFrame(i), 0U) * (1.0f - frac) +
-                  pool.sample(storage, sourceFrame(j), 0U) * frac;
-        sampleR = pool.sample(storage, sourceFrame(i), 1U) * (1.0f - frac) +
-                  pool.sample(storage, sourceFrame(j), 1U) * frac;
+        SampleStoragePool::StereoReader reader{pool, storage};
+        const auto sample = resampler_.read(pos, startFrame_, n, looping,
+            [&](const std::uint32_t index) noexcept {
+                const auto raw = sourceFrame(index);
+                const auto stereo = reader(raw);
+                return sms::dsp::StereoFrame{stereo[0], stereo[1]};
+            });
+        sampleL = sample.left;
+        sampleR = sample.right;
     }
     padFilters_.process(sampleL, sampleR);
     globalFilters_.process(sampleL, sampleR);

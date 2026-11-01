@@ -3,6 +3,7 @@
 #include "PadFileActionProtocol.hpp"
 #include "PadClipboardProtocol.hpp"
 #include "PadFileActions.hpp"
+#include "reference_resampler.hpp"
 
 #include <bit>
 #include <atomic>
@@ -295,15 +296,21 @@ void encodeAndRender()
     mixer.pan = -1.0f;
     mixer.tuneSemitones = 12.0f;
     const auto mixed = sms::audio::renderProcessedStereo(source, fullRegion, mixer);
-    check(mixed.frames == 3U && std::abs(mixed.stereo[0] - 0.5f) < 1.0e-5f &&
-          std::abs(mixed.stereo[2] - 1.5f) < 1.0e-5f && mixed.stereo[1] == 0.0f,
+    check(mixed.frames == 3U && mixed.stereo[1] == 0.0f,
           "processed render applies gain, stereo balance, and varispeed tune");
+    for (std::uint32_t frame = 0; frame < mixed.frames; ++frame)
+        check(std::abs(mixed.stereo[frame * 2U] - 0.5f * reference_resampler::sample(
+                  source.stereo, frame * 2.0, 2.0, 0U, 6U, false)) < 1.0e-5f,
+              "processed pitched export matches independent bandlimited reference");
 
     mixer.reverse = 1.0f;
     const auto reversed = sms::audio::renderProcessedStereo(source, fullRegion, mixer);
-    check(reversed.frames == 3U && std::abs(reversed.stereo[0] - 3.0f) < 1.0e-5f &&
-          std::abs(reversed.stereo[2] - 2.0f) < 1.0e-5f && reversed.stereo[1] == 0.0f,
+    check(reversed.frames == 3U && reversed.stereo[1] == 0.0f,
           "processed reverse export matches playback direction, gain, pan and varispeed");
+    for (std::uint32_t frame = 0; frame < reversed.frames; ++frame)
+        check(std::abs(reversed.stereo[frame * 2U] - 0.5f * reference_resampler::sample(
+                  source.stereo, frame * 2.0, 2.0, 0U, 6U, false, true)) < 1.0e-5f,
+              "processed reverse export applies sinc to reversed source coordinates");
     fullRegion.start = 1.0f / 6.0f;
     // Keep the normalized marker just below 4/6 so float rounding does not
     // ceil the exclusive End to frame 5.
@@ -313,11 +320,14 @@ void encodeAndRender()
     mixer.tuneSemitones = -12.0f;
     const auto trimmedReverse = sms::audio::renderProcessedStereo(source, fullRegion, mixer);
     check(trimmedReverse.frames == 6U && trimmedReverse.stereo[0] == 5.0f &&
-          trimmedReverse.stereo[2] == 4.5f && trimmedReverse.stereo[4] == 4.0f &&
-          trimmedReverse.stereo[6] == 3.5f && trimmedReverse.stereo[8] == 3.0f &&
-          trimmedReverse.stereo[10] == 3.0f && trimmedReverse.stereo[11] == 30.0f &&
+          trimmedReverse.stereo[4] == 4.0f && trimmedReverse.stereo[8] == 3.0f &&
           source.stereo.front() == 1.0f,
           "asymmetric reverse export flips the full source before applying trim and tune");
+    for (std::uint32_t frame = 0; frame < trimmedReverse.frames; ++frame)
+        for (std::uint32_t channel = 0; channel < 2U; ++channel)
+            check(std::abs(trimmedReverse.stereo[frame * 2U + channel] - reference_resampler::sample(
+                      source.stereo, 1.0 + frame * 0.5, 0.5, 1U, 4U, false, true, channel)) < 1.0e-5f,
+                  "trimmed reverse export extends edges through the final fractional frame");
     auto reversedSource = source;
     for (std::uint32_t frame = 0U; frame < source.frames; ++frame) {
         const auto sourceFrame = source.frames - 1U - frame;

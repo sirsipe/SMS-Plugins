@@ -58,9 +58,10 @@ blocks. `process()` consumes sample-offset MIDI without event caps,
 allocation, locks, I/O or exceptions. Each pad is one voice; a 1–16 global limit
 steals oldest voices.
 `input_monitor` values are Off=0, On=1, Auto=2. Auto follows Arm each block.
-Playback linearly interpolates source-rate conversion and semitone
-varispeed. Per-pad region/ADSR and mixers are non-destructive; global
-volume/pan/tune combine during playback. Active voices refresh mixer,
+Playback uses [windowed-sinc resampling](../../Docs/AI/RESAMPLING.md) for rate
+conversion/varispeed; Dirty retains linear interpolation.
+Region/ADSR and mixers are non-destructive; global
+volume/pan/tune combine. Active voices refresh mixer,
 ADSR, and cuts per block; one-shot Start stays fixed until retrigger.
 Triggers latch pad direction/mode; Global Reverse turns enabled pads. Editor requests atomically mirror
 Start/End, active cursor and orientation without restarting ADSR/filters. Reverse

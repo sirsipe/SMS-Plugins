@@ -84,6 +84,36 @@ public:
     /** Audio owner or a reader retaining a completed immutable descriptor. */
     [[nodiscard]] float sample(const Storage* storage, std::uint32_t frame,
         std::uint32_t channel) const noexcept;
+    /** Stack-local FIR reader. Same ownership requirements as sample(); reuse
+     * only while the retained descriptor/mappings stay immutable. Cache one
+     * capture block and read channels together instead of reloading its mapping
+     * for each channel of each neighboring tap. */
+    class StereoReader {
+    public:
+        StereoReader(const SampleStoragePool& pool, const Storage* storage) noexcept
+            : pool_(pool), storage_(storage) {}
+        [[nodiscard]] std::array<float, 2> operator()(const std::uint32_t frame) noexcept {
+            if (!storage_) return {};
+            if (!storage_->isCapture()) {
+                if (frame >= storage_->frames) return {};
+                const auto offset = static_cast<std::size_t>(frame) * 2U;
+                return {storage_->stereo[offset], storage_->stereo[offset + 1U]};
+            }
+            const auto index = frame / kBlockFrames;
+            if (index != blockIndex_) {
+                block_ = pool_.mappedBlock(*storage_, index);
+                blockIndex_ = index;
+            }
+            if (!block_) return {};
+            const auto offset = (frame % kBlockFrames) * 2U;
+            return {block_->stereo[offset], block_->stereo[offset + 1U]};
+        }
+    private:
+        const SampleStoragePool& pool_;
+        const Storage* storage_;
+        const CaptureBlock* block_ = nullptr;
+        std::uint32_t blockIndex_ = UINT32_MAX;
+    };
 
 private:
     static constexpr std::size_t kCaptureStorageCount = kPadCount * 2U + 1U;

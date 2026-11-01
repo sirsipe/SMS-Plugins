@@ -1,4 +1,5 @@
 #include "WavCodec.hpp"
+#include "DSP/SincResampler.hpp"
 
 #include "DSP/AdsrEnvelope.hpp"
 
@@ -308,27 +309,24 @@ WavAudio renderProcessedStereo(const WavAudio& source,
     const float mixerGain = dsp::sampleGain(mixer);
     const float leftGain = mixerGain * (mixer.pan > 0.0f ? 1.0f - mixer.pan : 1.0f);
     const float rightGain = mixerGain * (mixer.pan < 0.0f ? 1.0f + mixer.pan : 1.0f);
+    dsp::SincResampler resampler;
+    resampler.configure(ratio);
     for (std::uint32_t frame = 0; frame < frames; ++frame) {
         const std::uint32_t remaining = frames - frame;
         if (!envelope.releasing() && envelope.releaseFrames() > 0U &&
             remaining <= envelope.releaseFrames())
             envelope.noteOff();
         const float gain = envelope.next();
-        const double position = std::min(static_cast<double>(sourceFrames - 1U),
-                                         static_cast<double>(frame) * ratio);
-        const auto first = static_cast<std::uint32_t>(position);
-        const auto second = std::min(first + 1U, sourceFrames - 1U);
-        const float fraction = static_cast<float>(position - first);
-        const std::size_t firstInput = static_cast<std::size_t>(
-            mixer.reverse >= 0.5f ? source.frames - 1U - (start + first) : start + first) * 2U;
-        const std::size_t secondInput = static_cast<std::size_t>(
-            mixer.reverse >= 0.5f ? source.frames - 1U - (start + second) : start + second) * 2U;
+        const double position = static_cast<double>(frame) * ratio;
+        const auto sample = resampler.read(start + position, start, end, false,
+            [&](const std::uint32_t index) noexcept {
+                const auto raw = mixer.reverse >= 0.5f ? source.frames - 1U - index : index;
+                const auto offset = static_cast<std::size_t>(raw) * 2U;
+                return dsp::StereoFrame{source.stereo[offset], source.stereo[offset + 1U]};
+            });
         const std::size_t target = static_cast<std::size_t>(frame) * 2U;
-        output.stereo[target] = (source.stereo[firstInput] * (1.0f - fraction) +
-                                 source.stereo[secondInput] * fraction) * gain * leftGain;
-        output.stereo[target + 1U] = (source.stereo[firstInput + 1U] * (1.0f - fraction) +
-                                      source.stereo[secondInput + 1U] * fraction) *
-                                     gain * rightGain;
+        output.stereo[target] = sample.left * gain * leftGain;
+        output.stereo[target + 1U] = sample.right * gain * rightGain;
     }
     return output;
 }

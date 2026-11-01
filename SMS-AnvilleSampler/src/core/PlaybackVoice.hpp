@@ -5,6 +5,7 @@
 #include "DSP/ColorEffects.hpp"
 #include "DSP/SampleMixerSettings.hpp"
 #include "DSP/SamplePlaybackSettings.hpp"
+#include "DSP/SincResampler.hpp"
 
 #include <cstdint>
 
@@ -76,6 +77,7 @@ private:
     float gainLeft_ = 1.0f;
     float gainRight_ = 1.0f;
     bool dirty_ = false;
+    sms::dsp::SincResampler resampler_;
     sms::dsp::ColorFilters padFilters_;
     sms::dsp::ColorFilters globalFilters_;
     sms::dsp::AdsrEnvelope envelope_;

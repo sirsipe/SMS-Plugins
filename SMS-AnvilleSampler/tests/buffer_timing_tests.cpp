@@ -1,4 +1,5 @@
 #include "SamplerEngine.hpp"
+#include "reference_resampler.hpp"
 
 #include <algorithm>
 #include <array>
@@ -258,9 +259,13 @@ void loopingPlaybackPartitions()
     }};
     // A 0.75-source-frame step repeats every 16 output frames, including
     // interpolation from the final trimmed sample back to Start.
-    constexpr std::array<float, 16> cycle{
-        3, 3.75f, 4.5f, 5.25f, 6, 3.75f, 3.5f, 4.25f,
-        5, 5.75f, 4.5f, 3.25f, 4, 4.75f, 5.5f, 5.25f};
+    constexpr std::array<float, 16> pcm{
+        1, -0.5f, 2, -1, 3, -1.5f, 4, -2,
+        5, -2.5f, 6, -3, 7, -3.5f, 8, -4};
+    std::array<float, 16> cycle{};
+    for (unsigned frame = 0U; frame < cycle.size(); ++frame)
+        cycle[frame] = reference_resampler::sample(
+            pcm, 2.0 + std::fmod(frame * 0.75, 4.0), 0.75, 2U, 6U, true);
     // Three turns take 6, 5, and 5 output frames. The per-pass fade is
     // capped to half a turn and rounded to three frames at this rate.
     constexpr std::array<float, 16> heldGain{

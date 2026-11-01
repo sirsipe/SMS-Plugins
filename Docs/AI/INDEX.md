@@ -12,6 +12,7 @@ Read [AGENTS.md](../../AGENTS.md), then the relevant row.
 | Engine, state, UI | [Anville Sampler architecture](../../SMS-AnvilleSampler/Docs/ARCHITECTURE.md) | [Plugin source](../../SMS-AnvilleSampler/src/) |
 | Startup preferences | [Preferences](LAYOUT-PREFERENCE.md) | Startup and host precedence |
 | Effects | [Mixing contract](MIXING.md) | [DSP](../../Common-Src/DSP/ColorEffects.hpp) |
+| Resampling | [Contract](RESAMPLING.md) | Filters |
 | Shared DSP, codecs, geometry | [Common-Src map](../../Common-Src/README.md) | [Common-Src](../../Common-Src/) |
 | Shared UI | [Common-UI map](../../Common-UI/README.md) | [Common-UI](../../Common-UI/) |
 | Product direction | [Vision](../../SMS-AnvilleSampler/Docs/VISION.md) | Intended scope |
@@ -31,5 +32,4 @@ Read [AGENTS.md](../../AGENTS.md), then the relevant row.
 | CI, release preparation | [Releasing](../RELEASING.md) | [Workflows](../../.github/workflows/) |
 | Agent integration | [Development](DEVELOPMENT.md) | [Claude alias](../../CLAUDE.md), [Copilot adapter](../../.github/copilot-instructions.md) |
 
-Index every repository-owned Markdown page except this index.
-Source maps and plugin architecture are AI references.
+Index all owned Markdown except this index. Source maps are AI references.

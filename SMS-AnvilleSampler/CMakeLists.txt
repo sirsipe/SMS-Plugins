@@ -450,6 +450,12 @@ if(BUILD_TESTING)
   target_link_libraries(anvillesampler_playback_voice_tests PRIVATE anvillesampler_core)
   add_test(NAME playback-voice COMMAND anvillesampler_playback_voice_tests)
 
+  add_executable(anvillesampler_resampling_tests
+    tests/resampling_tests.cpp
+    ../Common-Src/Audio/WavCodec.cpp)
+  target_link_libraries(anvillesampler_resampling_tests PRIVATE anvillesampler_core)
+  add_test(NAME resampling COMMAND anvillesampler_resampling_tests)
+
   add_executable(anvillesampler_buffer_timing_tests tests/buffer_timing_tests.cpp)
   target_link_libraries(anvillesampler_buffer_timing_tests PRIVATE anvillesampler_core)
   add_test(NAME buffer-timing COMMAND anvillesampler_buffer_timing_tests)

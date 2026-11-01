@@ -2,6 +2,7 @@
 #include "../src/core/PadClipboard.hpp"
 #include "../src/plugin/Parameters.hpp"
 #include "DSP/PeakMeter.hpp"
+#include "reference_resampler.hpp"
 
 #include <algorithm>
 #include <array>
@@ -1563,7 +1564,7 @@ void playback_and_rate_conversion() {
     midichopper::MidiEvent on{0, 36, 127, midichopper::MidiEventType::NoteOn};
     e.process(nullptr, nullptr, outL, outR, 5, &on, 1);
     close(outL[0], 1, "playback starts on note offset");
-    close(outL[1], 0, "linear source-rate interpolation");
+    close(outL[1], 0, "sinc source-rate interpolation is symmetric at the midpoint");
     close(outL[2], -1, "resampled second source frame");
     check(e.padMetadata(0).sampleRate == 500.0, "source rate retained");
 }
@@ -1783,6 +1784,13 @@ midichopper::PadData loop_source(const double rate = 1000.0)
     return source;
 }
 
+float loop_sample(const double position, const double step, const unsigned start,
+                  const unsigned end, const bool looping, const bool reverse = false)
+{
+    return reference_resampler::sample(loop_source().stereo, position, step,
+                                       start, end, looping, reverse);
+}
+
 void hold_region_looping()
 {
     using namespace midichopper;
@@ -1817,7 +1825,7 @@ void hold_region_looping()
         check(!engine.anyPlaybackActive(), "zero-release note-off leaves no held loop");
     }
 
-    // Literal sequences exercise fractional seam interpolation and overshoot
+    // Analytic samples exercise fractional seam interpolation and overshoot
     // larger than the region, including simultaneous source-rate and tune changes.
     for (const bool fast : {false, true})
       for (const bool reverse : {false, true}) {
@@ -1836,14 +1844,13 @@ void hold_region_looping()
         mixer.tuneSemitones = fast ? 24.0f : -12.0f;
         mixer.reverse = reverse ? 1.0f : 0.0f;
         engine.setPadMixerSettings(0U, mixer);
-        const std::array<float, 8> expected = fast
-            ? std::array<float, 8>{3, 5.5f, 4, 4.5f, 5, 3.5f, 6, 4.5f}
-            : std::array<float, 8>{3, 3.75f, 4.5f, 5.25f, 6, 3.75f, 3.5f, 4.25f};
         const MidiEvent on{0U, 36U, 127U, MidiEventType::NoteOn};
         std::array<float, 8> left{}, right{};
         engine.process(nullptr, nullptr, left.data(), right.data(), left.size(), &on, 1U);
         for (std::size_t frame = 0U; frame < left.size(); ++frame) {
-            const float sample = reverse ? 9.0f - expected[frame] : expected[frame];
+            const double step = fast ? 6.5 : 0.75;
+            const float sample = loop_sample(2.0 + std::fmod(frame * step, 4.0),
+                                            step, 2U, 6U, true, reverse);
             close(left[frame], sample, "both directions retain fractional and multi-region overshoot");
             close(right[frame], -10.0f * sample, "both directions interpolate across the trimmed seam");
         }
@@ -1976,11 +1983,11 @@ void live_loop_region_edits()
                            audition ? nullptr : &on, audition ? 0U : 1U);
             // Cursor is now 2.5. Start alone changes the next seam and turn,
             // while the in-range cursor must continue.
-            const auto expect = [&](const auto& positions) {
+            const auto expect = [&](const auto& positions, unsigned start, unsigned end) {
                 engine.process(nullptr, nullptr, left, right, positions.size());
                 for (std::size_t frame = 0U; frame < positions.size(); ++frame) {
-                    const float sample = padReverse != globalReverse
-                        ? 8.0f - positions[frame] : 1.0f + positions[frame];
+                    const float sample = loop_sample(positions[frame], 0.5, start, end,
+                                                    true, padReverse != globalReverse);
                     close(left[frame], sample,
                           "loop edits refresh both cuts without restarting the cursor");
                     close(right[frame], -10.0f * sample,
@@ -1989,15 +1996,15 @@ void live_loop_region_edits()
                 check(engine.anyPlaybackActive(), "boundary edit keeps loop running");
             };
             edit(0.25f, 0.875f); // [2, 7)
-            expect(std::array<float, 12>{2.5f, 3, 3.5f, 4, 4.5f, 5, 5.5f, 6, 4, 2, 2.5f, 3});
+            expect(std::array<float, 12>{2.5f, 3, 3.5f, 4, 4.5f, 5, 5.5f, 6, 6.5f, 2, 2.5f, 3}, 2U, 7U);
             edit(0.5f, 0.75f); // [4, 6): wrap cursor 3.5 below the new Start to 5.5
-            expect(std::array<float, 8>{4.5f, 4, 4.5f, 5, 4.5f, 4, 4.5f, 5});
+            expect(std::array<float, 8>{5.5f, 4, 4.5f, 5, 5.5f, 4, 4.5f, 5}, 4U, 6U);
             edit(0.25f, 1.0f); // [2, 8): expanding both cuts keeps cursor 5.5
-            expect(std::array<float, 8>{5.5f, 6, 6.5f, 7, 4.5f, 2, 2.5f, 3});
+            expect(std::array<float, 8>{5.5f, 6, 6.5f, 7, 7.5f, 2, 2.5f, 3}, 2U, 8U);
             edit(0.0f, 0.25f); // [0, 2): End can move before the former Start
-            expect(std::array<float, 6>{0.5f, 0, 0.5f, 1, 0.5f, 0});
+            expect(std::array<float, 6>{1.5f, 0, 0.5f, 1, 1.5f, 0}, 0U, 2U);
             edit(0.875f, 1.0f); // a one-frame loop stays safe after a disjoint edit
-            expect(std::array<float, 6>{7, 7, 7, 7, 7, 7});
+            expect(std::array<float, 6>{7.5f, 7, 7.5f, 7, 7.5f, 7}, 7U, 8U);
             if (audition) {
                 engine.stopPadAudition();
             } else {
@@ -2093,11 +2100,10 @@ void reverse_boundaries_and_envelopes()
             if (singleFrame)
                 expected = (mode == PlaybackMode::Hold || frame == 0U)
                     ? 8.0f : 0.0f;
-            else if (mode == PlaybackMode::Hold) {
-                constexpr float loop[]{6, 5.5f, 5, 4.5f, 4, 3.5f, 3, 4.5f};
-                expected = loop[frame % 8U];
-            } else
-                expected = frame >= 8U ? 0.0f : std::max(3.0f, 6.0f - 0.5f * frame);
+            else
+                expected = mode == PlaybackMode::OneShot && frame >= 8U ? 0.0f :
+                    loop_sample(2.0 + std::fmod(frame * 0.5, 4.0), 0.5, 2U, 6U,
+                                mode == PlaybackMode::Hold, true);
             close(left[frame], expected, "reverse fractional and one-frame boundaries are safe");
             close(right[frame], -10.0f * expected, "reverse boundary samples preserve stereo");
         }
@@ -2263,9 +2269,11 @@ void live_editor_flip_fractional_and_single_frame()
         mixer.reverse = 1.0f;
         engine.restorePadEditorSettings(0U, playback, mixer);
         engine.process(nullptr, nullptr, left, right, 2U);
-        close(left[0], 2.5f, "live flip maps fractional cursor without a phase jump");
+        close(left[0], loop_sample(5.5, 0.5, 3U, 7U, true, true),
+              "live flip maps fractional cursor without a phase jump");
         close(left[1], 2.0f, "fractional reverse keeps the same raw trim interval");
-        close(right[0], -25.0f, "fractional live flip preserves stereo interpolation");
+        close(right[0], -10.0f * loop_sample(5.5, 0.5, 3U, 7U, true, true),
+              "fractional live flip preserves stereo interpolation");
     }
     {
         SamplerEngine engine(1000.0, 1.0);
@@ -2380,7 +2388,8 @@ void live_editor_flip_fractional_seam_and_coalesced_noop()
         check(std::isfinite(left[0]) && std::isfinite(left[1]) &&
               std::isfinite(right[0]) && std::isfinite(right[1]),
               "fractional seam orientation wrap remains finite");
-        close(left[0], 3.5f, "fractional seam cursor wraps safely into mirrored range");
+        close(left[0], loop_sample(6.5, 0.5, 3U, 7U, true, true),
+              "fractional seam cursor wraps safely into mirrored range");
         close(left[1], 5.0f, "fractional seam continues inside reversed region");
         check(engine.anyPlaybackActive(), "fractional seam flip keeps Hold active");
     }
@@ -2458,12 +2467,6 @@ void global_reverse_xor_matrix()
 {
     using namespace midichopper;
     constexpr float envelopes[]{0.0f, 0.5f, 1.0f, 0.75f, 0.5f, 0.5f, 0.5f, 0.5f};
-    constexpr float expected[2][2][8]{
-        {{2, 2.5f, 3, 3.5f, 4, 4.5f, 5, 5},
-         {7, 6.5f, 6, 5.5f, 5, 4.5f, 4, 4}},
-        {{5, 4.5f, 4, 3.5f, 3, 2.5f, 2, 2},
-         {4, 4.5f, 5, 5.5f, 6, 6.5f, 7, 7}}
-    };
     for (const bool globalReverse : {false, true})
         for (const bool localReverse : {false, true}) {
             SamplerEngine engine(1000.0, 1.0);
@@ -2488,8 +2491,9 @@ void global_reverse_xor_matrix()
             float left[8]{}, right[8]{};
             engine.process(nullptr, nullptr, left, right, 8U, &on, 1U);
             for (std::size_t frame = 0U; frame < 8U; ++frame) {
-                const float sample = expected[globalReverse ? 1U : 0U]
-                                              [localReverse ? 1U : 0U][frame];
+                const unsigned start = globalReverse ? 3U : 1U;
+                const float sample = loop_sample(start + frame * 0.5, 0.5, start,
+                                                start + 4U, false, localReverse != globalReverse);
                 close(left[frame], sample * envelopes[frame],
                       "global and pad reverse XOR with mirrored cuts and forward ADSR");
                 close(right[frame], -10.0f * sample * envelopes[frame],
@@ -2642,7 +2646,8 @@ void global_reverse_audition_release_and_raw_preview()
         settings.reverse = true;
         engine.setSettings(settings);
         engine.process(nullptr, nullptr, left, right, 2U);
-        close(left[0], 3.5f, "global turn wraps fractional Hold seam into mirrored region");
+        close(left[0], loop_sample(6.5, 0.5, 3U, 7U, true, true),
+              "global turn wraps fractional Hold seam into mirrored region");
         close(left[1], 5.0f, "global seam turn continues at mirrored Start");
         check(engine.anyPlaybackActive(), "global seam turn keeps held loop active");
     }
@@ -2840,9 +2845,12 @@ void sample_mixer_and_varispeed() {
     float right[5]{};
     const midichopper::MidiEvent on{0, 36, 127, midichopper::MidiEventType::NoteOn};
     engine.process(nullptr, nullptr, left, right, 5U, &on, 1U);
-    close(left[0], 0.5f, "per-pad gain applies to playback");
-    close(left[1], 1.5f, "one octave up advances the source by two frames");
-    close(left[2], 2.5f, "varispeed keeps gain while advancing");
+    close(left[0], 0.5f * reference_resampler::sample(source.stereo, 0.0, 2.0, 0U, 6U, false),
+          "per-pad gain applies to filtered playback");
+    close(left[1], 0.5f * reference_resampler::sample(source.stereo, 2.0, 2.0, 0U, 6U, false),
+          "one octave up advances the filtered source by two frames");
+    close(left[2], 0.5f * reference_resampler::sample(source.stereo, 4.0, 2.0, 0U, 6U, false),
+          "varispeed keeps gain while advancing");
     close(left[3], 0.0f, "one octave up halves playback duration");
     close(right[0], 0.0f, "full-left stereo balance mutes the right channel");
 
@@ -2855,7 +2863,8 @@ void sample_mixer_and_varispeed() {
     engine.process(nullptr, nullptr, left, right, 5U, &on, 1U);
     close(left[0], 0.0f, "full-right stereo balance mutes the left channel");
     close(right[0], 10.0f, "full-right balance retains the right source");
-    close(right[1], 15.0f, "one octave down interpolates at half speed");
+    close(right[1], reference_resampler::sample(source.stereo, 0.5, 0.5, 0U, 6U, false, false, 1U),
+          "one octave down interpolates at half speed");
     close(right[4], 30.0f, "one octave down doubles playback duration");
 
     midichopper::SamplerEngine combined(1000.0, 1.0);
@@ -2873,9 +2882,12 @@ void sample_mixer_and_varispeed() {
     std::fill(std::begin(left), std::end(left), 0.0f);
     std::fill(std::begin(right), std::end(right), 0.0f);
     combined.process(nullptr, nullptr, left, right, 2U, &on, 1U);
-    close(left[0], 0.125f, "global volume multiplies per-pad gain");
-    close(right[0], 5.0f, "global and per-pad pan values add before balance");
-    close(right[1], 15.0f, "global and per-pad tune values add before varispeed");
+    close(left[0], 0.125f * reference_resampler::sample(source.stereo, 0.0, 2.0, 0U, 6U, false),
+          "global volume multiplies per-pad gain");
+    close(right[0], 0.5f * reference_resampler::sample(source.stereo, 0.0, 2.0, 0U, 6U, false, false, 1U),
+          "global and per-pad pan values add before balance");
+    close(right[1], 0.5f * reference_resampler::sample(source.stereo, 2.0, 2.0, 0U, 6U, false, false, 1U),
+          "global and per-pad tune values add before varispeed");
 
     mixer.gainDecibels = -12.0f;
     engine.setPadMixerSettings(0, mixer);
@@ -3186,7 +3198,8 @@ void sample_global_mixer_bypass() {
     mixer.globalMixer = 0.0f;
     coalesced.restorePadMixerSettings(0U, mixer);
     coalesced.process(nullptr, nullptr, left, right, 2U);
-    close(left[0], 1.0f, "coalesced flip and bypass preserve terminal source frame");
+    close(left[0], loop_sample(7.5, 0.5, 0U, 8U, false, true),
+          "coalesced flip and bypass preserve terminal source phase");
     close(left[1], 0.0f, "cancelled direction changes preserve fractional one-shot timing");
     check(!coalesced.anyPlaybackActive(), "coalesced bypass does not extend the voice");
 }

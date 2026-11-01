@@ -10,13 +10,13 @@ python3 scripts/check_docs.py
 git diff --check
 ```
 
-`ctest --test-dir build -R NAME` filters tests:
+Filter with `ctest --test-dir build -R NAME`:
 
 | CTest name | Coverage |
 | --- | --- |
 | `preview-mailbox` | Concurrent coherent play/stop ranges, latest-wins, no replay |
 | `pad-workflows` | Reset, clipboard, collapse, split cancel/replay/conflict, revision-checked chops; exact PCM/settings/replies |
-| `sampler-core`, `playback-voice` | Capture, MIDI/banks/layouts, storage/voices, region/ADSR, mixer/filter/Dirty, preview/repartition, resampling, clipboard/lifecycle, >1,024 events/block, parameter IDs |
+| `sampler-core`, `playback-voice`, `resampling` | Capture, MIDI/banks/layouts, storage/voices, region/ADSR, mixer/filter/Dirty, preview/repartition, [spectral resampling](RESAMPLING.md), clipboard/lifecycle, >1,024 events/block, parameter IDs |
 | `buffer-timing` | Stereo playback/capture, fixed/irregular blocks, MIDI offsets/order, pre-roll wrap, zero-frame callbacks, resampling/effects |
 | `adsr-envelope` | Stages, early note-off, retrigger, zero-duration/live edits, sanitization, release resume |
 | `sampler-transfer`, `capture-storage` | Transfers, continuous audio, dynamic growth/reuse, delayed/failed refills, snapshots, exhaustion recovery, callback allocation/destruction |
@@ -114,13 +114,13 @@ Jalv/Carla 2.5.10 cannot validate DSP `active_bank` updates.
 
 ## UI tooling
 
-[Dev Container tools](DEVELOPMENT.md#docker-development-environment): run `desktop-health`, adding `--dialogs` after portal changes.
+[Dev Container tools](DEVELOPMENT.md#docker-development-environment): `desktop-health`; add `--dialogs` after portal changes.
 Avoid concurrent mouse input.
 
 `bash .devcontainer/scripts/test-plugin.sh`: VST3/LV2 build, CTest/`lv2info`, Carla LV2,
-ARM click, captures in ignored `build/gui-test/`; `--keep-open` for interaction.
+ARM click, captures in ignored `build/gui-test/`; `--keep-open` retains the host.
 `screenshot-window WINDOW_ID OUTPUT.png`: resolve IDs after relaunch/resize;
-inspect captures for private data.
+check privacy.
 
 VST3: `carla-single native vst3 "$PWD/build/bin/SMS-AnvilleSampler.vst3"`. Import WAV; check pads, waveform/settings, Split Sample/Adjust Cut Points. Save/reload after deleting the WAV; compare audio/editor values.
 

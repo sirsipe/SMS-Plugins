@@ -1,4 +1,5 @@
 #include "SampleStoragePool.hpp"
+#include "DSP/SincResampler.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -318,14 +319,17 @@ SampleStoragePool::Storage* SampleStoragePool::prepareImport(const PadData& sour
         storage->frames = static_cast<std::uint32_t>(frames);
         storage->sampleRate = hostSampleRate;
         storage->stereo.resize(static_cast<std::size_t>(frames) * 2U);
+        sms::dsp::SincResampler resampler;
+        resampler.configure(source.sampleRate / hostSampleRate);
         for (std::uint32_t frame = 0; frame < frames; ++frame) {
-            const double position = std::min(static_cast<double>(source.frames - 1U), frame * source.sampleRate / hostSampleRate);
-            const auto first = static_cast<std::uint32_t>(position), second = std::min(first + 1U, source.frames - 1U);
-            const auto fraction = static_cast<float>(position - first);
-            for (std::uint32_t channel = 0; channel < 2U; ++channel) {
-                const auto a = static_cast<std::size_t>(first) * 2U + channel, b = static_cast<std::size_t>(second) * 2U + channel;
-                storage->stereo[static_cast<std::size_t>(frame) * 2U + channel] = source.stereo[a] + (source.stereo[b] - source.stereo[a]) * fraction;
-            }
+            const double position = frame * source.sampleRate / hostSampleRate;
+            const auto sample = resampler.read(position, 0U, source.frames, false,
+                [&](const std::uint32_t index) noexcept {
+                    const auto offset = static_cast<std::size_t>(index) * 2U;
+                    return sms::dsp::StereoFrame{source.stereo[offset], source.stereo[offset + 1U]};
+                });
+            storage->stereo[static_cast<std::size_t>(frame) * 2U] = sample.left;
+            storage->stereo[static_cast<std::size_t>(frame) * 2U + 1U] = sample.right;
         }
     }
     Storage* result = storage.get();
