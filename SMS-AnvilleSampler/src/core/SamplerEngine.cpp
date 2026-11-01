@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <limits>
 #include <thread>
 
 namespace midichopper {
@@ -21,11 +22,12 @@ constexpr std::uint32_t poolBlocks(const std::uint32_t captureFrames) noexcept {
 
 SamplerEngine::SamplerEngine(double sampleRate, double maxRecordSeconds)
     : sample_rate_(sampleRate > 1.0 ? sampleRate : 48000.0),
-      max_record_seconds_(maxRecordSeconds > 0.0 ? maxRecordSeconds : 1.0),
-      total_blocks_(poolBlocks(static_cast<std::uint32_t>(
-          std::max(1.0, std::ceil(sample_rate_ * max_record_seconds_))))),
-      max_frames_(total_blocks_ * kSampleBlockFrames),
-      storagePool_(total_blocks_),
+      max_record_seconds_(maxRecordSeconds > 0.0 ? maxRecordSeconds : 0.0),
+      total_blocks_(max_record_seconds_ > 0.0 ? poolBlocks(static_cast<std::uint32_t>(
+          std::max(1.0, std::ceil(sample_rate_ * max_record_seconds_)))) :
+          std::numeric_limits<std::uint32_t>::max() / kSampleBlockFrames),
+      max_frames_(max_record_seconds_ > 0.0 ? total_blocks_ * kSampleBlockFrames : kMaximumPadFrames),
+      storagePool_(max_record_seconds_ > 0.0 ? total_blocks_ : 0U, sample_rate_),
       ringCapacityFrames_(static_cast<std::uint32_t>(std::max(1.0, std::ceil(sample_rate_ * 0.1)))),
       ring_(static_cast<std::size_t>(ringCapacityFrames_) * 2U, 0.0f) {
     for (auto& p : pads_) p.sourceSampleRate = sample_rate_;
@@ -52,9 +54,11 @@ void SamplerEngine::setSampleRate(double sampleRate) {
         finishRecord(static_cast<std::uint32_t>(activePad_));
         activePad_ = -1;
     }
+    if (max_record_seconds_ == 0.0)
+        storagePool_.setCaptureSampleRate(sampleRate);
     const auto requiredFrames = static_cast<std::uint32_t>(
         std::max(1.0, std::ceil(sampleRate * max_record_seconds_)));
-    const auto requiredBlocks = poolBlocks(requiredFrames);
+    const auto requiredBlocks = max_record_seconds_ > 0.0 ? poolBlocks(requiredFrames) : total_blocks_;
     if (requiredBlocks > total_blocks_) {
         std::array<PadData, kPadCount> snapshots;
         std::array<sms::dsp::SamplePlaybackSettings, kPadCount> playbackSettings;
@@ -96,6 +100,8 @@ void SamplerEngine::setSampleRate(double sampleRate) {
     }
 
     sample_rate_ = sampleRate;
+    if (!storagePool_.captureAllocationFailed())
+        captureStorageExhausted_.store(false, std::memory_order_release);
     ringCapacityFrames_ = static_cast<std::uint32_t>(std::max(1.0, std::ceil(sample_rate_ * 0.1)));
     ring_.assign(static_cast<std::size_t>(ringCapacityFrames_) * 2U, 0.0f);
     ringWritePosition_ = ringCount_ = 0;
@@ -115,6 +121,7 @@ void SamplerEngine::setSampleRate(double sampleRate) {
 void SamplerEngine::reset() noexcept {
     applyPendingState();
     stopChopPreview();
+    captureStorageExhausted_.store(false, std::memory_order_release);
     chopMidiPreview_ = {};
     auditionPad_ = kPadCount;
     activePad_ = -1;
@@ -184,6 +191,8 @@ void SamplerEngine::setSettings(const EngineSettings& s) noexcept {
         stopChopPreview();
         stopPadAudition();
         if (!previous.armed) {
+            storagePool_.retryCaptureAllocation();
+            captureStorageExhausted_.store(false, std::memory_order_release);
             // Capture ignores note-offs, so a held performance loop cannot
             // retain ownership across the transition into capture.
             for (std::uint32_t pad = 0; pad < kPadCount; ++pad)
@@ -501,6 +510,14 @@ bool SamplerEngine::storeSample(const std::uint32_t pad, const std::uint32_t fra
 
 void SamplerEngine::beginRecord(std::uint32_t pad) noexcept {
     if (pad >= kPadCount) return;
+    storagePool_.serviceCapture(true);
+    if (storagePool_.freeCaptureFrames() == 0U) {
+        captureStorageExhausted_.store(true, std::memory_order_release);
+        activePad_ = -1;
+        sessionComplete_ = true;
+        return;
+    }
+    captureStorageExhausted_.store(false, std::memory_order_release);
     auto& p = pads_[pad];
     const PadMutation publication(p);
     releasePadBlocks(pad);
@@ -575,6 +592,7 @@ void SamplerEngine::writeRecordFrame(std::uint32_t, float left, float right) noe
     auto& p = pads_[static_cast<std::uint32_t>(activePad_)];
     if (!p.recording || p.recordPosition >= max_frames_) return;
     if (!storeSample(static_cast<std::uint32_t>(activePad_), p.recordPosition, left, right)) {
+        captureStorageExhausted_.store(true, std::memory_order_release);
         finishRecord(static_cast<std::uint32_t>(activePad_));
         activePad_ = -1;
         sessionComplete_ = true;
@@ -797,6 +815,7 @@ void SamplerEngine::process(const float* inputLeft, const float* inputRight,
                             float* outputLeft, float* outputRight,
                             std::uint32_t frames, MidiEventSource events) noexcept {
     if (!outputLeft || !outputRight) return;
+    storagePool_.serviceCapture(activePad_ >= 0);
     applyPendingState();
     storagePool_.reclaimCapture(1024U);
     if (settings_.armed != previousArmed_) {

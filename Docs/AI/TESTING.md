@@ -19,7 +19,7 @@ git diff --check
 | `sampler-core`, `playback-voice` | Capture, MIDI/banks/layouts, storage/voices, region/ADSR, mixer/filter/Dirty, preview/repartition, resampling, clipboard/lifecycle, >1,024 events/block, parameter IDs |
 | `buffer-timing` | Stereo playback/capture, fixed/irregular blocks, MIDI offsets/order, pre-roll wrap, zero-frame callbacks, resampling/effects |
 | `adsr-envelope` | Stages, early note-off, retrigger, zero-duration/live edits, sanitization, release resume |
-| `sampler-transfer` | Concurrent transfers, monitoring/MIDI/capture continuity, retained storage/stale commits/capacity, host snapshots, dispatcher lifecycle, callback allocation/destruction |
+| `sampler-transfer`, `capture-storage` | Transfers, continuous audio, dynamic growth/reuse, delayed/failed refills, snapshots, exhaustion recovery, callback allocation/destruction |
 | `global-value-mode-*` | Modes/remapping, codec/grid/zero snap, raw preservation, private state/startup defaults, CLEAR PADS preservation, automation/mailbox |
 | `defaults-file` | Bounded flat INI, quoted Unicode/whitespace, atomic merged writes, unknown keys, concurrency and failures |
 | `state-codec`, `project-state-*` | PCM16/float32 compatibility, exact PCM/playback/restoration, editor/mixer/protocols, corrupt/truncated input, unchanged destinations |

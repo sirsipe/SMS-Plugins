@@ -76,6 +76,13 @@ SamplerUiSession::SamplerUiSession(SamplerUiHost &host,
 
 void SamplerUiSession::acceptParameter(std::uint32_t index, float value, const Time now)
 {
+    if (index == kParameterCaptureStorageExhausted) {
+        const bool exhausted = value >= 0.5f;
+        if (exhausted && !fCaptureStorageExhausted)
+            setLocalStatus("Recording stopped: capture memory unavailable; recorded audio kept");
+        fCaptureStorageExhausted = exhausted;
+        return;
+    }
     if (index >= kParameterInputLevelLeft && index <= kParameterOutputLevelRight) {
         auto &levels =
             index <= kParameterInputLevelRight ? fState.inputLevels : fState.outputLevels;

@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <memory>
 #include <span>
+#include <thread>
 #include <vector>
 
 namespace midichopper {
@@ -19,6 +20,11 @@ namespace midichopper {
  * Pad publication and logical capacity accounting belong to SamplerEngine.
  */
 class SampleStoragePool {
+    struct CaptureBlock;
+    static constexpr std::uint32_t kMappingPageBlocks = 256U;
+    struct MappingPage {
+        std::array<CaptureBlock*, kMappingPageBlocks> blocks{};
+    };
 public:
     static constexpr std::uint32_t kBlockFrames = 1024U;
     struct Storage {
@@ -28,18 +34,37 @@ public:
         double sampleRate = 48000.0;
         float peak = 0.0f;
         float rms = 0.0f;
-        [[nodiscard]] bool isCapture() const noexcept { return !blocks.empty(); }
+        [[nodiscard]] bool isCapture() const noexcept { return mapping != nullptr; }
     private:
         friend class SampleStoragePool;
         std::vector<float> stereo; // immutable imported/staged PCM
-        std::vector<std::uint32_t> blocks; // preallocated capture mapping
+        std::unique_ptr<std::atomic<MappingPage*>[]> mapping;
+        std::uint32_t mappingPages = 0;
     };
 
     explicit SampleStoragePool(std::uint32_t logicalBlocks);
+    /** A zero logical block limit selects dynamic storage. */
+    SampleStoragePool(std::uint32_t logicalBlocks, double sampleRate);
+    /** Dynamic capture: 30 seconds initially; 60-second refills at <=15 seconds free. */
+    explicit SampleStoragePool(double sampleRate);
+    ~SampleStoragePool();
     SampleStoragePool(const SampleStoragePool&) = delete;
     SampleStoragePool& operator=(const SampleStoragePool&) = delete;
     /** Control thread only; processing/readers quiescent, all capture references released. */
     void configure(std::uint32_t logicalBlocks);
+    /** Control thread, with processing quiescent; preserves all existing storage. */
+    void setCaptureSampleRate(double sampleRate);
+    /** Audio owner: accept one prepared chunk without allocating or destroying it. */
+    void serviceCapture(bool recording = false) noexcept;
+    /** Audio owner: select the host's explicit offline-render profile. */
+    void setOffline(bool offline) noexcept { offline_.store(offline, std::memory_order_release); }
+    /** Audio owner: permit a new allocation attempt when a new Arm session begins. */
+    void retryCaptureAllocation() noexcept;
+    [[nodiscard]] std::uint64_t captureCapacityFrames() const noexcept
+    { return static_cast<std::uint64_t>(captureBlocks_.load(std::memory_order_acquire)) * kBlockFrames; }
+    [[nodiscard]] std::uint64_t freeCaptureFrames() const noexcept
+    { return static_cast<std::uint64_t>(publishedFreeBlocks_.load(std::memory_order_acquire)) * kBlockFrames; }
+    [[nodiscard]] bool captureAllocationFailed() const noexcept;
     /** Control thread only; result starts unreferenced until staged/published. */
     [[nodiscard]] Storage* prepareImport(const PadData& source,
         double hostSampleRate, std::uint32_t maxFrames);
@@ -57,18 +82,52 @@ public:
     /** Control reader retains completed storage; destination holds at most frames * 2 samples. */
     void copySamples(const Storage* storage, std::span<float> destination) const;
     /** Audio owner or a reader retaining a completed immutable descriptor. */
-    /** Audio owner or a reader retaining a completed immutable descriptor. */
     [[nodiscard]] float sample(const Storage* storage, std::uint32_t frame,
         std::uint32_t channel) const noexcept;
 
 private:
-    static constexpr std::uint32_t kNoBlock = ~std::uint32_t{0};
     static constexpr std::size_t kCaptureStorageCount = kPadCount * 2U + 1U;
-    std::vector<float> samples_;
+    struct CaptureBlock {
+        CaptureBlock* next = nullptr;
+        std::array<float, kBlockFrames * 2U> stereo{};
+    };
+    struct CaptureChunk {
+        std::unique_ptr<CaptureBlock[]> blocks;
+        std::uint32_t count = 0;
+    };
+    enum class Refill : std::uint8_t { idle, requested, preparing, ready, failed };
+    void initializeMappings(std::uint32_t maxBlocks);
+    void prepareMappings(std::uint32_t blocks);
+    CaptureChunk* prepareChunk(std::uint32_t blocks);
+    void acceptChunk(CaptureChunk& chunk) noexcept;
+    [[nodiscard]] CaptureBlock*& mapping(Storage& storage, std::uint32_t block) noexcept;
+    [[nodiscard]] const CaptureBlock* mappedBlock(const Storage& storage,
+        std::uint32_t block) const noexcept;
+    void requestRefill() noexcept;
+    [[nodiscard]] std::uint32_t refillThresholdBlocks() const noexcept;
+    void startWorker();
+    void stopWorker() noexcept;
+    void refillLoop() noexcept;
+    std::vector<std::unique_ptr<CaptureChunk>> chunks_; // only allocator/control thread mutates
+    std::vector<std::unique_ptr<MappingPage>> mappingOwners_;
     std::array<Storage, kCaptureStorageCount> capture_;
     std::vector<std::unique_ptr<Storage>> imported_;
-    std::vector<std::uint32_t> freeBlocks_;
+    CaptureBlock* freeBlocks_ = nullptr; // audio owner
     std::uint32_t freeBlockCount_ = 0;
+    std::uint32_t maxCaptureBlocks_ = 0;
+    std::uint32_t preparedMappingPages_ = 0; // allocator/control thread
+    std::uint32_t refillBlocks_ = 0;
+    std::uint32_t thresholdBlocks_ = 0;
+    std::uint32_t offlineRefillBlocks_ = 0;
+    std::uint32_t offlineThresholdBlocks_ = 0;
+    std::atomic<bool> offline_{false};
+    bool dynamic_ = false;
+    std::atomic<std::uint32_t> captureBlocks_{0};
+    std::atomic<std::uint32_t> publishedFreeBlocks_{0};
+    std::atomic<Refill> refill_{Refill::idle};
+    CaptureChunk* preparedChunk_ = nullptr; // published by refill_=ready
+    std::atomic<bool> stop_{false};
+    std::thread worker_;
 };
 
 } // namespace midichopper

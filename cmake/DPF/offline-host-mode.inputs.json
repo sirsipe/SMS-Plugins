@@ -1,0 +1,12 @@
+{
+  "upstream_revision": "4238e1c7f0351bbe488d79f0899c540543ac7583",
+  "files": {
+    "distrho/src/DistrhoPluginChecks.h": "57ac5d850f474ec06647d3dee4e607480b79a8b64adf158996c524018e10f742",
+    "distrho/DistrhoPlugin.hpp": "90f1ac6ec3cdc6e53554dad9ad6c236bd420fb9876c45e313afc036c36e10d49",
+    "distrho/src/DistrhoPlugin.cpp": "dfe812edbbe2680280344880e5b35b908d47d6d6c6c154373448cd612e08b260",
+    "distrho/src/DistrhoPluginInternal.hpp": "3b602667743b1aa5e64b5156635b49a06a656a0e039e8bcc2881a4c01f39fac7",
+    "distrho/src/DistrhoPluginVST3.cpp": "462facea5ac0816be7fdd119e242932256bf1a9eb585aea28ba8bcc26388299a",
+    "distrho/src/DistrhoPluginLV2.cpp": "89c06a6ccfa4f2f192ba2121806ea32f383f402b7a256d5c91db18b31d8784de",
+    "distrho/src/DistrhoPluginLV2export.cpp": "066baa9d43a1ef907d8f4fd12ffb217ec0c35797f19f73ccc04191172cc16772"
+  }
+}

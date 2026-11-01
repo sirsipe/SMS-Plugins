@@ -482,6 +482,7 @@ protected:
     void run(const float** const inputs, float** const outputs, const uint32_t frames,
              const MidiEvent* const midiEvents, const uint32_t midiEventCount) override
     {
+        sampler_.setOffline(isOffline());
         const auto samplerAccess = samplerAccess_.audioAccess();
         if (samplerAccess.shouldYield()) {
             inputMeter_.process(inputs[0], inputs[1], frames, getSampleRate());
@@ -641,6 +642,8 @@ private:
     void updatePadOutputParameters() noexcept
     {
         using namespace midichopper::plugin;
+        controls_.publishParameterValue(kParameterCaptureStorageExhausted,
+            sampler_.captureStorageExhausted() ? 1.0f : 0.0f);
         auto settings = sampler_.settings();
         std::uint32_t currentCapturePad = midichopper::kPadCount;
         for (std::uint32_t pad = 0; pad < midichopper::kPadCount; ++pad) {

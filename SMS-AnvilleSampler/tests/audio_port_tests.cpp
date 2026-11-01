@@ -20,8 +20,14 @@ int main()
     d_nextBufferSize = 512;
     d_nextSampleRate = 48000.0;
     d_nextPluginIsDummy = true;
-    const PluginExporter plugin(nullptr, nullptr, nullptr, nullptr);
+    PluginExporter plugin(nullptr, nullptr, nullptr, nullptr);
     d_nextPluginIsDummy = false;
+    const auto* instance = static_cast<const Plugin*>(plugin.getInstancePointer());
+    check(!instance->isOffline(), "unspecified host processing mode defaults to realtime");
+    plugin.setOffline(true);
+    check(instance->isOffline(), "offline host signal reaches the plugin instance");
+    plugin.setOffline(false);
+    check(!instance->isOffline(), "returning to realtime clears the offline host signal");
 
     check(DISTRHO_PLUGIN_NUM_INPUTS == 2 && DISTRHO_PLUGIN_NUM_OUTPUTS == 2,
           "all formats retain two audio inputs and two audio outputs");

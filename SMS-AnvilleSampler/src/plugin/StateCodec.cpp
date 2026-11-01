@@ -25,7 +25,7 @@ static_assert(sizeof(float) == sizeof(std::uint32_t) && std::numeric_limits<floa
               "Pad state requires IEEE 754 binary32 samples");
 // Eight minutes at 384 kHz. Malformed project state must not request
 // unbounded memory; engine pool capacity is checked separately on import.
-constexpr std::uint32_t kMaximumFrames = 184'320'000;
+constexpr std::uint32_t kMaximumFrames = kMaximumPadFrames;
 
 constexpr char kBase64Alphabet[] =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";

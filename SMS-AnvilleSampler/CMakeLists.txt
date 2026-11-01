@@ -35,12 +35,39 @@ if(NOT ANVILLESAMPLER_HELP_REF STREQUAL "main" AND
     "ANVILLESAMPLER_HELP_REF must be main or SMS-AnvilleSampler-v${ANVILLESAMPLER_RELEASE_VERSION}")
 endif()
 
-set(SMS_DPF_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/DPF")
+set(SMS_DPF_SOURCE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/DPF")
 
-if(NOT EXISTS "${SMS_DPF_ROOT}/CMakeLists.txt")
+if(NOT EXISTS "${SMS_DPF_SOURCE_ROOT}/CMakeLists.txt")
   message(FATAL_ERROR
     "DPF is missing. Run: git submodule update --init --recursive")
 endif()
+
+# Git applies the maintained patch to a generated copy, including when building
+# a source archive with no Git metadata. The pinned submodule stays unchanged.
+find_package(Git REQUIRED)
+set(SMS_DPF_ROOT "${CMAKE_CURRENT_BINARY_DIR}/_deps/dpf-patched")
+set(SMS_DPF_PATCH "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/DPF/offline-host-mode.patch")
+set(SMS_DPF_INPUTS "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/DPF/offline-host-mode.inputs.json")
+set(SMS_DPF_PREPARE "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/prepare_dpf.py")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+  "${SMS_DPF_PATCH}" "${SMS_DPF_INPUTS}" "${SMS_DPF_PREPARE}")
+file(READ "${SMS_DPF_INPUTS}" SMS_DPF_INPUT_MANIFEST)
+string(JSON SMS_DPF_INPUT_COUNT LENGTH "${SMS_DPF_INPUT_MANIFEST}" files)
+math(EXPR SMS_DPF_INPUT_LAST "${SMS_DPF_INPUT_COUNT} - 1")
+foreach(SMS_DPF_INPUT_INDEX RANGE ${SMS_DPF_INPUT_LAST})
+  string(JSON SMS_DPF_INPUT_FILE MEMBER "${SMS_DPF_INPUT_MANIFEST}" files ${SMS_DPF_INPUT_INDEX})
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${SMS_DPF_SOURCE_ROOT}/${SMS_DPF_INPUT_FILE}")
+endforeach()
+execute_process(COMMAND "${Python3_EXECUTABLE}" "${SMS_DPF_PREPARE}"
+  --source "${SMS_DPF_SOURCE_ROOT}" --destination "${SMS_DPF_ROOT}"
+  --patch "${SMS_DPF_PATCH}" --inputs "${SMS_DPF_INPUTS}" --git "${GIT_EXECUTABLE}"
+  RESULT_VARIABLE SMS_DPF_PREPARE_RESULT OUTPUT_VARIABLE SMS_DPF_PREPARE_OUTPUT
+  ERROR_VARIABLE SMS_DPF_PREPARE_ERROR OUTPUT_STRIP_TRAILING_WHITESPACE)
+if(NOT SMS_DPF_PREPARE_RESULT EQUAL 0)
+  message(FATAL_ERROR "${SMS_DPF_PREPARE_ERROR}")
+endif()
+message(STATUS "${SMS_DPF_PREPARE_OUTPUT}")
 
 if(UNIX AND NOT APPLE)
   find_package(PkgConfig REQUIRED)
@@ -92,6 +119,7 @@ target_include_directories(anvillesampler_core
     "${CMAKE_CURRENT_SOURCE_DIR}/../Common-Src")
 
 set_target_properties(anvillesampler_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_link_libraries(anvillesampler_core PUBLIC Threads::Threads)
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
   target_compile_options(anvillesampler_core PRIVATE
@@ -315,6 +343,8 @@ if(BUILD_TESTING)
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/tests/test_package_licenses.py")
   add_test(NAME source-archive
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/tests/test_package_source.py")
+  add_test(NAME prepare-dpf
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/tests/test_prepare_dpf.py")
   add_test(NAME plugin-zips
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/tests/test_package_plugins.py")
   add_test(NAME release-version
@@ -435,6 +465,10 @@ if(BUILD_TESTING)
   target_link_libraries(anvillesampler_transfer_tests PRIVATE
     anvillesampler_core Threads::Threads)
   add_test(NAME sampler-transfer COMMAND anvillesampler_transfer_tests)
+
+  add_executable(anvillesampler_capture_storage_tests tests/capture_storage_tests.cpp)
+  target_link_libraries(anvillesampler_capture_storage_tests PRIVATE anvillesampler_core)
+  add_test(NAME capture-storage COMMAND anvillesampler_capture_storage_tests)
 
   add_executable(anvillesampler_state_codec_tests
     tests/state_codec_tests.cpp

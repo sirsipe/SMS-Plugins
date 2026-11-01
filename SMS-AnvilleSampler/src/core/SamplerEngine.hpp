@@ -109,14 +109,15 @@ struct ChopMidiPreview {
  * pad, continuing into the next bank when needed.
  * finalizeRecording() commits the final slice. In FixedDuration mode each
  * note-on starts the next slice and it ends at the configured length. In either
- * mode a full buffer or exhausted shared storage also ends recording. A pad
- * may use the entire shared pool when other pads are empty. Sample blocks are
- * preallocated by the constructor and never allocated from process().
+ * mode exhausted prepared storage also ends recording. The default shared pool
+ * starts with 30 seconds and refills by 60 seconds at <=15 seconds free. All
+ * allocations and destruction happen outside process(). An explicit positive
+ * maxRecordSeconds retains the legacy bounded pool for constrained core clients.
  */
 class SamplerEngine {
 public:
     explicit SamplerEngine(double sampleRate = 48000.0,
-                           double maxRecordSeconds = 30.0);
+                           double maxRecordSeconds = 0.0);
     ~SamplerEngine() = default;
     /** Install before processing; the adapter dispatches only bounded capture/commit work. */
     void setControlDispatcher(void* context,
@@ -128,6 +129,16 @@ public:
     void setSampleRate(double sampleRate); // control thread, reallocates if needed
     [[nodiscard]] double sampleRate() const noexcept { return sample_rate_; }
     [[nodiscard]] double maxRecordSeconds() const noexcept { return max_record_seconds_; }
+    [[nodiscard]] std::uint64_t captureCapacityFrames() const noexcept
+    { return storagePool_.captureCapacityFrames(); }
+    [[nodiscard]] std::uint64_t freeCaptureFrames() const noexcept
+    { return storagePool_.freeCaptureFrames(); }
+    [[nodiscard]] bool captureStorageExhausted() const noexcept
+    { return captureStorageExhausted_.load(std::memory_order_acquire); }
+    [[nodiscard]] bool captureAllocationFailed() const noexcept
+    { return storagePool_.captureAllocationFailed(); }
+    /** Audio owner: true only for a host-declared offline render. */
+    void setOffline(bool offline) noexcept { storagePool_.setOffline(offline); }
     void reset() noexcept;
     void setSettings(const EngineSettings& settings) noexcept;
     [[nodiscard]] EngineSettings settings() const noexcept { return settings_; }
@@ -436,6 +447,7 @@ private:
     std::array<std::atomic<PendingState*>, kPadCount> pendingState_{};
     std::vector<std::unique_ptr<PendingState>> pendingStateOwners_;
     std::atomic<bool> stateRestoreFailed_{false};
+    std::atomic<bool> captureStorageExhausted_{false};
     mutable std::recursive_mutex storageControlMutex_;
     void* controlContext_ = nullptr;
     void (*controlDispatch_)(void*, void (*)(void*) noexcept, void*) = nullptr;

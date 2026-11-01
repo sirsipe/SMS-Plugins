@@ -1,8 +1,20 @@
 # DPF VST3 state and bus constraints
 
-Audience: agents changing VST3 communication or audio-port topology. This page
-records behavior of the pinned DPF revision and approved architectural
-direction; it is not a promise of dynamic outputs.
+Audience: agents changing DPF transport, parameters, or audio ports.
+
+## Offline host signal
+
+DPF `isOffline()` reports VST3 `V3_OFFLINE`; `V3_PREFETCH` uses normal allocation.
+LV2 appends optional `lv2_freewheel` at port 78. Missing or unsupported signals
+are false. Ports 6–77 and parameter IDs stay fixed. See
+[Development](DEVELOPMENT.md#pinned-dpf-patch) and [storage handoff](PAD-STORAGE.md).
+
+## Ardour automation limit
+
+Ardour 8.4 defaults `limit-n-automatables` to 512. DPF's 2,080 hidden MIDI
+parameters exhaust this quota before Mode. For automated host tests, set
+`ARDOUR.config():set_limit_n_automatables(0)` before instantiation; zero means
+unlimited. Recreate existing instances. See [Ardour's limit enforcement](https://github.com/Ardour/ardour/blob/8.4/libs/ardour/plugin_insert.cc#L553).
 
 ## DSP-to-UI state transport
 
@@ -46,11 +58,9 @@ VST3 preset exchange in both directions between Ardour and REAPER.
 Durable state is separate. Pad PCM is marked DSP-only Base64 state, while cut
 points and ADSR are normal versioned per-pad state. UI edits reach the DSP and
 affect playback. DPF's VST3 component queries these values when the DAW saves.
-A 64-second stereo song restored in Carla after removing the source copy and
-plug-in instance; playback, waveform, edited Start and gain returned. Recorded
-VST3 and LV2 import/export/save checks at 48 kHz/2048 frames preserved continuous
-monitoring and an unrelated repeating pad with no zero-output frames or xruns.
-VST3 Copy/Paste, split, and cut Apply also passed UI checks.
+Carla checks at 48 kHz/2048 frames covered 64-second song restoration without
+the source, preserved playback/waveform/edits, VST3/LV2 import/export/save during
+continuous monitoring and repeating-pad playback, and VST3 clipboard/split/cut UI actions.
 
 An earlier Carla chunk-loading check observed about 0.47 seconds of silence
 without identifying a plugin cause. The maintainer reports that

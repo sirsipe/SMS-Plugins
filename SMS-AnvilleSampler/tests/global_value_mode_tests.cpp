@@ -129,7 +129,7 @@ void helpers()
 void metadata()
 {
     PluginExporter plugin(nullptr, nullptr, nullptr, nullptr);
-    check(plugin.getParameterCount() == 71U, "settings add no DAW parameters");
+    check(plugin.getParameterCount() == 72U, "settings add no DAW parameters");
     for (std::size_t i = 0; i < kGlobalValueControls.size(); ++i) {
         const auto defaults = defaultGlobalValueSettings(kGlobalValueControls[i].parameter);
         const auto encoded = encodeGlobalValueSettings(defaults);

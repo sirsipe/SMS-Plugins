@@ -429,6 +429,26 @@ void missedRepliesCancelSplitAndReplaceSnapshot()
           "fresh recovery response remains eligible after a stale response");
 }
 
+void captureStorageFailureStatus()
+{
+    Fixture f;
+    f.session.acceptParameter(kParameterCaptureStorageExhausted, 0.0f);
+    f.host.clearTrace();
+    f.session.acceptParameter(kParameterCaptureStorageExhausted, 1.0f);
+    check(std::string(f.session.state().status) ==
+              "Recording stopped: capture memory unavailable; recorded audio kept" &&
+              f.host.repaints == 1,
+          "capture exhaustion explains the stop and preservation of recorded audio");
+    f.session.acceptParameter(kParameterCaptureStorageExhausted, 1.0f);
+    check(f.host.repaints == 1, "unchanged failure output does not repeat notifications");
+    f.session.acceptParameter(kParameterCaptureStorageExhausted, 0.0f);
+    f.session.setLocalStatus("Recording again");
+    f.session.acceptParameter(kParameterCaptureStorageExhausted, 1.0f);
+    check(std::string(f.session.state().status) ==
+              "Recording stopped: capture memory unavailable; recorded audio kept",
+          "a later capture exhaustion produces a new notification");
+}
+
 } // namespace
 
 int main()
@@ -440,5 +460,6 @@ int main()
     directionAndAuditionCommands();
     clearPadsAndMeterPacing();
     missedRepliesCancelSplitAndReplaceSnapshot();
+    captureStorageFailureStatus();
     std::cout << "UI session tests passed\n";
 }

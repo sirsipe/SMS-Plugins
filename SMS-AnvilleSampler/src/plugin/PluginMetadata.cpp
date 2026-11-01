@@ -281,6 +281,12 @@ void initPluginParameter(const uint32_t index, DISTRHO::Parameter& parameter,
                            kParameterIsHidden,
                        "One while any sample or raw preview is playing.");
         break;
+    case kParameterCaptureStorageExhausted:
+        setupParameter(index, parameter, "Capture Storage Exhausted", "capture_storage_exhausted", "",
+                       kParameterIsOutput | kParameterIsBoolean | kParameterIsInteger |
+                           kParameterIsHidden,
+                       "Recording stopped because no prepared capture storage was available.");
+        break;
     default:
         if (index >= kFirstPadStatusParameter && index < kFirstPadActivityParameter) {
             const std::uint32_t pad = index - kFirstPadStatusParameter;

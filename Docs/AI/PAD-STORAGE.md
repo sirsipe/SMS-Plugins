@@ -2,53 +2,57 @@
 
 Audience: agents changing sample transfers, storage, state, or lifecycle.
 Implemented by `SamplerEngine.*`, `SampleStoragePool.*`,
-`RealtimeCommandDispatcher.hpp`, and the adapter's `ControlWorker.hpp`. Parameter identities and PCM/settings codecs
-are unchanged; cut-baseline transport adds only transient states.
+`RealtimeCommandDispatcher.hpp`, and adapter `ControlWorker.hpp`.
 
 ## Ownership
 
-`SamplerEngine` owns pad voices, recording, logical capacity, and publication.
-`SampleStoragePool` owns physical PCM, capture maps, and imported allocations;
-audio owns capture block allocation and descriptor changes. Imported/staged PCM is immutable. Capture
-uses preallocated descriptors and block mappings; completed captures remain
-immutable until their descriptor has no references.
+`SamplerEngine` owns voices, recording, logical capacity, and publication.
+`SampleStoragePool` owns PCM, capture maps, and imported allocations. Its worker
+prepares capture chunks and mapping pages; audio adopts chunks and maps blocks.
+Imported/staged PCM and completed captures are immutable while referenced.
 
-A pad holds one descriptor reference. A control snapshot retains that descriptor
-and captures metadata, settings, and generation together. Reader release only
-updates a lock-free reference count. Imported allocation and destruction belong
-to serialized control work; `collectImportedStorage()` deletes zero-reference
-objects. Audio-side reclamation returns at most 1,024 retired capture blocks per
-process call. A descriptor cannot be reused until its blocks are returned and a
-zero-to-one reference CAS succeeds.
+A pad and each control snapshot hold descriptor references. Snapshots capture
+metadata, settings, and generation together. Reader release only updates a
+lock-free reference count. Serialized control work allocates and collects
+imports. Audio reclaims at most 1,024 blocks per call; a descriptor is reused
+only after its references and blocks are released. Cleared/replaced blocks
+return to the free list; chunks remain owned until teardown.
 
-Logical shared capacity remains about eight minutes at the host rate. The
-physical capture pool reserves twice that capacity so a retained old capture
-can coexist with replacement recording. At 48 kHz the capture PCM reserve is
-about 352 MiB, plus maps and pre-roll. Immutable imports and staging consume
-additional control-thread memory proportional to their PCM. Reserve memory is
-not extra user-visible capacity. Imports validate aggregate logical capacity
-at commit, including replacement credit, so replacing a full pad does not
-require another pad-sized allocation inside the logical pool.
+The default engine starts with 30 seconds of capture blocks at the host rate.
+At 15 seconds or less free, audio requests a 60-second refill from the
+per-instance worker, in 1,024-frame blocks. Arming alone does not grow storage.
+The worker prepares mapping pages too; audio adopts chunks and maps blocks
+without allocating. This is on-demand growth. Imports and staging add
+control-thread memory proportional to their PCM.
+
+The aggregate ceiling is the largest block-rounded 32-bit frame count (about
+4.29 billion), not a memory guarantee. Each pad/codec limit is 184,320,000
+frames (about 64 minutes at 48 kHz or 32 at 96 kHz). Positive
+`maxRecordSeconds` retains the bounded core pool for tests and clients.
+
+Refill allocation failures latch; prepared blocks remain usable, and retry
+occurs on sample-rate reconfiguration or the next Arm. If blocks run out,
+recording finalizes its captured PCM and reports that audio was kept. Refills
+remain best effort: normal mode adds 60 seconds at 15 seconds free; explicit
+offline mode adds 120 seconds at 30 seconds free. Unknown/unsupported signals
+use normal mode. See [DPF host signal](DPF-VST3-CONSTRAINTS.md#offline-host-signal).
+Offline allocation can still fall behind; playback and monitoring continue.
 
 ## Transfer boundary
 
-The engine's installed dispatcher runs only bounded, non-throwing capture and
-commit callbacks at a block boundary. The adapter services one pending command
-before applying audio settings and processing MIDI. Audio never waits for a
-control caller, copies whole samples, locks, performs I/O, or destroys storage.
+The dispatcher runs bounded, non-throwing capture and commit callbacks at block
+boundaries. The adapter services one command before audio settings and MIDI.
+Audio never waits, allocates/frees storage, locks, performs I/O, or makes system
+calls. Chunk adoption and mapping use bounded lock-free operations.
 
-Export, clipboard Copy, and waveform scans retain completed storage, then copy
-or scan outside the callback. Import, Paste, split, and rechop validate and
-prepare PCM outside the callback. Commit checks affected generations and
-capacity before replacing descriptors and complete settings. Pad moves transfer
-descriptors without scanning sample-length block maps. Paste publishes its
-copy-time PCM and settings together.
+Export, Copy, and waveform scans retain storage, then copy or scan outside audio.
+Import, Paste, split, and rechop prepare PCM off audio. Commit checks generations
+and capacity before replacing descriptors/settings. Pad moves transfer
+descriptors; Paste publishes copy-time PCM/settings together.
 
-Recording start/completion, clear/reset, PCM changes, and setting changes bump
-pad generations. A replacement prepared before a conflicting change fails;
-ordinary cut Apply also checks the displayed baseline generations. A live
-recording has no published PCM and is not exported as a mutable partial sample.
-Import rejects a recording target; unrelated recording continues.
+Recording, clear/reset, PCM, and setting changes bump generations. Stale
+replacements and cut Apply fail. Live recording has no published PCM; import
+rejects its target while unrelated recording continues.
 
 ## Published host snapshots
 
@@ -98,6 +102,9 @@ Cut-preview MIDI takeover still intentionally stops ordinary voices; that is
 separate from transfer continuity.
 
 ## Validation
+
+`capture-storage` injects delayed/failed allocations and checks exhaustion recovery
+and uninterrupted monitoring/playback.
 
 `sampler-transfer` compares every monitoring/performance frame against an oracle
 through concurrent long transfers, checks exact recording onset, retained

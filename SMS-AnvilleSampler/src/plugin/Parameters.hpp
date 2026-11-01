@@ -52,6 +52,7 @@ enum Parameter : std::uint32_t {
     kParameterAnyPlaybackActive,
     kParameterMonitorGainDb,
     kParameterGlobalReverse,
+    kParameterCaptureStorageExhausted,
     kParameterCount,
 };
 

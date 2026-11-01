@@ -6,9 +6,9 @@ Audience: AI agents. All commands run from the repository root.
 
 Dependencies and build/install commands live in the
 [plugin guide](../../SMS-AnvilleSampler/README.md). The
-[CMake project](../../SMS-AnvilleSampler/CMakeLists.txt) requires CMake 3.22+ and
-C++20. Initialize the pinned [DPF submodule](../../.gitmodules) before configuring.
-Do not update its revision as an incidental part of another task.
+[CMake project](../../SMS-AnvilleSampler/CMakeLists.txt) requires CMake 3.22+,
+C++20, Python 3, Git, and the pinned [DPF submodule](../../.gitmodules).
+Do not update DPF's revision incidentally.
 
 To match Ubuntu CI:
 
@@ -43,6 +43,13 @@ different source path or generator. Avoid repeatedly rebuilding unchanged code.
 Windows VST3 is supported; macOS releases remain deferred.
 Prerequisites, native build commands, remaining gaps and validation live in
 [Platform builds](PLATFORM-BUILDS.md).
+
+### Pinned DPF patch
+
+CMake [prepares](../../scripts/prepare_dpf.py) cached `_deps/dpf-patched` using the
+[patch](../../cmake/DPF/offline-host-mode.patch) and
+[input hashes](../../cmake/DPF/offline-host-mode.inputs.json).
+Git is required, including for archives; the pinned submodule stays unchanged.
 
 ## Native skin filesystem tests
 

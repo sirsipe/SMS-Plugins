@@ -1,0 +1,174 @@
+--- a/distrho/src/DistrhoPluginChecks.h
++++ b/distrho/src/DistrhoPluginChecks.h
+@@ -77,6 +77,10 @@
+ # define DISTRHO_PLUGIN_WANT_PARAMETER_VALUE_CHANGE_REQUEST 0
+ #endif
+
++#ifndef DISTRHO_PLUGIN_WANT_OFFLINE
++# define DISTRHO_PLUGIN_WANT_OFFLINE 0
++#endif
++
+ #ifndef DISTRHO_PLUGIN_WANT_PROGRAMS
+ # define DISTRHO_PLUGIN_WANT_PROGRAMS 0
+ #endif
+--- a/distrho/DistrhoPlugin.hpp
++++ b/distrho/DistrhoPlugin.hpp
+@@ -90,6 +90,15 @@
+     */
+     double getSampleRate() const noexcept;
+
++#if DISTRHO_PLUGIN_WANT_OFFLINE
++   /**
++      Whether the host explicitly requested offline processing.@n
++      Read during run(); unsupported formats and unspecified modes return false.
++      Available only when DISTRHO_PLUGIN_WANT_OFFLINE is enabled.
++    */
++    bool isOffline() const noexcept;
++#endif
++
+    /**
+       Get the bundle path where the plugin resides.
+       Can return null if the plugin is not available in a bundle (if it is a single binary).
+--- a/distrho/src/DistrhoPlugin.cpp
++++ b/distrho/src/DistrhoPlugin.cpp
+@@ -102,6 +102,13 @@
+     return pData->sampleRate;
+ }
+
++#if DISTRHO_PLUGIN_WANT_OFFLINE
++bool Plugin::isOffline() const noexcept
++{
++    return pData->offline;
++}
++#endif
++
+ const char* Plugin::getBundlePath() const noexcept
+ {
+     return pData->bundlePath;
+--- a/distrho/src/DistrhoPluginInternal.hpp
++++ b/distrho/src/DistrhoPluginInternal.hpp
+@@ -145,6 +145,9 @@
+     const bool isDummy;
+     const bool isSelfTest;
+     bool isProcessing;
++#if DISTRHO_PLUGIN_WANT_OFFLINE
++    bool offline;
++#endif
+
+ #if DISTRHO_PLUGIN_NUM_INPUTS+DISTRHO_PLUGIN_NUM_OUTPUTS > 0
+     AudioPortWithBusId* audioPorts;
+@@ -190,6 +193,9 @@
+           isDummy(d_nextPluginIsDummy),
+           isSelfTest(d_nextPluginIsSelfTest),
+           isProcessing(false),
++#if DISTRHO_PLUGIN_WANT_OFFLINE
++          offline(false),
++#endif
+ #if DISTRHO_PLUGIN_NUM_INPUTS+DISTRHO_PLUGIN_NUM_OUTPUTS > 0
+           audioPorts(nullptr),
+ #endif
+@@ -1044,6 +1050,14 @@
+         return fData->sampleRate;
+     }
+
++#if DISTRHO_PLUGIN_WANT_OFFLINE
++    void setOffline(const bool offline) noexcept
++    {
++        DISTRHO_SAFE_ASSERT_RETURN(fData != nullptr,);
++        fData->offline = offline;
++    }
++#endif
++
+     bool setBufferSize(const uint32_t bufferSize, const bool doCallback = false)
+     {
+         DISTRHO_SAFE_ASSERT_RETURN(fData != nullptr, false);
+--- a/distrho/src/DistrhoPluginVST3.cpp
++++ b/distrho/src/DistrhoPluginVST3.cpp
+@@ -1349,7 +1349,9 @@
+         const bool active = fPlugin.isActive();
+         fPlugin.deactivateIfNeeded();
+
+-        // TODO process_mode can be V3_REALTIME, V3_PREFETCH, V3_OFFLINE
++       #if DISTRHO_PLUGIN_WANT_OFFLINE
++        fPlugin.setOffline(setup->process_mode == V3_OFFLINE);
++       #endif
+
+         fPlugin.setSampleRate(setup->sample_rate, true);
+         fPlugin.setBufferSize(setup->max_block_size, true);
+@@ -1393,6 +1395,10 @@
+     {
+         DISTRHO_SAFE_ASSERT_RETURN(data->symbolic_sample_size == V3_SAMPLE_32, V3_INVALID_ARG);
+         // d_debug("process %i", data->symbolic_sample_size);
++
++       #if DISTRHO_PLUGIN_WANT_OFFLINE
++        fPlugin.setOffline(data->process_mode == V3_OFFLINE);
++       #endif
+
+         // activate plugin if not done yet
+         if (! fPlugin.isActive())
+--- a/distrho/src/DistrhoPluginLV2.cpp
++++ b/distrho/src/DistrhoPluginLV2.cpp
+@@ -82,6 +82,9 @@
+           fRunCount(0),
+ #endif
+           fPortControls(nullptr),
++#if DISTRHO_PLUGIN_WANT_OFFLINE
++          fPortFreeWheeling(nullptr),
++#endif
+           fLastControlValues(nullptr),
+           fSampleRate(sampleRate),
+           fURIDs(uridMap),
+@@ -320,12 +323,21 @@
+                 return;
+             }
+         }
++
++#if DISTRHO_PLUGIN_WANT_OFFLINE
++        // Append this host-owned port without moving any parameter or event port.
++        if (port == index)
++            fPortFreeWheeling = static_cast<const float*>(dataLocation);
++#endif
+     }
+
+     // -------------------------------------------------------------------
+
+     void lv2_run(const uint32_t sampleCount)
+     {
++#if DISTRHO_PLUGIN_WANT_OFFLINE
++        fPlugin.setOffline(fPortFreeWheeling != nullptr && *fPortFreeWheeling >= 0.5f);
++#endif
+         // cache midi input and time position first
+ #if DISTRHO_PLUGIN_WANT_MIDI_INPUT
+         uint32_t midiEventCount = 0;
+@@ -1195,6 +1207,9 @@
+     float** fPortAudioOuts;
+    #endif
+     float** fPortControls;
++   #if DISTRHO_PLUGIN_WANT_OFFLINE
++    const float* fPortFreeWheeling;
++   #endif
+    #if DISTRHO_LV2_USE_EVENTS_IN
+     LV2_Atom_Sequence* fPortEventsIn;
+    #endif
+--- a/distrho/src/DistrhoPluginLV2export.cpp
++++ b/distrho/src/DistrhoPluginLV2export.cpp
+@@ -983,6 +983,19 @@
+                 else
+                     pluginString += "    ] ,\n";
+             }
++
++#if DISTRHO_PLUGIN_WANT_OFFLINE
++            // Host control follows all existing ports, including plugin parameters.
++            pluginString += "    lv2:port [\n";
++            pluginString += "        a lv2:InputPort, lv2:ControlPort ;\n";
++            pluginString += "        lv2:index " + String(portIndex) + " ;\n";
++            pluginString += "        lv2:name \"Freewheeling\" ;\n";
++            pluginString += "        lv2:symbol \"lv2_freewheel\" ;\n";
++            pluginString += "        lv2:designation lv2:freeWheeling ;\n";
++            pluginString += "        lv2:default 0 ; lv2:minimum 0 ; lv2:maximum 1 ;\n";
++            pluginString += "        lv2:portProperty lv2:toggled, lv2:connectionOptional, <" LV2_PORT_PROPS__notOnGUI "> ;\n";
++            pluginString += "    ] ;\n\n";
++#endif
+         }
+
+         // comment

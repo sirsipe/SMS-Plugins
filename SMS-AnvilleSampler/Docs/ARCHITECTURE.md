@@ -53,8 +53,8 @@ duration after each note-on.
 
 ## Real-time behavior
 
-Preallocated stereo storage spans 64 pads/about eight minutes; clearing returns
-shared blocks. `process()` consumes sample-offset MIDI without event caps,
+Capture uses growable shared storage across 64 pads; clearing returns reusable
+blocks. `process()` consumes sample-offset MIDI without event caps,
 allocation, locks, I/O or exceptions. Each pad is one voice; a 1–16 global limit
 steals oldest voices.
 `input_monitor` values are Off=0, On=1, Auto=2. Auto follows Arm each block.

@@ -170,6 +170,7 @@ class SamplerUiSession final : private ChopEditorHost, private PadActionHost
     ChopEditorController fChopEditor;
     PadActionController fPadActions;
     bool fMeterRepaintPending = false;
+    bool fCaptureStorageExhausted = false;
     Time fNextMeterRepaint{};
 };
 

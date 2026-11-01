@@ -503,6 +503,168 @@ void recordingContinuity()
     audio.stop();
 }
 
+void dynamicCaptureReserveGrowthAndReuse()
+{
+    constexpr std::uint64_t blockFrames = midichopper::SampleStoragePool::kBlockFrames;
+    const auto blocksForSeconds = [](const double seconds, const double rate) {
+        return static_cast<std::uint64_t>(std::ceil(seconds * rate / blockFrames));
+    };
+    const auto initialBlocks = blocksForSeconds(30.0, 1000.0);
+    const auto refillBlocks = blocksForSeconds(60.0, 1000.0);
+    const auto thresholdBlocks = blocksForSeconds(15.0, 1000.0);
+    const auto initialFrames = initialBlocks * blockFrames;
+    const auto refillFrames = refillBlocks * blockFrames;
+    const auto thresholdFrames = thresholdBlocks * blockFrames;
+
+    SamplerEngine engine(1000.0);
+    check(engine.captureCapacityFrames() == initialFrames &&
+          engine.freeCaptureFrames() == initialFrames,
+          "dynamic capture starts with thirty seconds rounded to storage blocks");
+
+    // The startup reserve follows the host rate, including after a control-side
+    // rate change; this engine is separate so the large startup allocation is
+    // not part of the low-rate multi-refill capture below.
+    {
+        SamplerEngine highRate(48000.0);
+        const auto highRateFrames = blocksForSeconds(30.0, 48000.0) * blockFrames;
+        check(highRate.captureCapacityFrames() == highRateFrames &&
+              highRate.freeCaptureFrames() == highRateFrames,
+              "dynamic startup reserve scales with sample rate");
+    }
+
+    std::array<float, blockFrames> inputLeft{}, inputRight{}, outputLeft{}, outputRight{};
+    auto settings = engine.settings();
+    settings.armed = true;
+    settings.monitorInput = false;
+    engine.setSettings(settings);
+
+    const auto callbacksBefore = allocation_probe::allocations.load();
+    const auto deletionsBefore = allocation_probe::deletions.load();
+    const auto callback = [&](const std::uint32_t frames,
+                              const midichopper::MidiEvent* const events = nullptr,
+                              const std::uint32_t eventCount = 0U) {
+        allocation_probe::audioThread = true;
+        engine.process(inputLeft.data(), inputRight.data(), outputLeft.data(),
+                       outputRight.data(), frames, events, eventCount);
+        allocation_probe::audioThread = false;
+    };
+    const auto service = [&] {
+        allocation_probe::audioThread = true;
+        engine.process(nullptr, nullptr, outputLeft.data(), outputRight.data(), 0U);
+        allocation_probe::audioThread = false;
+    };
+
+    // Merely arming and processing without a note must not schedule a refill.
+    callback(128U);
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    service();
+    check(engine.captureCapacityFrames() == initialFrames &&
+          engine.freeCaptureFrames() == initialFrames,
+          "armed idle capture keeps its startup reserve without refilling");
+
+    std::uint64_t recordedFrames = 0U;
+    const auto captureFrames = [&](const std::uint32_t frames,
+                                   const midichopper::MidiEvent* const events = nullptr,
+                                   const std::uint32_t eventCount = 0U) {
+        for (std::uint32_t frame = 0; frame < frames; ++frame) {
+            const auto position = static_cast<float>((recordedFrames + frame) % 97U) / 97.0f;
+            inputLeft[frame] = position;
+            inputRight[frame] = -position;
+        }
+        callback(frames, events, eventCount);
+        recordedFrames += frames;
+    };
+    const midichopper::MidiEvent start{0U, 36U, 127U, midichopper::MidiEventType::NoteOn};
+    for (std::uint64_t block = 0; block < initialBlocks - thresholdBlocks; ++block)
+        captureFrames(static_cast<std::uint32_t>(blockFrames), block == 0U ? &start : nullptr,
+                      block == 0U ? 1U : 0U);
+    check(recordedFrames == initialFrames - thresholdFrames &&
+          engine.freeCaptureFrames() == thresholdFrames,
+          "recording reaches the exact fifteen-second free-space threshold");
+
+    // A refill is prepared on the worker and becomes visible only when a
+    // callback services it. Waiting here makes this test independent of host
+    // callback scheduling while preserving the real callback handoff.
+    auto expectedCapacity = initialFrames;
+    const auto waitForRefill = [&] {
+        expectedCapacity += refillFrames;
+        await([&] {
+            service();
+            return engine.captureCapacityFrames() == expectedCapacity &&
+                   engine.freeCaptureFrames() >= thresholdFrames + refillFrames;
+        }, "background worker prepares and callback publishes a capture refill");
+    };
+    waitForRefill();
+    check(engine.freeCaptureFrames() == thresholdFrames + refillFrames,
+          "threshold request adds exactly sixty seconds of block-rounded reserve");
+
+    constexpr std::uint64_t targetFrames = 482000U; // More than eight minutes at 1 kHz.
+    while (recordedFrames < targetFrames) {
+        if (engine.freeCaptureFrames() <= thresholdFrames)
+            waitForRefill();
+        const auto remaining = targetFrames - recordedFrames;
+        const auto frames = static_cast<std::uint32_t>(std::min<std::uint64_t>(blockFrames, remaining));
+        captureFrames(frames);
+    }
+    check(recordedFrames > 8U * 60U * 1000U &&
+          engine.captureCapacityFrames() > 8U * 60U * 1000U,
+          "multiple dynamic refills capture more than eight minutes");
+
+    settings = engine.settings();
+    settings.armed = false;
+    engine.setSettings(settings);
+    service();
+    check(!engine.padMetadata(0U).recording && engine.padMetadata(0U).frames == targetFrames,
+          "disarming commits the complete multi-refill capture");
+
+    PadData captured;
+    check(engine.exportPad(0U, captured) && captured.frames == targetFrames &&
+          captured.sampleRate == 1000.0,
+          "multi-refill capture exports with its original sample rate");
+    for (std::uint32_t frame = 0; frame < captured.frames; ++frame) {
+        const auto expected = static_cast<float>(frame % 97U) / 97.0f;
+        check(captured.stereo[static_cast<std::size_t>(frame) * 2U] == expected &&
+              captured.stereo[static_cast<std::size_t>(frame) * 2U + 1U] == -expected,
+              "captured stereo samples remain continuous across refill boundaries");
+    }
+
+    const auto capacityBeforeRateChange = engine.captureCapacityFrames();
+    engine.setSampleRate(2000.0);
+    const auto highRateReserve = blocksForSeconds(30.0, 2000.0) * blockFrames;
+    check(engine.captureCapacityFrames() >= capacityBeforeRateChange &&
+          engine.freeCaptureFrames() >= highRateReserve &&
+          engine.padMetadata(0U).frames == targetFrames,
+          "sample-rate change grows free reserve and preserves captured audio");
+    check(engine.exportPad(0U, captured) && captured.stereo.size() == targetFrames * 2U &&
+          captured.sampleRate == 1000.0 &&
+          captured.stereo.front() == 0.0f &&
+          captured.stereo.back() == -static_cast<float>((targetFrames - 1U) % 97U) / 97.0f,
+          "sample-rate change preserves the existing stereo snapshot");
+
+    engine.clearPad(0U);
+    service(); // Reclaim the retired capture blocks on the audio owner.
+    check(engine.freeCaptureFrames() == engine.captureCapacityFrames(),
+          "cleared capture returns its blocks to the shared reserve");
+    settings = engine.settings();
+    settings.armed = true;
+    engine.setSettings(settings);
+    const midichopper::MidiEvent secondStart{0U, 36U, 127U,
+                                             midichopper::MidiEventType::NoteOn};
+    recordedFrames = 0U;
+    captureFrames(static_cast<std::uint32_t>(blockFrames), &secondStart, 1U);
+    captureFrames(static_cast<std::uint32_t>(blockFrames));
+    settings = engine.settings();
+    settings.armed = false;
+    engine.setSettings(settings);
+    service();
+    check(engine.exportPad(0U, captured) && captured.frames == 2048U &&
+          captured.stereo.front() == 0.0f && captured.stereo.back() < 0.0f,
+          "reused dynamic storage records a clean replacement capture");
+    check(allocation_probe::allocations.load() == callbacksBefore &&
+          allocation_probe::deletions.load() == deletionsBefore,
+          "dynamic capture callbacks allocate and destroy no storage");
+}
+
 void dispatcherLifecycle()
 {
     RealtimeCommandDispatcher dispatcher;
@@ -974,6 +1136,7 @@ int main(int argc, char** argv)
     globalReverseAudioCallbackNoAlloc();
     retainedSnapshotsAndStalePlans();
     recordingContinuity();
+    dynamicCaptureReserveGrowthAndReuse();
     if (argc == 2) transferContinuity(readOptionalWav(argv[1]));
     std::cout << "Transfer continuity tests passed (48 kHz, 64-frame blocks).\n";
 }

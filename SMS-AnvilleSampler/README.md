@@ -230,7 +230,9 @@ Right-click for **Split Sample**; following samples shift right without being ov
 
 ## Other controls
 
-- Memory: ~8 minutes.
+- Storage starts with 30 seconds. Normal refills add 60 seconds at ≤15s free;
+  offline refills add 120 seconds at ≤30s free. Exhaustion keeps
+  audio; status explains.
 
 - Monitor cycles Off, On, and Auto (on when ARMed).
 
