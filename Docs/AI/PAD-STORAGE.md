@@ -18,7 +18,9 @@ imports. Audio reclaims at most 1,024 blocks per call; a descriptor is reused
 only after its references and blocks are released. Cleared/replaced blocks
 return to the free list; chunks remain owned until teardown.
 
-The default engine starts with 30 seconds of capture blocks at the host rate.
+The engine initially reserves 30 seconds at the
+[stored capture rate](../../SMS-AnvilleSampler/Docs/WAV-FILES.md#stored-sample-rates).
+See [conversion mechanics](RESAMPLING.md).
 At 15 seconds or less free, audio requests a 60-second refill from the
 per-instance worker, in 1,024-frame blocks. Arming alone does not grow storage.
 The worker prepares mapping pages too; audio adopts chunks and maps blocks

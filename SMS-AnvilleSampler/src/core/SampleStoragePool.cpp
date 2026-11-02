@@ -307,30 +307,46 @@ SampleStoragePool::Storage* SampleStoragePool::prepareImport(const PadData& sour
         !std::all_of(source.stereo.begin(), source.stereo.begin() + static_cast<std::size_t>(source.frames) * 2U,
             [](float sample) noexcept { return std::isfinite(sample); })) return nullptr;
     auto storage = std::make_unique<Storage>();
-    storage->frames = source.frames;
-    storage->sampleRate = source.sampleRate;
+    double targetRate = std::min(source.sampleRate, kMaximumStoredSampleRate);
+    const auto frameCount = [&](const double rate) {
+        return static_cast<std::uint64_t>(std::max(1LL,
+            std::llround(static_cast<double>(source.frames) * rate / source.sampleRate)));
+    };
+    // Apply the storage cap to every entry path, including restored projects.
+    // Retain the existing smaller-host-rate capacity fallback when needed.
+    if (frameCount(targetRate) > maxFrames && std::isfinite(hostSampleRate) && hostSampleRate > 1.0)
+        targetRate = std::min(targetRate, hostSampleRate);
+    const auto frames = frameCount(targetRate);
+    if (frames > maxFrames) return nullptr;
+    storage->frames = static_cast<std::uint32_t>(frames);
+    storage->sampleRate = targetRate;
     storage->peak = source.peak;
     storage->rms = source.rms;
-    if (source.frames <= maxFrames) {
+    if (targetRate == source.sampleRate) {
         storage->stereo.assign(source.stereo.begin(), source.stereo.begin() + static_cast<std::size_t>(source.frames) * 2U);
     } else {
-        const auto frames = static_cast<std::uint64_t>(std::llround(static_cast<double>(source.frames) * hostSampleRate / source.sampleRate));
-        if (frames == 0U || frames > maxFrames) return nullptr;
-        storage->frames = static_cast<std::uint32_t>(frames);
-        storage->sampleRate = hostSampleRate;
         storage->stereo.resize(static_cast<std::size_t>(frames) * 2U);
         sms::dsp::SincResampler resampler;
-        resampler.configure(source.sampleRate / hostSampleRate);
+        const double step = source.sampleRate / targetRate;
+        resampler.configure(step);
+        float peak = 0.0f;
+        double sumSquares = 0.0;
         for (std::uint32_t frame = 0; frame < frames; ++frame) {
-            const double position = frame * source.sampleRate / hostSampleRate;
+            const double position = frame * step;
             const auto sample = resampler.read(position, 0U, source.frames, false,
                 [&](const std::uint32_t index) noexcept {
                     const auto offset = static_cast<std::size_t>(index) * 2U;
                     return sms::dsp::StereoFrame{source.stereo[offset], source.stereo[offset + 1U]};
                 });
+            if (!std::isfinite(sample.left) || !std::isfinite(sample.right)) return nullptr;
             storage->stereo[static_cast<std::size_t>(frame) * 2U] = sample.left;
             storage->stereo[static_cast<std::size_t>(frame) * 2U + 1U] = sample.right;
+            peak = std::max({peak, std::abs(sample.left), std::abs(sample.right)});
+            sumSquares += static_cast<double>(sample.left) * sample.left +
+                          static_cast<double>(sample.right) * sample.right;
         }
+        storage->peak = peak;
+        storage->rms = static_cast<float>(std::sqrt(sumSquares / (2.0 * frames)));
     }
     Storage* result = storage.get();
     imported_.push_back(std::move(storage));

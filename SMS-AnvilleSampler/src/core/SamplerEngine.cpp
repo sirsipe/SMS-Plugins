@@ -21,23 +21,25 @@ constexpr std::uint32_t poolBlocks(const std::uint32_t captureFrames) noexcept {
 }
 
 SamplerEngine::SamplerEngine(double sampleRate, double maxRecordSeconds)
-    : sample_rate_(sampleRate > 1.0 ? sampleRate : 48000.0),
+    : sample_rate_(std::isfinite(sampleRate) && sampleRate > 1.0 ? sampleRate : 48000.0),
+      capture_rate_(std::min(sample_rate_, kMaximumStoredSampleRate)),
       max_record_seconds_(maxRecordSeconds > 0.0 ? maxRecordSeconds : 0.0),
       total_blocks_(max_record_seconds_ > 0.0 ? poolBlocks(static_cast<std::uint32_t>(
-          std::max(1.0, std::ceil(sample_rate_ * max_record_seconds_)))) :
+          std::max(1.0, std::ceil(capture_rate_ * max_record_seconds_)))) :
           std::numeric_limits<std::uint32_t>::max() / kSampleBlockFrames),
       max_frames_(max_record_seconds_ > 0.0 ? total_blocks_ * kSampleBlockFrames : kMaximumPadFrames),
-      storagePool_(max_record_seconds_ > 0.0 ? total_blocks_ : 0U, sample_rate_),
+      storagePool_(max_record_seconds_ > 0.0 ? total_blocks_ : 0U, capture_rate_),
       ringCapacityFrames_(static_cast<std::uint32_t>(std::max(1.0, std::ceil(sample_rate_ * 0.1)))),
       ring_(static_cast<std::size_t>(ringCapacityFrames_) * 2U, 0.0f),
-      recordPeakHistory_(static_cast<std::size_t>(ringCapacityFrames_) + 1U, 0.0f) {
-    for (auto& p : pads_) p.sourceSampleRate = sample_rate_;
+      recordPeakHistory_(static_cast<std::size_t>(std::ceil(capture_rate_ * 0.1)) + 2U, 0.0f) {
+    captureResampler_.configure(sample_rate_, capture_rate_);
+    for (auto& p : pads_) p.sourceSampleRate = capture_rate_;
     setSettings(settings_);
 }
 
 void SamplerEngine::setSampleRate(double sampleRate) {
     const std::lock_guard lock(storageControlMutex_);
-    if (sampleRate <= 1.0 || sampleRate == sample_rate_) return;
+    if (!std::isfinite(sampleRate) || sampleRate <= 1.0 || sampleRate == sample_rate_) return;
 
     struct RestoreDispatcher {
         SamplerEngine& engine;
@@ -55,10 +57,11 @@ void SamplerEngine::setSampleRate(double sampleRate) {
         finishRecord(static_cast<std::uint32_t>(activePad_));
         activePad_ = -1;
     }
+    const double captureRate = std::min(sampleRate, kMaximumStoredSampleRate);
     if (max_record_seconds_ == 0.0)
-        storagePool_.setCaptureSampleRate(sampleRate);
+        storagePool_.setCaptureSampleRate(captureRate);
     const auto requiredFrames = static_cast<std::uint32_t>(
-        std::max(1.0, std::ceil(sampleRate * max_record_seconds_)));
+        std::max(1.0, std::ceil(captureRate * max_record_seconds_)));
     const auto requiredBlocks = max_record_seconds_ > 0.0 ? poolBlocks(requiredFrames) : total_blocks_;
     if (requiredBlocks > total_blocks_) {
         std::array<PadData, kPadCount> snapshots;
@@ -101,11 +104,13 @@ void SamplerEngine::setSampleRate(double sampleRate) {
     }
 
     sample_rate_ = sampleRate;
+    capture_rate_ = captureRate;
+    captureResampler_.configure(sample_rate_, capture_rate_);
     if (!storagePool_.captureAllocationFailed())
         captureStorageExhausted_.store(false, std::memory_order_release);
     ringCapacityFrames_ = static_cast<std::uint32_t>(std::max(1.0, std::ceil(sample_rate_ * 0.1)));
     ring_.assign(static_cast<std::size_t>(ringCapacityFrames_) * 2U, 0.0f);
-    recordPeakHistory_.assign(static_cast<std::size_t>(ringCapacityFrames_) + 1U, 0.0f);
+    recordPeakHistory_.assign(static_cast<std::size_t>(std::ceil(capture_rate_ * 0.1)) + 2U, 0.0f);
     ringWritePosition_ = ringCount_ = 0;
     activePad_ = -1;
     auditionPad_ = kPadCount;
@@ -530,7 +535,7 @@ void SamplerEngine::beginRecord(std::uint32_t pad) noexcept {
     p.recordedFrames = 0;
     p.recordPeak = 0.0f;
     p.recordSumSquares = 0.0;
-    p.sourceSampleRate = sample_rate_;
+    p.sourceSampleRate = capture_rate_;
     p.publishedFrames.store(0, std::memory_order_release);
     p.occupied.store(false, std::memory_order_release);
     p.publishedRecording.store(true, std::memory_order_release);
@@ -538,19 +543,21 @@ void SamplerEngine::beginRecord(std::uint32_t pad) noexcept {
     setPadPlaybackSettingsDirect(pad, {});
     setPadMixerSettingsDirect(pad, {});
     // The ring contains exactly the audio immediately preceding the trigger.
+    captureResampler_.reset();
+    recordInputFrames_ = 0U;
     const auto copyCount = std::min({preRollFrames_, ringCount_, max_frames_});
     const auto start = (ringWritePosition_ + ringCapacityFrames_ - copyCount) % ringCapacityFrames_;
     for (std::uint32_t i = 0; i < copyCount && i < max_frames_; ++i) {
         const auto ri = (start + i) % ringCapacityFrames_;
         const auto l = ring_[static_cast<std::size_t>(ri) * 2U];
         const auto r = ring_[static_cast<std::size_t>(ri) * 2U + 1U];
-        if (!storeSample(pad, i, l, r))
-            break;
-        p.recordPeak = std::max(p.recordPeak, std::max(std::abs(l), std::abs(r)));
-        recordPeakHistory_[i % recordPeakHistory_.size()] = p.recordPeak;
-        p.recordSumSquares += static_cast<double>(l) * l + static_cast<double>(r) * r;
-        p.recordPosition = i + 1U;
-        p.recordedFrames = i + 1U;
+        ++recordInputFrames_;
+        const bool kept = sample_rate_ > capture_rate_
+            ? captureResampler_.push({l, r}, [&](const sms::dsp::StereoFrame sample) noexcept {
+                  return appendRecordFrame(pad, sample.left, sample.right);
+              })
+            : appendRecordFrame(pad, l, r);
+        if (!kept) break;
     }
     activePad_ = static_cast<std::int32_t>(pad);
 }
@@ -560,6 +567,16 @@ void SamplerEngine::finishRecord(std::uint32_t pad, std::uint32_t trimFrames) no
     auto& p = pads_[pad];
     if (!p.recording) return;
     const PadMutation publication(p);
+    if (sample_rate_ > capture_rate_) {
+        // Complete only this recording's output centers. Right-edge extension
+        // avoids a latency tail or a dependency on the next callback/slice.
+        static_cast<void>(captureResampler_.finish([&](const sms::dsp::StereoFrame sample) noexcept {
+            return appendRecordFrame(pad, sample.left, sample.right);
+        }));
+        const auto retainedInput = recordInputFrames_ - std::min<std::uint64_t>(trimFrames, recordInputFrames_);
+        const auto retained = captureResampler_.framesForInput(retainedInput);
+        trimFrames = p.recordedFrames - std::min(p.recordedFrames, retained);
+    }
     if (trimFrames > p.recordedFrames) trimFrames = p.recordedFrames;
     for (std::uint32_t frame = p.recordedFrames - trimFrames; frame < p.recordedFrames; ++frame) {
         const auto left = sampleAt(pad, frame, 0U);
@@ -576,7 +593,7 @@ void SamplerEngine::finishRecord(std::uint32_t pad, std::uint32_t trimFrames) no
     p.recordSumSquares = std::max(0.0, p.recordSumSquares);
     p.recording = false;
     p.publishedRecording.store(false, std::memory_order_release);
-    p.sourceSampleRate = sample_rate_;
+    p.sourceSampleRate = capture_rate_;
     const auto n = p.recordedFrames;
     p.publishedPeak.store(n ? p.recordPeak : 0.0f, std::memory_order_relaxed);
     p.publishedRms.store(n ? static_cast<float>(std::sqrt(p.recordSumSquares / (2.0 * n))) : 0.0f,
@@ -584,7 +601,7 @@ void SamplerEngine::finishRecord(std::uint32_t pad, std::uint32_t trimFrames) no
     p.publishedFrames.store(n, std::memory_order_release);
     if (p.storage) {
         p.storage->frames = n;
-        p.storage->sampleRate = sample_rate_;
+        p.storage->sampleRate = capture_rate_;
         p.storage->peak = p.publishedPeak.load(std::memory_order_relaxed);
         p.storage->rms = p.publishedRms.load(std::memory_order_relaxed);
     }
@@ -594,25 +611,39 @@ void SamplerEngine::finishRecord(std::uint32_t pad, std::uint32_t trimFrames) no
         lastCommittedPad_ = static_cast<std::int32_t>(pad);
 }
 
-void SamplerEngine::writeRecordFrame(std::uint32_t, float left, float right) noexcept {
+bool SamplerEngine::appendRecordFrame(const std::uint32_t pad, const float left, const float right) noexcept {
+    auto& p = pads_[pad];
+    if (p.recordPosition >= max_frames_ || !storeSample(pad, p.recordPosition, left, right)) return false;
+    p.recordPeak = std::max(p.recordPeak, std::max(std::abs(left), std::abs(right)));
+    recordPeakHistory_[p.recordPosition % recordPeakHistory_.size()] = p.recordPeak;
+    p.recordSumSquares += static_cast<double>(left) * left + static_cast<double>(right) * right;
+    p.recordedFrames = ++p.recordPosition;
+    return true;
+}
+
+void SamplerEngine::writeRecordFrame(std::uint32_t, const float left, const float right) noexcept {
     if (activePad_ < 0 || activePad_ >= static_cast<std::int32_t>(kPadCount)) return;
-    auto& p = pads_[static_cast<std::uint32_t>(activePad_)];
-    if (!p.recording || p.recordPosition >= max_frames_) return;
-    if (!storeSample(static_cast<std::uint32_t>(activePad_), p.recordPosition, left, right)) {
+    const auto pad = static_cast<std::uint32_t>(activePad_);
+    auto& p = pads_[pad];
+    if (!p.recording) return;
+    ++recordInputFrames_;
+    const bool kept = sample_rate_ > capture_rate_
+        ? captureResampler_.push({left, right}, [&](const sms::dsp::StereoFrame sample) noexcept {
+              return appendRecordFrame(pad, sample.left, sample.right);
+          })
+        : appendRecordFrame(pad, left, right);
+    if (!kept) {
         captureStorageExhausted_.store(true, std::memory_order_release);
         finishRecord(static_cast<std::uint32_t>(activePad_));
         activePad_ = -1;
         sessionComplete_ = true;
         return;
     }
-    p.recordPeak = std::max(p.recordPeak, std::max(std::abs(left), std::abs(right)));
-    recordPeakHistory_[p.recordPosition % recordPeakHistory_.size()] = p.recordPeak;
-    p.recordSumSquares += static_cast<double>(left) * left + static_cast<double>(right) * right;
-    ++p.recordPosition;
-    p.recordedFrames = p.recordPosition;
+    const double maximumInputs = max_frames_ * (sample_rate_ / capture_rate_);
     const auto fixed = settings_.captureMode == CaptureMode::FixedDuration
-        ? static_cast<std::uint32_t>(std::clamp(std::llround(settings_.fixedLengthSeconds * sample_rate_), 1LL, static_cast<long long>(max_frames_))) : max_frames_;
-    if (p.recordPosition >= fixed) {
+        ? static_cast<std::uint64_t>(std::clamp(std::round(settings_.fixedLengthSeconds * sample_rate_), 1.0, maximumInputs))
+        : static_cast<std::uint64_t>(maximumInputs);
+    if (recordInputFrames_ >= fixed) {
         finishRecord(static_cast<std::uint32_t>(activePad_));
         activePad_ = -1;
         if (nextPad_ >= kPadCount) sessionComplete_ = true;
@@ -755,7 +786,7 @@ void SamplerEngine::handleEvent(const MidiEvent& event) noexcept {
             }
             else sessionComplete_ = true;
         } else if (on && settings_.captureMode == CaptureMode::Sequential && activePad_ >= 0) {
-            const auto trim = std::min(preRollFrames_, pads_[static_cast<std::uint32_t>(activePad_)].recordedFrames);
+            const auto trim = static_cast<std::uint32_t>(std::min<std::uint64_t>(preRollFrames_, recordInputFrames_));
             finishRecord(static_cast<std::uint32_t>(activePad_), trim);
             if (nextPad_ < kPadCount) {
                 const auto pad = nextPad_;
@@ -1348,7 +1379,7 @@ void SamplerEngine::movePadContents(const std::uint32_t source,
     from.allocatedBlocks = 0U;
     from.recordPeak = 0.0f;
     from.recordSumSquares = 0.0;
-    from.sourceSampleRate.store(sample_rate_, std::memory_order_release);
+    from.sourceSampleRate.store(capture_rate_, std::memory_order_release);
     from.publishedFrames.store(0U, std::memory_order_release);
     from.publishedPeak.store(0.0f, std::memory_order_relaxed);
     from.publishedRms.store(0.0f, std::memory_order_relaxed);

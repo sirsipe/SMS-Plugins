@@ -6,6 +6,7 @@
 #include "Audio/WaveformSummary.hpp"
 #include "DSP/SampleMixerSettings.hpp"
 #include "DSP/SamplePlaybackSettings.hpp"
+#include "DSP/StreamingDownsampler.hpp"
 
 #include <array>
 #include <atomic>
@@ -129,6 +130,7 @@ public:
     void setSampleRate(double sampleRate); // control thread, reallocates if needed
     [[nodiscard]] double sampleRate() const noexcept { return sample_rate_; }
     [[nodiscard]] double maxRecordSeconds() const noexcept { return max_record_seconds_; }
+    /** Physical reserve/free counts use stored recording frames, not host frames. */
     [[nodiscard]] std::uint64_t captureCapacityFrames() const noexcept
     { return storagePool_.captureCapacityFrames(); }
     [[nodiscard]] std::uint64_t freeCaptureFrames() const noexcept
@@ -428,6 +430,7 @@ private:
     void finishRecord(std::uint32_t pad, std::uint32_t trimFrames = 0) noexcept;
     void handleEvent(const MidiEvent& event) noexcept;
     void writeRecordFrame(std::uint32_t frame, float left, float right) noexcept;
+    [[nodiscard]] bool appendRecordFrame(std::uint32_t pad, float left, float right) noexcept;
     void startVoice(std::uint32_t pad, std::uint8_t velocity,
                     VoiceMode mode = VoiceMode::OneShot,
                     std::int16_t triggerNote = -1) noexcept;
@@ -439,6 +442,7 @@ private:
     void mixChopPreview(float& left, float& right) noexcept;
 
     double sample_rate_;
+    double capture_rate_;
     double max_record_seconds_;
     std::uint32_t total_blocks_;
     std::uint32_t max_frames_;
@@ -455,9 +459,11 @@ private:
     std::array<Pad, kPadCount> pads_{};
     std::uint32_t ringCapacityFrames_ = 0;
     std::vector<float> ring_;
-    // One active capture: cumulative peaks for every possible pre-roll trim,
-    // plus the untrimmed endpoint. Allocated only during construction/rate changes.
+    // One active capture: cumulative peaks for every possible stored pre-roll
+    // trim, with extra entries for rate-conversion rounding. Control allocation.
     std::vector<float> recordPeakHistory_;
+    sms::dsp::StreamingDownsampler captureResampler_;
+    std::uint64_t recordInputFrames_ = 0U;
     std::uint32_t ringWritePosition_ = 0;
     std::uint32_t ringCount_ = 0;
     std::uint32_t preRollFrames_ = 0;

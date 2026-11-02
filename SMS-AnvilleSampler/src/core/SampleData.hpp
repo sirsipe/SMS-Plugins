@@ -7,6 +7,7 @@ namespace midichopper {
 
 // Shared with project-state validation: preserve the existing per-pad safety bound.
 inline constexpr std::uint32_t kMaximumPadFrames = 184'320'000U;
+inline constexpr double kMaximumStoredSampleRate = 96000.0;
 
 /** A non-real-time copy of one pad, suitable for project state and UI work. */
 struct PadData {

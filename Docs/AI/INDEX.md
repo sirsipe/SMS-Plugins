@@ -9,10 +9,10 @@ Read [AGENTS.md](../../AGENTS.md), then the relevant row.
 | Dev Container setup | [Development](DEVELOPMENT.md), [Testing](TESTING.md) | [Configuration](../../.devcontainer/devcontainer.json) |
 | Tests, LV2 discovery, host/UI checks | [Testing](TESTING.md) | [Tests](../../SMS-AnvilleSampler/tests/) |
 | Screenshots | [Images](DOC-IMAGES.md) | [Captures](../../SMS-AnvilleSampler/Docs/) |
-| Engine, state, UI | [Anville Sampler architecture](../../SMS-AnvilleSampler/Docs/ARCHITECTURE.md) | [Plugin source](../../SMS-AnvilleSampler/src/) |
+| Engine, state, UI | [Plugin architecture](../../SMS-AnvilleSampler/Docs/ARCHITECTURE.md) | [Plugin source](../../SMS-AnvilleSampler/src/) |
 | Startup preferences | [Preferences](LAYOUT-PREFERENCE.md) | Startup and host precedence |
 | Effects | [Mixing contract](MIXING.md) | [DSP](../../Common-Src/DSP/ColorEffects.hpp) |
-| Resampling | [Contract](RESAMPLING.md) | Filters |
+| Resampling | [Contract](RESAMPLING.md), [Benchmarks](../../SMS-AnvilleSampler/Docs/RESAMPLING-BENCHMARKS.md) | DSP |
 | Shared DSP, codecs, geometry | [Common-Src map](../../Common-Src/README.md) | [Common-Src](../../Common-Src/) |
 | Shared UI | [Common-UI map](../../Common-UI/README.md) | [Common-UI](../../Common-UI/) |
 | Product direction | [Vision](../../SMS-AnvilleSampler/Docs/VISION.md) | Intended scope |

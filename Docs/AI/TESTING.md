@@ -12,11 +12,11 @@ git diff --check
 
 Filter with `ctest --test-dir build -R NAME`:
 
-| CTest name | Coverage |
+| CTest | Coverage |
 | --- | --- |
 | `preview-mailbox` | Concurrent coherent play/stop ranges, latest-wins, no replay |
 | `pad-workflows` | Reset, clipboard, collapse, split cancel/replay/conflict, revision-checked chops; exact PCM/settings/replies |
-| `sampler-core`, `playback-voice`, `resampling` | Capture, MIDI/banks/layouts, storage/voices, region/ADSR, mixer/filter/Dirty, preview/repartition, [spectral resampling](RESAMPLING.md), clipboard/lifecycle, >1,024 events/block, parameter IDs |
+| `sampler-core`, `playback-voice`, `resampling`, `storage-rate` | Capture, MIDI/banks/layouts, storage/voices, region/ADSR, mixer/filter/Dirty, preview/repartition, [spectral resampling](RESAMPLING.md), clipboard/lifecycle, >1,024 events/block, parameter IDs |
 | `buffer-timing` | Stereo playback/capture, fixed/irregular blocks, MIDI offsets/order, pre-roll wrap, zero-frame callbacks, resampling/effects |
 | `adsr-envelope` | Stages, early note-off, retrigger, zero-duration/live edits, sanitization, release resume |
 | `sampler-transfer`, `capture-storage` | Transfers, continuous audio, dynamic growth/reuse, delayed/failed refills, snapshots, exhaustion recovery, callback allocation/destruction |

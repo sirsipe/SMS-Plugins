@@ -60,8 +60,8 @@ Host-specific setup: [REAPER guide](Docs/REAPER.md).
    SHARED** reuses the same notes for whichever bank you select; **ALL BANKS ·
    UNIQUE** gives each bank its own range.
 
-3. **Load or capture samples.** Right-click a pad for **Import WAV...** to load a
-   [compatible file](Docs/WAV-FILES.md). For live chopping, check the input meter,
+3. **Load or capture samples.** Right-click a pad for **Import WAV...**;
+   [storage is capped at 96 kHz](Docs/WAV-FILES.md#stored-sample-rates). For live chopping, check the input meter,
    enable **ARM**, and use Sequential capture. Click a pad to choose the starting
    destination. Focus the plugin and press
    **Space**, or send any MIDI note-on, to start recording. Each later press/note

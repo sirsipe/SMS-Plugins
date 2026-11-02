@@ -17,9 +17,27 @@ be split onto following pads. Imported audio is embedded in the DAW project,
 so the source file is not needed when the project is reopened. Large songs can
 make project files and save times substantially larger.
 
-New saves preserve finite float32 samples exactly, including quiet detail and
+## Stored sample rates
+
+All pad audio is stored at **96 kHz or below**, including live recordings,
+imports, pasted audio and samples restored from older projects. Higher-rate
+audio is converted with an anti-alias filter; lower rates are preserved without
+upsampling. Conversion keeps duration to the nearest stored frame, retaining at
+least one frame for nonempty audio. Original files are unchanged, but the
+original higher-rate PCM is not retained in the sampler or its next project save.
+Both WAV exports therefore use a rate of at most 96 kHz.
+
+Hosts can still run above 96 kHz. Input monitoring stays at the host rate, while
+recording is converted to the capped rate. Chop boundaries, pre-roll and fixed
+durations follow host timing and are quantized to stored frames. Playback still
+converts from the stored rate and applies tuning. See the
+[processing benchmarks and their limits](RESAMPLING-BENCHMARKS.md).
+
+## Project storage and export
+
+New saves preserve stored finite float32 samples exactly, including quiet detail and
 levels above full scale. Older 16-bit projects still load and retain their
-decoded samples when resaved; previously lost precision cannot be recovered.
+decoded samples when resaved, subject to the rate cap above; previously lost precision cannot be recovered.
 Older plugin versions cannot load the new sample format. Sample data uses
 roughly twice the uncompressed storage of 16-bit saves.
 

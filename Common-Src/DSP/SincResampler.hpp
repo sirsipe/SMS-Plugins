@@ -1,6 +1,9 @@
 #pragma once
 
 #include <algorithm>
+#if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+#include <emmintrin.h>
+#endif
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -22,6 +25,8 @@ class SincResampler {
 public:
     SincResampler() noexcept : tables_(&tables()) { configure(1.0); }
 
+    [[nodiscard]] double sourceRadius() const noexcept { return radius_; }
+
     /** Source frames advanced per output frame. The 15% downsampling transition
      * band gives >50 dB rejection at/above destination Nyquist from 1.1x to 256x.
      * Between 1x and 1.1x, blend toward the narrower kernel continuously: this
@@ -30,12 +35,29 @@ public:
      */
     void configure(const double step) noexcept {
         const double rate = std::isfinite(step) && step > 0.0 ? step : 1.0;
+        if (rate == configuredRate_) return;
+        configuredRate_ = rate;
         downsampling_ = rate > 1.0;
         scale_ = downsampling_ ? 1.0 / rate : 1.0;
         blend_ = static_cast<float>(std::clamp((rate - 1.0) / 0.1, 0.0, 1.0));
         transition_ = blend_ > 0.0f && blend_ < 1.0f;
         radius_ = std::min((blend_ == 1.0f ? kDownHalfWidth : kHalfWidth) / scale_, kMaximumRadius);
         kernel_ = blend_ == 1.0f ? tables_->down.data() : tables_->up.data();
+        const float coefficientStep = static_cast<float>(scale_ * kResolution);
+        integerTableStep_ = downsampling_ && !transition_ && coefficientStep >= 1.0f &&
+            coefficientStep == std::floor(coefficientStep) ? static_cast<std::uint32_t>(coefficientStep) : 0U;
+        phaseZeroWeight_ = 0.0;
+        // At integer table strides, integer cursor phases use the table
+        // directly. Cache their normalization once per rate change. Restrict
+        // support to table indices that the generic path would actually read.
+        const auto extent = static_cast<std::int64_t>(std::floor(radius_));
+        if (extent * integerTableStep_ >= kTableSize - 1U) integerTableStep_ = 0U;
+        if (integerTableStep_ != 0U) {
+            for (auto offset = -extent; offset <= extent; ++offset) {
+                const auto index = static_cast<std::uint32_t>(std::abs(offset)) * integerTableStep_;
+                phaseZeroWeight_ += kernel_[index];
+            }
+        }
     }
 
     /** Requires start < end and start <= position < end. All reader indices
@@ -55,17 +77,124 @@ public:
         const float phase = static_cast<float>(position - static_cast<double>(center));
         const float tableStep = static_cast<float>(scale_ * kResolution);
         const auto convolve = [&](auto&& readTap) noexcept {
+            // Coefficients repeat at table-aligned rates and integer phases.
+            // Two accumulators break the dependency chain. Explicit loops on
+            // either side of the center keep table strides constant without
+            // outlined helper lambdas. Keep reader calls in ascending order:
+            // the loop mapper depends on this. Double sums can round differently
+            // after regrouping; coefficients and precision remain unchanged.
+#if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+            if (integerTableStep_ != 0U && phase == 0.0f) {
+                __m128d sum0 = _mm_setzero_pd();
+                __m128d sum1 = _mm_setzero_pd();
+                {
+                    auto tap = first;
+                    const auto lastTap = center - 1;
+                    std::int64_t index = (center - first) * integerTableStep_;
+                    const auto direction = -static_cast<std::int64_t>(integerTableStep_);
+                    for (; tap + 1 <= lastTap; tap += 2, index += direction * 2) {
+                        const auto a = readTap(tap);
+                        const auto b = readTap(tap + 1);
+                        sum0 = _mm_add_pd(
+                            sum0, _mm_mul_pd(_mm_set_pd(a.right, a.left), _mm_set1_pd(kernel_[index])));
+                        sum1 = _mm_add_pd(sum1, _mm_mul_pd(_mm_set_pd(b.right, b.left),
+                                                           _mm_set1_pd(kernel_[index + direction])));
+                    }
+                    for (; tap <= lastTap; ++tap, index += direction) {
+                        const auto sample = readTap(tap);
+                        sum0 = _mm_add_pd(sum0, _mm_mul_pd(_mm_set_pd(sample.right, sample.left),
+                                                           _mm_set1_pd(kernel_[index])));
+                    }
+                }
+                {
+                    auto tap = center;
+                    const auto lastTap = last;
+                    std::int64_t index = 0;
+                    const auto direction = static_cast<std::int64_t>(integerTableStep_);
+                    for (; tap + 1 <= lastTap; tap += 2, index += direction * 2) {
+                        const auto a = readTap(tap);
+                        const auto b = readTap(tap + 1);
+                        sum0 = _mm_add_pd(
+                            sum0, _mm_mul_pd(_mm_set_pd(a.right, a.left), _mm_set1_pd(kernel_[index])));
+                        sum1 = _mm_add_pd(sum1, _mm_mul_pd(_mm_set_pd(b.right, b.left),
+                                                           _mm_set1_pd(kernel_[index + direction])));
+                    }
+                    for (; tap <= lastTap; ++tap, index += direction) {
+                        const auto sample = readTap(tap);
+                        sum0 = _mm_add_pd(sum0, _mm_mul_pd(_mm_set_pd(sample.right, sample.left),
+                                                           _mm_set1_pd(kernel_[index])));
+                    }
+                }
+                double channels[2];
+                _mm_storeu_pd(channels, _mm_div_pd(_mm_add_pd(sum0, sum1), _mm_set1_pd(phaseZeroWeight_)));
+                return StereoFrame{static_cast<float>(channels[0]), static_cast<float>(channels[1])};
+            }
+#else
+            if (integerTableStep_ != 0U && phase == 0.0f) {
+                double left0 = 0.0, right0 = 0.0;
+                double left1 = 0.0, right1 = 0.0;
+                {
+                    auto tap = first;
+                    const auto lastTap = center - 1;
+                    std::int64_t index = (center - first) * integerTableStep_;
+                    const auto direction = -static_cast<std::int64_t>(integerTableStep_);
+                    for (; tap + 1 <= lastTap; tap += 2, index += direction * 2) {
+                        const auto a = readTap(tap);
+                        const float coefficientA = kernel_[index];
+                        left0 += static_cast<double>(a.left) * coefficientA;
+                        right0 += static_cast<double>(a.right) * coefficientA;
+                        const auto b = readTap(tap + 1);
+                        const float coefficientB = kernel_[index + direction];
+                        left1 += static_cast<double>(b.left) * coefficientB;
+                        right1 += static_cast<double>(b.right) * coefficientB;
+                    }
+                    for (; tap <= lastTap; ++tap, index += direction) {
+                        const auto sample = readTap(tap);
+                        const float coefficient = kernel_[index];
+                        left0 += static_cast<double>(sample.left) * coefficient;
+                        right0 += static_cast<double>(sample.right) * coefficient;
+                    }
+                }
+                {
+                    auto tap = center;
+                    const auto lastTap = last;
+                    std::int64_t index = 0;
+                    const auto direction = static_cast<std::int64_t>(integerTableStep_);
+                    for (; tap + 1 <= lastTap; tap += 2, index += direction * 2) {
+                        const auto a = readTap(tap);
+                        const float coefficientA = kernel_[index];
+                        left0 += static_cast<double>(a.left) * coefficientA;
+                        right0 += static_cast<double>(a.right) * coefficientA;
+                        const auto b = readTap(tap + 1);
+                        const float coefficientB = kernel_[index + direction];
+                        left1 += static_cast<double>(b.left) * coefficientB;
+                        right1 += static_cast<double>(b.right) * coefficientB;
+                    }
+                    for (; tap <= lastTap; ++tap, index += direction) {
+                        const auto sample = readTap(tap);
+                        const float coefficient = kernel_[index];
+                        left0 += static_cast<double>(sample.left) * coefficient;
+                        right0 += static_cast<double>(sample.right) * coefficient;
+                    }
+                }
+                const double left = left0 + left1;
+                const double right = right0 + right1;
+                return StereoFrame{static_cast<float>(left / phaseZeroWeight_),
+                                   static_cast<float>(right / phaseZeroWeight_)};
+            }
+#endif
+
             double left = 0.0, right = 0.0, weight = 0.0;
             for (auto offset = first - center; offset <= last - center; ++offset) {
                 const float tablePosition = std::abs(static_cast<float>(offset) - phase) * tableStep;
                 const auto index = static_cast<std::uint32_t>(tablePosition);
-                if (index >= kTableSize - 1U) continue;
+                if (index >= kTableSize - 1U)
+                    continue;
                 const float fraction = tablePosition - static_cast<float>(index);
-                float coefficient = kernel_[index] +
-                    (kernel_[index + 1U] - kernel_[index]) * fraction;
+                float coefficient = kernel_[index] + (kernel_[index + 1U] - kernel_[index]) * fraction;
                 if (transition_) {
-                    const float down = tables_->down[index] +
-                        (tables_->down[index + 1U] - tables_->down[index]) * fraction;
+                    const float down =
+                        tables_->down[index] + (tables_->down[index + 1U] - tables_->down[index]) * fraction;
                     coefficient += blend_ * (down - coefficient);
                 }
                 const auto sample = readTap(center + offset);
@@ -77,12 +206,12 @@ public:
         };
         // Most reads are interior: keep boundary mapping out of their FIR loop.
         if (first >= start && last < end)
-            return convolve([&](const std::int64_t tap) noexcept {
-                return reader(static_cast<std::uint32_t>(tap));
-            });
+            return convolve(
+                [&](const std::int64_t tap) noexcept { return reader(static_cast<std::uint32_t>(tap)); });
         if (looping) {
             auto wrapped = (first - start) % length;
-            if (wrapped < 0) wrapped += length;
+            if (wrapped < 0)
+                wrapped += length;
             auto mapped = static_cast<std::uint32_t>(start + wrapped);
             auto next = first;
             return convolve([&](const std::int64_t tap) noexcept {
@@ -145,6 +274,9 @@ private:
         static const Tables value;
         return value;
     }
+    double configuredRate_ = -1.0;
+    double phaseZeroWeight_ = 0.0;
+    std::uint32_t integerTableStep_ = 0U;
     const Tables* tables_;
     const float* kernel_ = nullptr;
     double scale_ = 1.0;

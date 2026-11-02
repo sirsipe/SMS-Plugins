@@ -471,6 +471,13 @@ if(BUILD_TESTING)
   target_link_libraries(anvillesampler_resampling_tests PRIVATE anvillesampler_core)
   add_test(NAME resampling COMMAND anvillesampler_resampling_tests)
 
+  add_executable(anvillesampler_resampling_benchmarks tests/resampling_benchmarks.cpp)
+  target_link_libraries(anvillesampler_resampling_benchmarks PRIVATE anvillesampler_core)
+
+  add_executable(anvillesampler_storage_rate_tests tests/storage_rate_tests.cpp)
+  target_link_libraries(anvillesampler_storage_rate_tests PRIVATE anvillesampler_core)
+  add_test(NAME storage-rate COMMAND anvillesampler_storage_rate_tests)
+
   add_executable(anvillesampler_buffer_timing_tests tests/buffer_timing_tests.cpp)
   target_link_libraries(anvillesampler_buffer_timing_tests PRIVATE anvillesampler_core)
   add_test(NAME buffer-timing COMMAND anvillesampler_buffer_timing_tests)

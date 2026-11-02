@@ -1,15 +1,14 @@
 #include "DSP/SincResampler.hpp"
 #include "Audio/WavCodec.hpp"
 #include "SamplerEngine.hpp"
+#include "reference_resampler.hpp"
 
 #include <algorithm>
 #include <array>
-#include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
 #include <numbers>
-#include <string_view>
 #include <vector>
 
 namespace {
@@ -201,66 +200,61 @@ void playbackImportAndExport() {
     }
 }
 
-void benchmark() {
-    constexpr std::uint32_t blockSize = 128U;
-    for (const bool captured : {false, true})
-    for (const double step : {1.0, 44100.0 / 48000.0, 1.01, 1.5, 4.0, 14.7, 16.0}) {
-        midichopper::SamplerEngine engine{48000.0, 3.0};
-        const auto source = tone(48000.0 * step, 4096U);
-        auto settings = engine.settings();
-        settings.monitorInput = false;
-        settings.playbackMode = midichopper::PlaybackMode::Hold;
-        settings.maxVoices = 16U;
-        engine.setSettings(settings);
-        std::array<midichopper::MidiEvent, 16> events;
-        for (std::uint32_t pad = 0; pad < events.size(); ++pad) {
-            events[pad] = {0U, static_cast<std::uint8_t>(36U + pad), 127U,
-                          midichopper::MidiEventType::NoteOn};
-            if (!captured) check(engine.importPad(pad, source), "install benchmark source");
-        }
-        if (captured) {
-            settings.armed = true;
-            engine.setSettings(settings);
-            std::array<float, 4096U> inputLeft{}, inputRight{}, outputLeft{}, outputRight{};
-            for (std::uint32_t frame = 0; frame < inputLeft.size(); ++frame) {
-                inputLeft[frame] = source.stereo[frame * 2U];
-                inputRight[frame] = source.stereo[frame * 2U + 1U];
-            }
-            for (const auto& event : events)
-                engine.process(inputLeft.data(), inputRight.data(), outputLeft.data(), outputRight.data(),
-                               inputLeft.size(), &event, 1U);
-            settings.armed = false;
-            settings.tuneSemitones = static_cast<float>(std::clamp(12.0 * std::log2(step), -24.0, 24.0));
-            engine.setSettings(settings);
-            engine.process(nullptr, nullptr, outputLeft.data(), outputRight.data(), 0U);
-            for (std::uint32_t pad = 0; pad < events.size(); ++pad) {
-                check(engine.padMetadata(pad).frames == 4096U, "benchmark captured all 16 pads");
-                sms::dsp::SampleMixerSettings mixer;
-                mixer.tuneSemitones = static_cast<float>(12.0 * std::log2(step) - settings.tuneSemitones);
-                engine.setPadMixerSettings(pad, mixer);
+void alignedStrideNormalization() {
+    sms::dsp::SincResampler filter;
+    // Eligible table strides include non-integer rates. Large source indices
+    // also exercise the ceil/floor support calculation away from the origin.
+    for (unsigned stride = 1U; stride < 256U; ++stride) {
+        filter.configure(256.0 / stride);
+        for (const std::uint32_t start : {0U, 50'000'000U, 180'000'000U}) {
+            const auto end = start + 31U;
+            for (const bool loop : {false, true}) {
+                const auto frame = filter.read(start + 17.0, start, end, loop,
+                    [&](const std::uint32_t index) noexcept {
+                        check(index >= start && index < end, "aligned strides retain large source bounds");
+                        return sms::dsp::StereoFrame{0.25f, -0.75f};
+                    });
+                check(std::abs(frame.left - 0.25f) < 1.0e-7f && std::abs(frame.right + 0.75f) < 1.0e-7f,
+                      "every aligned table stride preserves normalization at large source positions");
             }
         }
-        std::array<float, blockSize> left{}, right{};
-        engine.process(nullptr, nullptr, left.data(), right.data(), blockSize, events.data(), events.size());
-        std::array<double, 100> times;
-        for (auto& time : times) {
-            const auto before = std::chrono::steady_clock::now();
-            engine.process(nullptr, nullptr, left.data(), right.data(), blockSize);
-            time = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - before).count();
-        }
-        std::sort(times.begin(), times.end());
-        std::cout << (captured ? "captured" : "imported") << ": 16 stereo voices, 48kHz/128, step=" << step
-                  << ": median=" << times[50] << "us p95=" << times[95]
-                  << "us; budget=" << blockSize * 1.0e6 / 48000.0 << "us\n";
     }
 }
+
+void alignedKernelRegression() {
+    const auto raw = tone(48000.0, 8192U);
+    sms::dsp::SincResampler filter;
+    // Reuse one instance through aligned, fractional and unity configurations.
+    // The analytic oracle evaluates the window independently of the table.
+    for (const double step : {2.0, 4.0, 16.0, 32.0, 64.0, 128.0, 1.0, 1.05, 3.0, 5.187, 64.0}) {
+        filter.configure(step);
+        filter.configure(step);
+        for (const std::uint32_t length : {3U, 31U, 4096U})
+          for (const bool loop : {false, true})
+            for (const bool reverse : {false, true})
+              for (const double phase : {0.0, 0.375, 0.999999}) {
+                const std::uint32_t start = 1024U, end = start + length;
+                for (const double position : {start + phase, end - 1.0 + phase}) {
+                    const auto output = filter.read(position, start, end, loop,
+                        [&](const std::uint32_t frame) noexcept {
+                            check(frame >= start && frame < end, "aligned path retains region bounds");
+                            const auto index = reverse ? raw.frames - 1U - frame : frame;
+                            return sms::dsp::StereoFrame{raw.stereo[index * 2U], raw.stereo[index * 2U + 1U]};
+                        });
+                    const auto left = reference_resampler::sample(raw.stereo, position, step, start, end, loop, reverse);
+                    const auto right = reference_resampler::sample(raw.stereo, position, step, start, end, loop, reverse, 1U);
+                    check(std::abs(output.left - left) < 1.0e-5f && std::abs(output.right - right) < 1.0e-5f,
+                          "optimized and fallback paths retain the analytic filter response");
+                }
+              }
+    }
+}
+
 } // namespace
 
-int main(const int argc, char** argv) {
-    if (argc == 2 && std::string_view(argv[1]) == "--benchmark") {
-        benchmark();
-        return 0;
-    }
+int main() {
+    alignedStrideNormalization();
+    alignedKernelRegression();
     frequencyResponse();
     unityContinuity();
     boundedRegions();

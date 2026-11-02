@@ -14,6 +14,8 @@ host, or a specific plug-in's state model.
   12-bit mono source conversion.
 - `DSP/SincResampler.hpp`: stereo windowed-sinc rate conversion and varispeed;
   [filter, real-time and boundary contract](../Docs/AI/RESAMPLING.md).
+- `DSP/StreamingDownsampler.hpp`: bounded FIR input history and edge flush for
+  live rate conversion; configure storage outside audio, push/finish without allocation.
 - `DSP/AdsrEnvelope.hpp`: allocation-free per-voice linear ADSR processor with
   phase-preserving live setting updates and explicit automatic-to-note-off release handoff.
 - `DSP/PeakMeter.hpp`: allocation-free stereo sample-peak follower with hold

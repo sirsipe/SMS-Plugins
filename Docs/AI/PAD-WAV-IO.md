@@ -22,7 +22,8 @@ global gain; it includes per-pad Gain/Pan/Tune/Direction, region, and ADSR. Rend
 reuse shared DSP behavior so offline output cannot drift from playback.
 
 Imported audio embeds in per-pad project state; projects restore after source
-files move or disappear. File paths are transient action inputs.
+files move or disappear. The [stored-rate policy](../../SMS-AnvilleSampler/Docs/WAV-FILES.md#stored-sample-rates)
+applies during import and restoration. File paths are transient action inputs.
 
 ## Dependency-free WAV contract
 
