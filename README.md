@@ -56,7 +56,18 @@ _Professionally developed audio plugins for **Linux** (VST3/LV2) and **Windows**
 
 Copyright (c) 2026 SudoMetalStudio.
 
-Project code: [AGPL-3.0-only](LICENSE).
+Repository content (excluding [third_party](third_party/) content): [AGPL-3.0-only](LICENSE).
+
+> **NOTE:** This project was developed extensively with AI assistance, which introduces some legal uncertainty regarding copyright protection for AI-generated contributions.
+>
+> While I retain copyright over my original creative contributions, the extent to which individual AI-generated portions qualify for copyright protection remains legally unsettled.
+>
+> Since copyleft obligations rely on copyright, this uncertainty may also affect the enforceability of the AGPL license for certain portions of the code.
+>
+> My intention is simple: I built something useful for the community, and I want anyone building upon it to keep their improvements available to that community.
+>
+> If you discover a legal loophole and deliberately exploit it against that intention, you're a dick. 🫵
+
 Additional permission: [DAW host-linking exception](HOST-LINKING-EXCEPTION.txt).
 Third-party licenses remain unchanged, but listed for convenience.
 
